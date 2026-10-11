@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { X, GitCommit, CheckCircle2, Clock, Timer, Edit3 } from "lucide-react";
+import { EmptyState } from "./EmptyState";
 import type { TaskDetails, TaskEvent } from "../types";
 import { TaskIdBadge } from "./CopyTaskIdButton";
 
@@ -237,7 +238,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
         {/* Content */}
         <div className="p-5 overflow-y-auto flex-1 space-y-5 font-mono text-xs">
           {isLoading || !details ? (
-            <div className="py-12 text-center text-zinc-600">// 正在获取任务完整记录...</div>
+            <div className="py-12 text-center text-zinc-600">正在获取任务完整记录...</div>
           ) : (
             <>
               {/* Title & Objective */}
@@ -400,7 +401,13 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                 </h3>
 
                 {details.events.length === 0 ? (
-                  <p className="text-zinc-600">// 暂无事件记录</p>
+                  <EmptyState
+                    icon={GitCommit}
+                    title="暂无事件流水记录"
+                    description="任务被认领或推进后，将在此自动追加记录"
+                    tag="暂无流水"
+                    compact
+                  />
                 ) : (
                   <div className="relative pl-5 space-y-3 before:absolute before:left-1.5 before:top-2 before:bottom-2 before:w-px before:bg-zinc-800">
                     {details.events.map((evt) => (

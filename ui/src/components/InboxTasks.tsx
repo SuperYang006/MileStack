@@ -1,5 +1,6 @@
 import React from "react";
-import { Check, Trash2, Edit3 } from "lucide-react";
+import { Check, Trash2, Edit3, Inbox, Plus } from "lucide-react";
+import { EmptyState } from "./EmptyState";
 import type { TaskSummary } from "../types";
 import { TaskIdBadge } from "./CopyTaskIdButton";
 
@@ -9,6 +10,7 @@ interface InboxTasksProps {
   onDeleteTask: (taskId: string) => void;
   onSelectTask: (taskId: string) => void;
   onEditTask?: (task: TaskSummary) => void;
+  onCreateTask?: () => void;
 }
 
 export const InboxTasks: React.FC<InboxTasksProps> = ({
@@ -17,6 +19,7 @@ export const InboxTasks: React.FC<InboxTasksProps> = ({
   onDeleteTask,
   onSelectTask,
   onEditTask,
+  onCreateTask,
 }) => {
   return (
     <section className="rounded-lg border border-zinc-800 bg-zinc-900/50 backdrop-blur-xs overflow-hidden">
@@ -34,9 +37,22 @@ export const InboxTasks: React.FC<InboxTasksProps> = ({
 
       <div className="p-3">
         {tasks.length === 0 ? (
-          <div className="py-6 text-center text-zinc-600 font-mono text-xs">
-            // 收件箱已清空，无待处理任务
-          </div>
+          <EmptyState
+            icon={Inbox}
+            title="收件箱已清空"
+            description="暂无待整理的新增任务。Agent 发现的新事项或手动录入的需求将暂存在此"
+            tag="收件箱已清空"
+            variant="default"
+            action={
+              onCreateTask
+                ? {
+                    label: "新建任务",
+                    onClick: onCreateTask,
+                    icon: Plus,
+                  }
+                : undefined
+            }
+          />
         ) : (
           <div className="divide-y divide-zinc-800/60">
             {tasks.map((task) => (

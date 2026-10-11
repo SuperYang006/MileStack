@@ -41,6 +41,14 @@ current tasks, progress, blockers, next steps, and handoffs belong in MileStack.
 - Do not add a dependency when a small, clear implementation using the existing stack is sufficient.
 - Delete superseded code after a refactor. Do not leave commented-out code, `old`/`new` duplicates, or temporary compatibility paths without a stated requirement.
 
+## Review and Git delivery
+
+- Submitting a MileStack task for review does not authorize pushing, merging, or updating shared remote branches.
+- Agents may create local commits in their assigned branch or worktree when that helps produce a reviewable change, but must keep the work isolated until the developer reviews it.
+- Do not push directly to `main`, merge into `main`, or push a task branch unless the developer explicitly requests that exact Git action.
+- Report the local commit or worktree state with the review submission so the developer can inspect it before approval.
+- When review requests changes, add follow-up commits to the same task branch when practical. Do not rewrite published history or bypass the task's new execution run.
+
 ## Architecture boundaries
 
 Keep business behavior in one place:

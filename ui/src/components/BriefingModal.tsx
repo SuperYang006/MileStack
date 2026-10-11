@@ -75,7 +75,7 @@ ${formatKnownTaskBriefInstructions(task.id)}
 
         <div className="p-5 overflow-y-auto flex-1 text-xs">
           <div className="text-[11px] text-zinc-500 mb-2">
-            // 可直接将以下简报复制粘贴给 AI 编程助手会话：
+            可直接将以下简报复制粘贴给 AI 编程助手会话：
           </div>
           <pre className="p-3.5 bg-zinc-900/90 border border-zinc-850 text-zinc-200 rounded text-xs overflow-x-auto whitespace-pre-wrap leading-relaxed selection:bg-cyan-500/30">
             {briefingText}
@@ -83,7 +83,7 @@ ${formatKnownTaskBriefInstructions(task.id)}
         </div>
 
         <div className="px-5 py-2.5 border-t border-zinc-800 bg-zinc-900/40 flex items-center justify-between">
-          <span className="text-[10px] text-zinc-600">// MILESTACK_PROTOCOL_V0</span>
+          <span className="text-[10px] text-zinc-600">MILESTACK_PROTOCOL_V0</span>
           <div className="flex items-center space-x-2">
             <button
               onClick={onClose}

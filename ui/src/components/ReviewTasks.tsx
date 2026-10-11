@@ -1,5 +1,6 @@
 import React from "react";
-import { Check, MessageSquare, ArrowUpRight } from "lucide-react";
+import { Check, MessageSquare, ArrowUpRight, CheckCircle2 } from "lucide-react";
+import { EmptyState } from "./EmptyState";
 import type { TaskSummary } from "../types";
 import { TaskIdBadge } from "./CopyTaskIdButton";
 
@@ -30,9 +31,13 @@ export const ReviewTasks: React.FC<ReviewTasksProps> = ({
 
       <div className="p-3">
         {tasks.length === 0 ? (
-          <div className="py-5 text-center text-zinc-600 font-mono text-xs">
-            // 暂无待审核任务
-          </div>
+          <EmptyState
+            icon={CheckCircle2}
+            title="暂无待审核成果"
+            description="当前所有阶段性输出已完成验收，等待新的任务提交审核"
+            tag="全部已验收"
+            variant="violet"
+          />
         ) : (
           <div className="space-y-2">
             {tasks.map((task) => (

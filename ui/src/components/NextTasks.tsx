@@ -8,6 +8,8 @@ import {
   Trash2,
   Zap,
 } from "lucide-react";
+import { ListOrdered } from "lucide-react";
+import { EmptyState } from "./EmptyState";
 import type { TaskSummary } from "../types";
 import { TaskIdBadge } from "./CopyTaskIdButton";
 interface NextTasksProps {
@@ -50,9 +52,13 @@ export const NextTasks: React.FC<NextTasksProps> = ({
 
       <div className="p-3">
         {tasks.length === 0 ? (
-          <div className="py-6 text-center text-zinc-600 font-mono text-xs">
-            就绪队列为空，可在待整理收件箱中确认任务
-          </div>
+          <EmptyState
+            icon={ListOrdered}
+            title="就绪队列为空"
+            description="当前没有排队中的就绪任务。可在待整理收件箱中确认任务，或新增规划"
+            tag="队列清空"
+            variant="indigo"
+          />
         ) : (
           <div className="space-y-2">
             {tasks.map((task, index) => {

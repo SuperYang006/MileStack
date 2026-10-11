@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { ChevronDown, ChevronRight, ArrowUpRight, RotateCcw } from "lucide-react";
+import { ChevronDown, ChevronRight, ArrowUpRight, RotateCcw, Archive } from "lucide-react";
+import { EmptyState } from "./EmptyState";
 import type { TaskSummary } from "../types";
 import { TaskIdBadge } from "./CopyTaskIdButton";
 
@@ -16,7 +17,6 @@ export const RecentTasks: React.FC<RecentTasksProps> = ({
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
 
-  if (tasks.length === 0) return null;
 
   return (
     <section className="rounded-lg border border-zinc-800/80 bg-zinc-900/30 overflow-hidden">
@@ -38,8 +38,19 @@ export const RecentTasks: React.FC<RecentTasksProps> = ({
       </button>
 
       {isExpanded && (
-        <div className="p-3 divide-y divide-zinc-800/40">
-          {tasks.map((task) => (
+        <div className="p-3">
+          {tasks.length === 0 ? (
+            <EmptyState
+              icon={Archive}
+              title="暂无已完成归档记录"
+              description="当任务通过审核验收后，将沉淀于此"
+              tag="暂无归档"
+              variant="emerald"
+              compact
+            />
+          ) : (
+            <div className="divide-y divide-zinc-800/40">
+              {tasks.map((task) => (
             <div
               key={task.id}
               className="py-1.5 first:pt-0 last:pb-0 flex items-center justify-between gap-3 text-xs font-mono"
@@ -83,7 +94,9 @@ export const RecentTasks: React.FC<RecentTasksProps> = ({
                 </button>
               </div>
             </div>
-          ))}
+              ))}
+            </div>
+          )}
         </div>
       )}
     </section>

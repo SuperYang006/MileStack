@@ -139,7 +139,7 @@ export const DashboardPage: React.FC = () => {
   if (isStatusLoading || !status) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-zinc-950 font-mono text-zinc-500 text-xs">
-        // 正在连接 MileStack 数据总线...
+        正在连接 MileStack 数据总线...
       </div>
     );
   }
@@ -193,6 +193,7 @@ export const DashboardPage: React.FC = () => {
               onDeleteTask={(id) => deleteInboxMutation.mutate(id)}
               onSelectTask={(id) => setSelectedTaskId(id)}
               onEditTask={(task) => setEditingInboxTask(task)}
+              onCreateTask={() => setIsCreateModalOpen(true)}
             />
           </div>
 

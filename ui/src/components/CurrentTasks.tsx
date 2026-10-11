@@ -1,5 +1,6 @@
 import React from "react";
-import { LogOut, Activity } from "lucide-react";
+import { LogOut, Activity, Bot } from "lucide-react";
+import { EmptyState } from "./EmptyState";
 import type { TaskSummary } from "../types";
 import { TaskIdBadge } from "./CopyTaskIdButton";
 
@@ -46,9 +47,13 @@ export const CurrentTasks: React.FC<CurrentTasksProps> = ({
 
       <div className="p-3">
         {tasks.length === 0 ? (
-          <div className="py-6 text-center text-zinc-600 font-mono text-xs">
-            暂无执行中任务，Agent 空闲
-          </div>
+          <EmptyState
+            icon={Bot}
+            title="Agent 待命中，暂无进行中任务"
+            description="总线连接正常。一旦就绪队列有可执行任务，Agent 将认领并开始推进"
+            tag="待命监听"
+            variant="cyan"
+          />
         ) : (
           <div className="space-y-2.5">
             {tasks.map((task) => {

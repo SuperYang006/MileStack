@@ -195,7 +195,7 @@ export const EditInboxModal: React.FC<EditInboxModalProps> = ({
 
           {/* Footer Controls */}
           <div className="pt-3 border-t border-zinc-800 flex items-center justify-between">
-            <span className="text-[10px] text-zinc-600">// 保存不影响队列排位</span>
+            <span className="text-[10px] text-zinc-600">保存不影响队列排位</span>
             <div className="flex items-center space-x-2">
               <button
                 type="button"
