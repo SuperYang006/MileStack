@@ -59,7 +59,7 @@ export const tasks = sqliteTable(
   (table) => [
     check(
       "tasks_status_check",
-      sql`${table.status} in ('inbox', 'ready', 'running', 'blocked', 'completed')`,
+      sql`${table.status} in ('inbox', 'ready', 'running', 'blocked', 'in_review', 'completed')`,
     ),
     check(
       "tasks_created_by_check",
@@ -99,7 +99,7 @@ export const taskEvents = sqliteTable(
   (table) => [
     check(
       "task_events_type_check",
-      sql`${table.type} in ('created', 'confirmed', 'started', 'progress', 'blocked', 'resumed', 'released', 'completed')`,
+      sql`${table.type} in ('created', 'confirmed', 'started', 'progress', 'blocked', 'resumed', 'released', 'submitted_for_review', 'approved', 'changes_requested', 'reopened', 'completed')`,
     ),
     index("task_events_task_created_idx").on(table.taskId, table.createdAt),
     index("task_events_project_created_idx").on(table.projectId, table.createdAt),

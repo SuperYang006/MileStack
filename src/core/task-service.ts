@@ -11,6 +11,9 @@ import {
   listTasksInputSchema,
   projectStatusSchema,
   compactProjectStatusSchema,
+  approveTaskInputSchema,
+  requestTaskChangesInputSchema,
+  reopenTaskInputSchema,
   returnTaskToInboxInputSchema,
   taskCursorSchema,
   taskPageSchema,
@@ -34,6 +37,9 @@ import {
   type ProjectStatusResult,
   type ReleaseTaskInput,
   type ReorderTaskInput,
+  type ApproveTaskInput,
+  type RequestTaskChangesInput,
+  type ReopenTaskInput,
   type ReturnTaskToInboxInput,
   type SetTaskDependenciesInput,
   type StartTaskInput,
@@ -74,6 +80,7 @@ const compactProjectStatusLimits = {
   current: 3,
   next: 5,
   blocked: 3,
+  inReview: 3,
   inbox: 3,
   recentlyCompleted: 3,
 } as const;
@@ -764,13 +771,56 @@ export class TaskService {
         throw new TaskNotFoundError(parsed.taskId);
       }
       this.requireRunOwner(task, parsed.runId);
-      if (task.status !== "running" && task.status !== "blocked") {
-        throw new InvalidTaskStateError(task.id, "running or blocked", task.status);
+      if (task.status !== "running") {
+        throw new InvalidTaskStateError(task.id, "running", task.status);
       }
       const now = this.now().toISOString();
       const actorLabel =
         parsed.actorLabel ??
         this.actorLabelForRun(transaction, task.id, parsed.runId);
+      transaction.updateTask(task.id, {
+        status: "in_review",
+        queuePosition: null,
+        activeRunId: null,
+        currentStep: null,
+        nextStep: null,
+        blocker: null,
+        requiredAction: null,
+        completedAt: null,
+        updatedAt: now,
+      });
+      transaction.insertTaskEvent({
+        id: this.generateId(),
+        projectId: task.projectId,
+        taskId: task.id,
+        runId: parsed.runId,
+        type: "submitted_for_review",
+        summary: parsed.summary,
+        completedWork: parsed.completedWork,
+        currentStep: null,
+        nextStep: null,
+        blocker: null,
+        requiredAction: null,
+        handoffNote: task.handoffNote,
+        actorLabel,
+        createdAt: now,
+      });
+    });
+    return this.getTask({ projectId: project.id, taskId: parsed.taskId });
+  }
+
+  approveTask(input: ApproveTaskInput): TaskDetails {
+    const parsed = approveTaskInputSchema.parse(input);
+    const project = this.requireProject(parsed.projectId);
+    this.repository.transaction((transaction) => {
+      const task = transaction.findTaskById(parsed.taskId);
+      if (!task || task.projectId !== project.id) {
+        throw new TaskNotFoundError(parsed.taskId);
+      }
+      if (task.status !== "in_review") {
+        throw new InvalidTaskStateError(task.id, "in_review", task.status);
+      }
+      const now = this.now().toISOString();
       transaction.updateTask(task.id, {
         status: "completed",
         queuePosition: null,
@@ -786,16 +836,122 @@ export class TaskService {
         id: this.generateId(),
         projectId: task.projectId,
         taskId: task.id,
-        runId: parsed.runId,
-        type: "completed",
-        summary: parsed.summary,
-        completedWork: parsed.completedWork,
+        runId: null,
+        type: "approved",
+        summary: "Task approved by developer.",
+        completedWork: null,
         currentStep: null,
         nextStep: null,
         blocker: null,
         requiredAction: null,
         handoffNote: task.handoffNote,
-        actorLabel,
+        actorLabel: parsed.actorLabel ?? "developer",
+        createdAt: now,
+      });
+    });
+    return this.getTask({ projectId: project.id, taskId: parsed.taskId });
+  }
+
+  requestTaskChanges(input: RequestTaskChangesInput): TaskDetails {
+    const parsed = requestTaskChangesInputSchema.parse(input);
+    const project = this.requireProject(parsed.projectId);
+    this.repository.transaction((transaction) => {
+      const task = transaction.findTaskById(parsed.taskId);
+      if (!task || task.projectId !== project.id) {
+        throw new TaskNotFoundError(parsed.taskId);
+      }
+      if (task.status !== "in_review") {
+        throw new InvalidTaskStateError(task.id, "in_review", task.status);
+      }
+      const now = this.now().toISOString();
+      transaction
+        .listByProjectId(project.id)
+        .filter((candidate) => candidate.status === "ready")
+        .forEach((candidate) => {
+          transaction.updateTask(candidate.id, {
+            queuePosition: (candidate.queuePosition ?? 0) + 1,
+            updatedAt: now,
+          });
+        });
+      transaction.updateTask(task.id, {
+        status: "ready",
+        queuePosition: 1,
+        activeRunId: null,
+        currentStep: null,
+        nextStep: null,
+        blocker: null,
+        requiredAction: null,
+        handoffNote: parsed.feedback,
+        completedAt: null,
+        updatedAt: now,
+      });
+      transaction.insertTaskEvent({
+        id: this.generateId(),
+        projectId: task.projectId,
+        taskId: task.id,
+        runId: null,
+        type: "changes_requested",
+        summary: parsed.feedback,
+        completedWork: null,
+        currentStep: null,
+        nextStep: null,
+        blocker: null,
+        requiredAction: null,
+        handoffNote: parsed.feedback,
+        actorLabel: parsed.actorLabel ?? "developer",
+        createdAt: now,
+      });
+    });
+    return this.getTask({ projectId: project.id, taskId: parsed.taskId });
+  }
+
+  reopenTask(input: ReopenTaskInput): TaskDetails {
+    const parsed = reopenTaskInputSchema.parse(input);
+    const project = this.requireProject(parsed.projectId);
+    this.repository.transaction((transaction) => {
+      const task = transaction.findTaskById(parsed.taskId);
+      if (!task || task.projectId !== project.id) {
+        throw new TaskNotFoundError(parsed.taskId);
+      }
+      if (task.status !== "completed") {
+        throw new InvalidTaskStateError(task.id, "completed", task.status);
+      }
+      const now = this.now().toISOString();
+      transaction
+        .listByProjectId(project.id)
+        .filter((candidate) => candidate.status === "ready")
+        .forEach((candidate) => {
+          transaction.updateTask(candidate.id, {
+            queuePosition: (candidate.queuePosition ?? 0) + 1,
+            updatedAt: now,
+          });
+        });
+      transaction.updateTask(task.id, {
+        status: "ready",
+        queuePosition: 1,
+        activeRunId: null,
+        currentStep: null,
+        nextStep: null,
+        blocker: null,
+        requiredAction: null,
+        handoffNote: parsed.reason,
+        completedAt: null,
+        updatedAt: now,
+      });
+      transaction.insertTaskEvent({
+        id: this.generateId(),
+        projectId: task.projectId,
+        taskId: task.id,
+        runId: null,
+        type: "reopened",
+        summary: parsed.reason,
+        completedWork: null,
+        currentStep: null,
+        nextStep: null,
+        blocker: null,
+        requiredAction: null,
+        handoffNote: parsed.reason,
+        actorLabel: parsed.actorLabel ?? "developer",
         createdAt: now,
       });
     });
@@ -899,6 +1055,9 @@ export class TaskService {
     const blockedTasks = tasks
       .filter((task) => task.status === "blocked")
       .sort(compareCreatedAt);
+    const inReviewTasks = tasks
+      .filter((task) => task.status === "in_review")
+      .sort(compareCreatedAt);
     const inboxTasks = tasks
       .filter((task) => task.status === "inbox")
       .sort(compareCreatedAt);
@@ -909,6 +1068,7 @@ export class TaskService {
     const current = currentTasks.map((task) => summaryForTask(summaries, task.id));
     const next = nextTasks.map((task) => summaryForTask(summaries, task.id));
     const blocked = blockedTasks.map((task) => summaryForTask(summaries, task.id));
+    const inReview = inReviewTasks.map((task) => summaryForTask(summaries, task.id));
     const inbox = inboxTasks.map((task) => summaryForTask(summaries, task.id));
     const completedSummaries = completedTasks.map((task) =>
       summaryForTask(summaries, task.id),
@@ -925,6 +1085,7 @@ export class TaskService {
           ready: nextTasks.length,
           running: currentTasks.length,
           blocked: blockedTasks.length,
+          inReview: inReviewTasks.length,
           completed: completedTasks.length,
           total: tasks.length,
         },
@@ -933,6 +1094,7 @@ export class TaskService {
         nextRunnable:
           next.find((task) => task.runnable) ?? null,
         blocked: blocked.slice(0, compactProjectStatusLimits.blocked),
+        inReview: inReview.slice(0, compactProjectStatusLimits.inReview),
         inbox: inbox.slice(0, compactProjectStatusLimits.inbox),
         recentlyCompleted: completedSummaries.slice(
           0,
@@ -942,6 +1104,7 @@ export class TaskService {
           current: current.length > compactProjectStatusLimits.current,
           next: next.length > compactProjectStatusLimits.next,
           blocked: blocked.length > compactProjectStatusLimits.blocked,
+          inReview: inReview.length > compactProjectStatusLimits.inReview,
           inbox: inbox.length > compactProjectStatusLimits.inbox,
           recentlyCompleted:
             completedTasks.length > compactProjectStatusLimits.recentlyCompleted,
@@ -955,6 +1118,7 @@ export class TaskService {
       current,
       next,
       blocked,
+      inReview,
       inbox,
       recentlyCompleted,
     });

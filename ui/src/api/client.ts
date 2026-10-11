@@ -15,7 +15,10 @@ const DETAILS_KEY = "milestack_ui_details_data";
 function loadStoredStatus(): ProjectStatus {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw) as ProjectStatus;
+    if (raw) {
+      const stored = JSON.parse(raw) as ProjectStatus;
+      return { ...stored, inReview: stored.inReview ?? [] };
+    }
   } catch {
     // fallback
   }
@@ -103,6 +106,7 @@ export const apiClient = {
       ...status.current,
       ...status.next,
       ...status.blocked,
+      ...status.inReview,
       ...status.inbox,
       ...status.recentlyCompleted,
     ];
@@ -515,6 +519,202 @@ export const apiClient = {
         });
         saveStoredStatus(status);
       }
+    }
+  },
+
+  async approveTask(taskId: string, projectId?: string): Promise<void> {
+    try {
+      const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/approve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(projectId ? { projectId } : {}),
+      });
+      if (res.ok) return;
+      backendAvailable = true;
+      const error = await res.json().catch(() => ({}));
+      throw new Error(error.error || `HTTP ${res.status}`);
+    } catch (error) {
+      if (backendAvailable) throw error;
+    }
+
+    const status = loadStoredStatus();
+    const taskIndex = status.inReview.findIndex((task) => task.id === taskId);
+    if (taskIndex < 0) return;
+    const [task] = status.inReview.splice(taskIndex, 1);
+    if (!task) return;
+    const completedAt = new Date().toISOString();
+    task.status = "completed";
+    task.queuePosition = null;
+    task.runnable = false;
+    task.completedAt = completedAt;
+    status.recentlyCompleted.unshift(task);
+    saveStoredStatus(status);
+
+    const detailsMap = loadStoredDetails();
+    const details = detailsMap[taskId];
+    if (details) {
+      details.task.status = "completed";
+      details.task.queuePosition = null;
+      details.task.completedAt = completedAt;
+      details.task.updatedAt = completedAt;
+      details.events.push({
+        id: `evt-${Date.now()}`,
+        projectId: details.task.projectId,
+        taskId,
+        runId: null,
+        type: "approved",
+        summary: "Task approved by developer.",
+        completedWork: null,
+        currentStep: null,
+        nextStep: null,
+        blocker: null,
+        requiredAction: null,
+        handoffNote: details.task.handoffNote,
+        actorLabel: "developer",
+        createdAt: completedAt,
+      });
+      saveStoredDetails(detailsMap);
+    }
+  },
+
+  async requestTaskChanges(
+    taskId: string,
+    feedback: string,
+    projectId?: string,
+  ): Promise<void> {
+    try {
+      const res = await fetch(
+        `/api/tasks/${encodeURIComponent(taskId)}/request-changes`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(projectId ? { feedback, projectId } : { feedback }),
+        },
+      );
+      if (res.ok) return;
+      backendAvailable = true;
+      const error = await res.json().catch(() => ({}));
+      throw new Error(error.error || `HTTP ${res.status}`);
+    } catch (error) {
+      if (backendAvailable) throw error;
+    }
+
+    const status = loadStoredStatus();
+    const taskIndex = status.inReview.findIndex((task) => task.id === taskId);
+    if (taskIndex < 0) return;
+    const [task] = status.inReview.splice(taskIndex, 1);
+    if (!task) return;
+    status.next.forEach((item) => {
+      item.queuePosition = (item.queuePosition ?? 0) + 1;
+    });
+    task.status = "ready";
+    task.queuePosition = 1;
+    task.runnable = task.waitingFor.length === 0;
+    task.currentStep = null;
+    task.nextStep = null;
+    task.blocker = null;
+    task.requiredAction = null;
+    task.updatedAt = new Date().toISOString();
+    status.next.unshift(task);
+    saveStoredStatus(status);
+
+    const detailsMap = loadStoredDetails();
+    const details = detailsMap[taskId];
+    if (details) {
+      details.task.status = "ready";
+      details.task.queuePosition = 1;
+      details.task.activeRunId = null;
+      details.task.currentStep = null;
+      details.task.nextStep = null;
+      details.task.blocker = null;
+      details.task.requiredAction = null;
+      details.task.handoffNote = feedback;
+      details.task.updatedAt = task.updatedAt;
+      details.events.push({
+        id: `evt-${Date.now()}`,
+        projectId: details.task.projectId,
+        taskId,
+        runId: null,
+        type: "changes_requested",
+        summary: feedback,
+        completedWork: null,
+        currentStep: null,
+        nextStep: null,
+        blocker: null,
+        requiredAction: null,
+        handoffNote: feedback,
+        actorLabel: "developer",
+        createdAt: task.updatedAt,
+      });
+      saveStoredDetails(detailsMap);
+    }
+  },
+
+  async reopenCompletedTask(
+    taskId: string,
+    reason: string,
+    projectId?: string,
+  ): Promise<void> {
+    try {
+      const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/reopen`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(projectId ? { reason, projectId } : { reason }),
+      });
+      if (res.ok) return;
+      backendAvailable = true;
+      const error = await res.json().catch(() => ({}));
+      throw new Error(error.error || `HTTP ${res.status}`);
+    } catch (error) {
+      if (backendAvailable) throw error;
+    }
+
+    const status = loadStoredStatus();
+    const taskIndex = status.recentlyCompleted.findIndex((task) => task.id === taskId);
+    if (taskIndex < 0) return;
+    const [task] = status.recentlyCompleted.splice(taskIndex, 1);
+    if (!task) return;
+    status.next.forEach((item) => {
+      item.queuePosition = (item.queuePosition ?? 0) + 1;
+    });
+    task.status = "ready";
+    task.queuePosition = 1;
+    task.runnable = task.waitingFor.length === 0;
+    task.completedAt = null;
+    task.currentStep = null;
+    task.nextStep = null;
+    task.blocker = null;
+    task.requiredAction = null;
+    task.updatedAt = new Date().toISOString();
+    status.next.unshift(task);
+    saveStoredStatus(status);
+
+    const detailsMap = loadStoredDetails();
+    const details = detailsMap[taskId];
+    if (details) {
+      details.task.status = "ready";
+      details.task.queuePosition = 1;
+      details.task.activeRunId = null;
+      details.task.completedAt = null;
+      details.task.handoffNote = reason;
+      details.task.updatedAt = task.updatedAt;
+      details.events.push({
+        id: `evt-${Date.now()}`,
+        projectId: details.task.projectId,
+        taskId,
+        runId: null,
+        type: "reopened",
+        summary: reason,
+        completedWork: null,
+        currentStep: null,
+        nextStep: null,
+        blocker: null,
+        requiredAction: null,
+        handoffNote: reason,
+        actorLabel: "developer",
+        createdAt: task.updatedAt,
+      });
+      saveStoredDetails(detailsMap);
     }
   },
 

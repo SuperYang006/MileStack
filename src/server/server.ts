@@ -271,6 +271,86 @@ export async function createHttpServer(
     }
   });
 
+  // Approve In-review Task -> Completed
+  app.post("/api/tasks/:id/approve", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const body = (request.body || {}) as { projectId?: string };
+    const projectId = body.projectId || context.project.id;
+
+    try {
+      context.service.approveTask({
+        projectId,
+        taskId: id,
+        actorLabel: "developer",
+      });
+      return { success: true };
+    } catch (err) {
+      if (err instanceof TaskNotFoundError) {
+        return reply.status(404).send({ error: err.message });
+      }
+      if (err instanceof InvalidTaskStateError || err instanceof z.ZodError) {
+        return reply
+          .status(400)
+          .send({ error: err instanceof z.ZodError ? err.issues : err.message });
+      }
+      throw err;
+    }
+  });
+
+  // Request changes In-review Task -> Ready
+  app.post("/api/tasks/:id/request-changes", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const body = (request.body || {}) as { feedback?: string; projectId?: string };
+    const projectId = body.projectId || context.project.id;
+
+    try {
+      context.service.requestTaskChanges({
+        projectId,
+        taskId: id,
+        feedback: body.feedback ?? "",
+        actorLabel: "developer",
+      });
+      return { success: true };
+    } catch (err) {
+      if (err instanceof TaskNotFoundError) {
+        return reply.status(404).send({ error: err.message });
+      }
+      if (err instanceof InvalidTaskStateError || err instanceof z.ZodError) {
+        return reply
+          .status(400)
+          .send({ error: err instanceof z.ZodError ? err.issues : err.message });
+      }
+      throw err;
+    }
+  });
+
+  // Reopen Completed Task -> Ready
+  app.post("/api/tasks/:id/reopen", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const body = (request.body || {}) as { reason?: string; projectId?: string };
+    const projectId = body.projectId || context.project.id;
+
+    try {
+      context.service.reopenTask({
+        projectId,
+        taskId: id,
+        reason: body.reason ?? "",
+        actorLabel: "developer",
+      });
+      return { success: true };
+    } catch (err) {
+      if (err instanceof TaskNotFoundError) {
+        return reply.status(404).send({ error: err.message });
+      }
+      if (err instanceof InvalidTaskStateError || err instanceof z.ZodError) {
+        return reply
+          .status(400)
+          .send({ error: err instanceof z.ZodError ? err.issues : err.message });
+      }
+      throw err;
+    }
+  });
+
   // Return Ready Task -> Inbox
   app.post("/api/tasks/:id/return-to-inbox", async (request, reply) => {
     const { id } = request.params as { id: string };

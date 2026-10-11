@@ -7,6 +7,7 @@ import { NextTasks } from "../components/NextTasks";
 import { BlockedTasks } from "../components/BlockedTasks";
 import { InboxTasks } from "../components/InboxTasks";
 import { RecentTasks } from "../components/RecentTasks";
+import { ReviewTasks } from "../components/ReviewTasks";
 import { TaskDetailModal } from "../components/TaskDetailModal";
 import { CreateTaskModal } from "../components/CreateTaskModal";
 import { BriefingModal } from "../components/BriefingModal";
@@ -109,6 +110,32 @@ export const DashboardPage: React.FC = () => {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["projectStatus"] }),
   });
 
+  const approveTaskMutation = useMutation({
+    mutationFn: (taskId: string) => apiClient.approveTask(taskId),
+    onSuccess: (_, taskId) => {
+      queryClient.invalidateQueries({ queryKey: ["projectStatus"] });
+      queryClient.invalidateQueries({ queryKey: ["taskDetails", taskId] });
+    },
+  });
+
+  const requestChangesMutation = useMutation({
+    mutationFn: ({ taskId, feedback }: { taskId: string; feedback: string }) =>
+      apiClient.requestTaskChanges(taskId, feedback),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["projectStatus"] });
+      queryClient.invalidateQueries({ queryKey: ["taskDetails", variables.taskId] });
+    },
+  });
+
+  const reopenTaskMutation = useMutation({
+    mutationFn: ({ taskId, reason }: { taskId: string; reason: string }) =>
+      apiClient.reopenCompletedTask(taskId, reason),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["projectStatus"] });
+      queryClient.invalidateQueries({ queryKey: ["taskDetails", variables.taskId] });
+    },
+  });
+
   if (isStatusLoading || !status) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-zinc-950 font-mono text-zinc-500 text-xs">
@@ -145,6 +172,14 @@ export const DashboardPage: React.FC = () => {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
           {/* Left Column: Currently running */}
           <div className="space-y-6">
+            <ReviewTasks
+              tasks={status.inReview}
+              onApprove={(id) => approveTaskMutation.mutate(id)}
+              onRequestChanges={(taskId, feedback) =>
+                requestChangesMutation.mutate({ taskId, feedback })
+              }
+              onSelectTask={(id) => setSelectedTaskId(id)}
+            />
             <CurrentTasks
               tasks={status.current}
               onSelectTask={(id) => setSelectedTaskId(id)}
@@ -176,6 +211,7 @@ export const DashboardPage: React.FC = () => {
             <RecentTasks
               tasks={status.recentlyCompleted}
               onSelectTask={(id) => setSelectedTaskId(id)}
+              onReopenTask={(taskId, reason) => reopenTaskMutation.mutate({ taskId, reason })}
             />
           </div>
         </div>

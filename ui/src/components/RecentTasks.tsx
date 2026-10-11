@@ -1,14 +1,19 @@
 import React, { useState } from "react";
-import { ChevronDown, ChevronRight, ArrowUpRight } from "lucide-react";
+import { ChevronDown, ChevronRight, ArrowUpRight, RotateCcw } from "lucide-react";
 import type { TaskSummary } from "../types";
 import { CopyTaskIdButton } from "./CopyTaskIdButton";
 
 interface RecentTasksProps {
   tasks: TaskSummary[];
   onSelectTask: (taskId: string) => void;
+  onReopenTask: (taskId: string, reason: string) => void;
 }
 
-export const RecentTasks: React.FC<RecentTasksProps> = ({ tasks, onSelectTask }) => {
+export const RecentTasks: React.FC<RecentTasksProps> = ({
+  tasks,
+  onSelectTask,
+  onReopenTask,
+}) => {
   const [isExpanded, setIsExpanded] = useState(false);
 
   if (tasks.length === 0) return null;
@@ -60,6 +65,18 @@ export const RecentTasks: React.FC<RecentTasksProps> = ({ tasks, onSelectTask })
                   </span>
                 )}
                 <button
+                  onClick={() => {
+                    const reason = window.prompt("请输入重新打开的返工原因：", "");
+                    if (reason?.trim()) onReopenTask(task.id, reason.trim());
+                  }}
+                  className="inline-flex items-center space-x-1 px-1.5 py-0.5 text-[10px] font-mono text-amber-400 hover:text-amber-300 border border-amber-900/50 rounded"
+                  title="重新打开为 Ready 任务"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  <span>返工</span>
+                </button>
+                <button
+                  onClick={() => onSelectTask(task.id)}
                   className="p-0.5 text-zinc-600 hover:text-zinc-400 rounded transition-colors"
                   title="查看详情"
                 >

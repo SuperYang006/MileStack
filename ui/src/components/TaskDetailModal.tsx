@@ -29,7 +29,7 @@ interface RunExecution {
   actorLabel?: string | null;
   startedAt: Date;
   endedAt?: Date;
-  status: "running" | "completed" | "released" | "incomplete";
+  status: "running" | "in_review" | "completed" | "released" | "incomplete";
   durationMs: number | null;
 }
 
@@ -81,7 +81,8 @@ function computeRunExecutions(
 
     const completedEvent = runEvts.find((e) => e.type === "completed");
     const releasedEvent = runEvts.find((e) => e.type === "released");
-    const terminalEvent = completedEvent || releasedEvent;
+    const submittedEvent = runEvts.find((e) => e.type === "submitted_for_review");
+    const terminalEvent = completedEvent || releasedEvent || submittedEvent;
 
     if (terminalEvent) {
       const endMs = new Date(terminalEvent.createdAt).getTime();
@@ -91,7 +92,12 @@ function computeRunExecutions(
         actorLabel: terminalEvent.actorLabel || startedEvent.actorLabel,
         startedAt: new Date(startMs),
         endedAt: isValidEnd ? new Date(endMs) : undefined,
-        status: terminalEvent.type === "completed" ? "completed" : "released",
+        status:
+          terminalEvent.type === "completed"
+            ? "completed"
+            : terminalEvent.type === "submitted_for_review"
+            ? "in_review"
+            : "released",
         durationMs: isValidEnd ? Math.max(0, endMs - startMs) : null,
       });
     } else if (activeRunId === runId && (taskStatus === "running" || taskStatus === "blocked")) {
@@ -171,7 +177,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
 
   const primaryRun =
     activeRun ||
-    [...runs].reverse().find((r) => r.status === "completed") ||
+    [...runs].reverse().find((r) => r.status === "completed" || r.status === "in_review") ||
     runs[runs.length - 1];
   if (!isOpen) return null;
 
@@ -193,6 +199,8 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                   ? "text-cyan-400 bg-cyan-950/60 border border-cyan-900/60"
                   : details?.task.status === "blocked"
                   ? "text-rose-400 bg-rose-950/60 border border-rose-900/60"
+                  : details?.task.status === "in_review"
+                  ? "text-violet-400 bg-violet-950/60 border border-violet-900/60"
                   : "text-zinc-400 bg-zinc-900 border border-zinc-800"
               }`}
             >
@@ -270,6 +278,8 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                               ? "当前执行自然耗时"
                               : primaryRun.status === "completed"
                               ? "最终完成自然耗时"
+                              : primaryRun.status === "in_review"
+                              ? "提交审核前自然耗时"
                               : "上次释放前耗时"}
                           </span>
                           {primaryRun.status === "running" && (
@@ -342,6 +352,8 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                               className={`text-[10px] px-1 py-0.2 rounded font-mono ${
                                 r.status === "completed"
                                   ? "text-emerald-400 bg-emerald-950/60"
+                                  : r.status === "in_review"
+                                  ? "text-violet-400 bg-violet-950/60"
                                   : r.status === "running"
                                   ? "text-cyan-400 bg-cyan-950/60"
                                   : r.status === "released"
@@ -351,6 +363,8 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                             >
                               {r.status === "completed"
                                 ? "已完成"
+                                : r.status === "in_review"
+                                ? "待审核"
                                 : r.status === "running"
                                 ? "执行中"
                                 : r.status === "released"

@@ -6,6 +6,8 @@ const taskClaimRule =
   "读取任务详情后调用 start_task，保存返回的 runId。";
 const taskClaimValidationRule =
   "服务端会校验任务状态、前置依赖和并发领取冲突。";
+const taskCompletionRule =
+  "实现完成后调用 finish_task 提交人工审核；任务进入 in_review，不代表已批准归档。";
 
 export function formatAgentIntegrationInstructions(): string {
   return `MILESTACK_START
@@ -13,6 +15,7 @@ export function formatAgentIntegrationInstructions(): string {
 - 任务发现：${taskDiscoveryRule}
 - 已知任务：${knownTaskRule}
 - 领取任务：${taskClaimRule}${taskClaimValidationRule}
+- 提交验收：${taskCompletionRule}
 - 执行中发现的新工作通过 create_task 记录到 inbox，不要写入新的任务文档。
 MILESTACK_END`;
 }
@@ -22,6 +25,7 @@ export function formatMcpInstructions(): string {
     `任务发现：${taskDiscoveryRule}`,
     `已知任务：${knownTaskRule}`,
     `领取任务：${taskClaimRule}${taskClaimValidationRule}`,
+    `提交验收：${taskCompletionRule}`,
     "Agent 创建的新工作进入 inbox。",
   ].join(" ");
 }

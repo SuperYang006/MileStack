@@ -393,4 +393,97 @@ describe("HTTP API Server", () => {
       JSON.parse(dependentRes.payload).task.id,
     );
   });
+
+  it("supports developer review, change requests, approval, and reopening over HTTP", async () => {
+    const createdRes = await serverInstance.app.inject({
+      method: "POST",
+      url: "/api/tasks",
+      payload: { title: "Review through HTTP", status: "ready" },
+    });
+    const created = JSON.parse(createdRes.payload).task;
+    const firstRun = serverInstance.context.service.startTask({
+      projectId: serverInstance.context.project.id,
+      taskId: created.id,
+    });
+    serverInstance.context.service.finishTask({
+      projectId: serverInstance.context.project.id,
+      taskId: created.id,
+      runId: firstRun.runId,
+      summary: "Ready for review",
+    });
+
+    const statusInReview = JSON.parse(
+      (await serverInstance.app.inject({ method: "GET", url: "/api/status" })).payload,
+    );
+    expect(statusInReview.inReview).toEqual([
+      expect.objectContaining({ id: created.id, status: "in_review" }),
+    ]);
+    expect(statusInReview.recentlyCompleted).toEqual([]);
+
+    const missingFeedback = await serverInstance.app.inject({
+      method: "POST",
+      url: `/api/tasks/${created.id}/request-changes`,
+      payload: {},
+    });
+    expect(missingFeedback.statusCode).toBe(400);
+
+    const requestChanges = await serverInstance.app.inject({
+      method: "POST",
+      url: `/api/tasks/${created.id}/request-changes`,
+      payload: { feedback: "Please add an edge-case regression test." },
+    });
+    expect(requestChanges.statusCode).toBe(200);
+    expect(serverInstance.context.service.getTask({
+      projectId: serverInstance.context.project.id,
+      taskId: created.id,
+    }).task).toMatchObject({ status: "ready", queuePosition: 1, completedAt: null });
+
+    const secondRun = serverInstance.context.service.startTask({
+      projectId: serverInstance.context.project.id,
+      taskId: created.id,
+    });
+    serverInstance.context.service.finishTask({
+      projectId: serverInstance.context.project.id,
+      taskId: created.id,
+      runId: secondRun.runId,
+      summary: "Updated and ready for review",
+    });
+
+    const approve = await serverInstance.app.inject({
+      method: "POST",
+      url: `/api/tasks/${created.id}/approve`,
+    });
+    expect(approve.statusCode).toBe(200);
+    expect(serverInstance.context.service.getTask({
+      projectId: serverInstance.context.project.id,
+      taskId: created.id,
+    }).task).toMatchObject({ status: "completed" });
+
+    const missingReason = await serverInstance.app.inject({
+      method: "POST",
+      url: `/api/tasks/${created.id}/reopen`,
+      payload: {},
+    });
+    expect(missingReason.statusCode).toBe(400);
+
+    const reopen = await serverInstance.app.inject({
+      method: "POST",
+      url: `/api/tasks/${created.id}/reopen`,
+      payload: { reason: "Need a performance note before final sign-off." },
+    });
+    expect(reopen.statusCode).toBe(200);
+    const reopened = serverInstance.context.service.getTask({
+      projectId: serverInstance.context.project.id,
+      taskId: created.id,
+    });
+    expect(reopened.task).toMatchObject({
+      status: "ready",
+      queuePosition: 1,
+      completedAt: null,
+    });
+    expect(reopened.events.at(-1)).toMatchObject({
+      type: "reopened",
+      summary: "Need a performance note before final sign-off.",
+    });
+  });
 });

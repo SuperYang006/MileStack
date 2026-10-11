@@ -85,7 +85,7 @@ const toolDefinitions: Tool[] = [
   {
     name: "finish_task",
     description:
-      "Complete a running task with a completion summary. The runId becomes invalid after completion.",
+      "Submit a running task for developer review with a completion summary. The runId becomes invalid after submission; only developer review can approve completion.",
     inputSchema: toJSONSchema(finishTaskArgumentsSchema) as Tool["inputSchema"],
   },
 ];

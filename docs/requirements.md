@@ -132,6 +132,7 @@ type ProjectStatus = {
   current: TaskSummary[]
   next: TaskSummary[]
   blocked: TaskSummary[]
+  inReview: TaskSummary[]
   inbox: TaskSummary[]
   recentlyCompleted: TaskSummary[]
 }
@@ -139,7 +140,7 @@ type ProjectStatus = {
 type TaskSummary = {
   id: string
   title: string
-  status: "inbox" | "ready" | "running" | "blocked" | "completed"
+  status: "inbox" | "ready" | "running" | "blocked" | "in_review" | "completed"
   queuePosition?: number
   dependencyIds: string[]
   waitingFor: Array<{
@@ -161,6 +162,7 @@ type TaskSummary = {
 - `current`：正在执行的任务；
 - `next`：按队列顺序排列的正式待办，同时标明是否可立即领取及尚未完成的依赖；
 - `blocked`：当前无法推进的任务；
+- `inReview`：Agent 已提交实现、等待开发者审核的任务；
 - `inbox`：尚未整理的新任务；
 - `recentlyCompleted`：最近完成的任务。
 
@@ -170,6 +172,8 @@ type TaskSummary = {
 
 - 创建和编辑任务；
 - 将 `inbox` 任务确认为正式待办；
+- 审核 `in_review` 任务，批准完成或填写反馈退回返工；
+- 将已完成任务填写原因重新打开为 `ready` 任务；
 - 拒绝或删除无效的 `inbox` 任务；
 - 调整 `ready` 任务的执行顺序；
 - 复制任务简报；
@@ -187,7 +191,7 @@ AI 可以通过 MCP：
 - 上报阶段进度；
 - 报告阻塞及所需行动；
 - 释放任务并留下交接信息；
-- 完成任务并提供完成摘要。
+- 提交任务审核并提供完成摘要；完成归档由开发者审核批准。
 
 ### 6.4 有序待办与任务依赖
 
@@ -314,7 +318,7 @@ type Task = {
 - 无依赖时 `dependencyIds` 返回空数组；创建输入可以省略该字段；
 - 任务不能依赖自身，也不能形成循环依赖；
 - `running` 和 `blocked` 任务可以拥有 `activeRunId`；
-- `completed` 任务必须清除 `activeRunId` 并记录 `completedAt`；
+- `in_review` 和 `completed` 任务必须清除 `activeRunId`；只有 `completed` 任务记录 `completedAt`；
 - AI 创建的后续任务默认进入 `inbox`。
 
 ### 8.3 TaskEvent
@@ -334,6 +338,10 @@ type TaskEvent = {
     | "blocked"
     | "resumed"
     | "released"
+    | "submitted_for_review"
+    | "approved"
+    | "changes_requested"
+    | "reopened"
     | "completed"
 
   summary: string
@@ -358,7 +366,7 @@ V0 不建立稳定的 Agent 身份系统。
 `start_task` 成功时生成一个 `runId`，代表某一次任务领取和执行。后续执行类写操作必须携带该 `runId`。
 
 ```text
-start_task -> 生成 runId -> update/block/release/finish 携带 runId
+start_task -> 生成 runId -> update/block/release/finish 携带 runId -> in_review -> developer approve/request-changes
 ```
 
 服务端必须保证：
@@ -367,7 +375,7 @@ start_task -> 生成 runId -> update/block/release/finish 携带 runId
 - `start_task` 拒绝存在未完成依赖的任务；
 - 同一个 `ready` 任务只能被一个调用成功领取；
 - 写操作的 `runId` 必须等于任务的 `activeRunId`；
-- 任务释放或完成后，旧 `runId` 立即失效；
+- 任务释放或提交审核后，旧 `runId` 立即失效；退回返工或重新打开后必须重新 `start_task`；
 - 旧执行者的迟到更新不能修改任务。
 
 Agent 名称、提供方或会话信息不是必需身份，只能作为可选的 `actorLabel` 用于页面展示。
@@ -430,8 +438,9 @@ V0 只需要一个项目状态页面，按照行动意义展示：
 1. **正在进行**：任务标题、当前步骤、下一步和最后更新时间；
 2. **下一任务**：按队列顺序展示 `ready` 任务，并支持调整顺序；
 3. **需要处理**：展示被阻塞的任务及所需行动；
-4. **待整理**：展示 `inbox` 任务，支持确认、编辑或删除；
-5. **最近完成**：展示近期完成的任务。
+4. **待审核**：展示 `in_review` 任务，支持批准或填写反馈退回返工；
+5. **待整理**：展示 `inbox` 任务，支持确认、编辑或删除；
+6. **最近完成**：展示已批准完成的任务，并支持填写原因重新打开。
 
 页面还应支持：
 

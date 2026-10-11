@@ -582,11 +582,22 @@ describe("TaskService", () => {
       summary: "Implementation complete.",
       completedWork: ["Implemented and tested the lifecycle"],
     });
-    expect(finished.task.status).toBe("completed");
+    expect(finished.task.status).toBe("in_review");
     expect(finished.task.activeRunId).toBeNull();
     expect(finished.events.at(-1)).toMatchObject({
-      type: "completed",
+      type: "submitted_for_review",
       actorLabel: "gpt-5-codex",
+    });
+    const approved = service.approveTask({
+      projectId: "project-1",
+      taskId: task.task.id,
+      actorLabel: "developer",
+    });
+    expect(approved.task.status).toBe("completed");
+    expect(approved.task.completedAt).toBeTruthy();
+    expect(approved.events.at(-1)).toMatchObject({
+      type: "approved",
+      actorLabel: "developer",
     });
     expect(() =>
       service.updateTask({
@@ -839,6 +850,132 @@ describe("TaskService", () => {
     expect(() => service.deleteTask({ projectId: "project-1", taskId: prerequisite.task.id })).toThrow(
       InvalidTaskStateError,
     );
+    database.close();
+  });
+
+  it("separates agent submission from developer approval and supports review rework", async () => {
+    const { database, service } = await createService(createTemporaryProject());
+    const task = service.createTask({
+      projectId: "project-1",
+      title: "Review lifecycle",
+      createdBy: "developer",
+      status: "ready",
+    });
+    const dependent = service.createTask({
+      projectId: "project-1",
+      title: "Dependent task",
+      createdBy: "developer",
+      status: "ready",
+      dependencyIds: [task.task.id],
+      queuePosition: 2,
+    });
+
+    const firstRun = service.startTask({
+      projectId: "project-1",
+      taskId: task.task.id,
+      actorLabel: "gpt-5-codex",
+    });
+    const submitted = service.finishTask({
+      projectId: "project-1",
+      taskId: task.task.id,
+      runId: firstRun.runId,
+      summary: "Implementation is ready for review.",
+      completedWork: ["Implemented the feature"],
+    });
+    expect(submitted.task.status).toBe("in_review");
+    expect(submitted.task.completedAt).toBeNull();
+    expect(submitted.events.at(-1)).toMatchObject({ type: "submitted_for_review" });
+    expect(service.getProjectStatus({ projectId: "project-1" })).toMatchObject({
+      inReview: [expect.objectContaining({ id: task.task.id })],
+      recentlyCompleted: [],
+    });
+    expect(() => service.startTask({ projectId: "project-1", taskId: dependent.task.id })).toThrow(
+      TaskDependenciesIncompleteError,
+    );
+
+    const returnedForChanges = service.requestTaskChanges({
+      projectId: "project-1",
+      taskId: task.task.id,
+      feedback: "请补充边界条件测试。",
+      actorLabel: "developer",
+    });
+    expect(returnedForChanges.task).toMatchObject({
+      status: "ready",
+      queuePosition: 1,
+      activeRunId: null,
+      completedAt: null,
+      handoffNote: "请补充边界条件测试。",
+    });
+    expect(returnedForChanges.events.at(-1)).toMatchObject({
+      type: "changes_requested",
+      summary: "请补充边界条件测试。",
+    });
+
+    const secondRun = service.startTask({
+      projectId: "project-1",
+      taskId: task.task.id,
+      actorLabel: "gpt-5-codex",
+    });
+    expect(secondRun.runId).not.toBe(firstRun.runId);
+    service.finishTask({
+      projectId: "project-1",
+      taskId: task.task.id,
+      runId: secondRun.runId,
+      summary: "Updated implementation is ready.",
+    });
+    const approved = service.approveTask({
+      projectId: "project-1",
+      taskId: task.task.id,
+      actorLabel: "reviewer",
+    });
+    expect(approved.task.status).toBe("completed");
+    expect(approved.events.at(-1)).toMatchObject({
+      type: "approved",
+      actorLabel: "reviewer",
+    });
+
+    const dependentRun = service.startTask({
+      projectId: "project-1",
+      taskId: dependent.task.id,
+    });
+    expect(dependentRun.task.task.status).toBe("running");
+    service.releaseTask({
+      projectId: "project-1",
+      taskId: dependent.task.id,
+      runId: dependentRun.runId,
+    });
+    const dependentSecondRun = service.startTask({
+      projectId: "project-1",
+      taskId: dependent.task.id,
+    });
+    const dependentSubmitted = service.finishTask({
+      projectId: "project-1",
+      taskId: dependent.task.id,
+      runId: dependentSecondRun.runId,
+      summary: "Dependent implementation ready.",
+    });
+    service.approveTask({ projectId: "project-1", taskId: dependent.task.id });
+    expect(dependentSubmitted.task.status).toBe("in_review");
+
+    const reopened = service.reopenTask({
+      projectId: "project-1",
+      taskId: task.task.id,
+      reason: "需要补充性能说明。",
+      actorLabel: "developer",
+    });
+    expect(reopened.task).toMatchObject({
+      status: "ready",
+      queuePosition: 1,
+      completedAt: null,
+      activeRunId: null,
+      handoffNote: "需要补充性能说明。",
+    });
+    expect(reopened.events.at(-1)).toMatchObject({
+      type: "reopened",
+      summary: "需要补充性能说明。",
+    });
+    expect(service.getProjectStatus({ projectId: "project-1" }).recentlyCompleted.map((item) => item.id))
+      .not.toContain(task.task.id);
     database.close();
   });
 });

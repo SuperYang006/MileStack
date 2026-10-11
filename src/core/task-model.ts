@@ -3,6 +3,7 @@ export const taskStatuses = [
   "ready",
   "running",
   "blocked",
+  "in_review",
   "completed",
 ] as const;
 
@@ -16,6 +17,10 @@ export const taskEventTypes = [
   "blocked",
   "resumed",
   "released",
+  "submitted_for_review",
+  "approved",
+  "changes_requested",
+  "reopened",
   "completed",
 ] as const;
 

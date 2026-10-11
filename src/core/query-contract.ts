@@ -106,6 +106,7 @@ export const projectStatusSchema = z
     current: z.array(taskSummarySchema),
     next: z.array(taskSummarySchema),
     blocked: z.array(taskSummarySchema),
+    inReview: z.array(taskSummarySchema),
     inbox: z.array(taskSummarySchema),
     recentlyCompleted: z.array(taskSummarySchema),
   })
@@ -117,6 +118,7 @@ const taskStatusCountSchema = z
     ready: z.number().int().nonnegative(),
     running: z.number().int().nonnegative(),
     blocked: z.number().int().nonnegative(),
+    inReview: z.number().int().nonnegative(),
     completed: z.number().int().nonnegative(),
     total: z.number().int().nonnegative(),
   })
@@ -127,6 +129,7 @@ const statusTruncationSchema = z
     current: z.boolean(),
     next: z.boolean(),
     blocked: z.boolean(),
+    inReview: z.boolean(),
     inbox: z.boolean(),
     recentlyCompleted: z.boolean(),
   })
@@ -141,6 +144,7 @@ export const compactProjectStatusSchema = z
     next: z.array(taskSummarySchema),
     nextRunnable: taskSummarySchema.nullable(),
     blocked: z.array(taskSummarySchema),
+    inReview: z.array(taskSummarySchema),
     inbox: z.array(taskSummarySchema),
     recentlyCompleted: z.array(taskSummarySchema),
     truncated: statusTruncationSchema,
@@ -288,6 +292,32 @@ export const returnTaskToInboxInputSchema = z
   })
   .strict();
 
+export const approveTaskInputSchema = z
+  .object({
+    projectId: identifierSchema,
+    taskId: identifierSchema,
+    actorLabel: z.string().trim().min(1).optional(),
+  })
+  .strict();
+
+export const requestTaskChangesInputSchema = z
+  .object({
+    projectId: identifierSchema,
+    taskId: identifierSchema,
+    feedback: z.string().trim().min(1),
+    actorLabel: z.string().trim().min(1).optional(),
+  })
+  .strict();
+
+export const reopenTaskInputSchema = z
+  .object({
+    projectId: identifierSchema,
+    taskId: identifierSchema,
+    reason: z.string().trim().min(1),
+    actorLabel: z.string().trim().min(1).optional(),
+  })
+  .strict();
+
 export const editInboxTaskInputSchema = z
   .object({
     projectId: identifierSchema,
@@ -347,6 +377,11 @@ export type ConfirmTaskInput = z.input<typeof confirmTaskInputSchema>;
 export type ReturnTaskToInboxInput = z.input<
   typeof returnTaskToInboxInputSchema
 >;
+export type ApproveTaskInput = z.input<typeof approveTaskInputSchema>;
+export type RequestTaskChangesInput = z.input<
+  typeof requestTaskChangesInputSchema
+>;
+export type ReopenTaskInput = z.input<typeof reopenTaskInputSchema>;
 export type DeleteTaskInput = z.input<typeof deleteTaskInputSchema>;
 export type ReorderTaskInput = z.input<typeof reorderTaskInputSchema>;
 export type ReleaseTaskInput = z.input<typeof releaseTaskInputSchema>;

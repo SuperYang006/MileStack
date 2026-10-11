@@ -254,4 +254,71 @@ describe("SQLite database foundation", () => {
       0,
     );
   });
+
+  it("migrates legacy task data to review statuses without losing history", async () => {
+    const projectRoot = createTemporaryProject();
+    const legacyMigrationsFolder = path.join(projectRoot, "legacy-migrations");
+    cpSync(migrationsFolder, legacyMigrationsFolder, { recursive: true });
+    rmSync(path.join(legacyMigrationsFolder, "0002_productive_bruce_banner.sql"));
+    rmSync(path.join(legacyMigrationsFolder, "meta", "0002_snapshot.json"));
+    const legacyJournalPath = path.join(legacyMigrationsFolder, "meta", "_journal.json");
+    const legacyJournal = JSON.parse(readFileSync(legacyJournalPath, "utf8")) as {
+      entries: Array<Record<string, boolean | number | string>>;
+    };
+    legacyJournal.entries = legacyJournal.entries.slice(0, 2);
+    writeFileSync(legacyJournalPath, `${JSON.stringify(legacyJournal, null, 2)}\n`);
+
+    const legacyDatabase = await ensureDatabase(projectRoot, {
+      migrationsFolder: legacyMigrationsFolder,
+    });
+    insertProjectData(legacyDatabase);
+    legacyDatabase.db
+      .insert(tasks)
+      .values({
+        id: "task-2",
+        projectId: "project-1",
+        title: "Preserve dependency",
+        status: "ready",
+        queuePosition: 2,
+        createdBy: "developer",
+        createdAt: "2026-10-11T00:01:00.000Z",
+        updatedAt: "2026-10-11T00:01:00.000Z",
+      })
+      .run();
+    legacyDatabase.db
+      .insert(taskDependencies)
+      .values({ taskId: "task-2", dependsOnTaskId: "task-1" })
+      .run();
+    legacyDatabase.close();
+
+    const migrated = await ensureDatabase(projectRoot, {
+      now: () => new Date("2026-10-11T13:00:00.000Z"),
+    });
+    expect(migrated.db.select().from(projects).all()).toHaveLength(1);
+    expect(migrated.db.select().from(tasks).all()).toHaveLength(2);
+    expect(migrated.db.select().from(taskEvents).all()).toHaveLength(1);
+    expect(migrated.db.select().from(taskDependencies).all()).toEqual([
+      { taskId: "task-2", dependsOnTaskId: "task-1" },
+    ]);
+
+    migrated.db
+      .update(tasks)
+      .set({ status: "in_review", completedAt: null })
+      .where(eq(tasks.id, "task-1"))
+      .run();
+    migrated.db
+      .insert(taskEvents)
+      .values({
+        id: "event-review",
+        projectId: "project-1",
+        taskId: "task-1",
+        type: "submitted_for_review",
+        summary: "Submitted for review",
+        createdAt: "2026-10-11T13:00:00.000Z",
+      })
+      .run();
+    expect(migrated.db.select().from(tasks).get()?.status).toBe("in_review");
+    expect(migrated.db.select().from(taskEvents).all()).toHaveLength(2);
+    migrated.close();
+  });
 });

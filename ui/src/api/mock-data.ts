@@ -98,6 +98,7 @@ export const initialProjectStatus: ProjectStatus = {
       completedAt: null,
     },
   ],
+  inReview: [],
   inbox: [
     {
       id: "task-inbox-01",

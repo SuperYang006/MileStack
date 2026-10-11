@@ -3,6 +3,7 @@ export type TaskStatus =
   | "ready"
   | "running"
   | "blocked"
+  | "in_review"
   | "completed";
 
 export type TaskEventType =
@@ -12,6 +13,10 @@ export type TaskEventType =
   | "blocked"
   | "resumed"
   | "released"
+  | "submitted_for_review"
+  | "approved"
+  | "changes_requested"
+  | "reopened"
   | "completed";
 
 export interface ProjectSummary {
@@ -87,6 +92,7 @@ export interface ProjectStatus {
   current: TaskSummary[];
   next: TaskSummary[];
   blocked: TaskSummary[];
+  inReview: TaskSummary[];
   inbox: TaskSummary[];
   recentlyCompleted: TaskSummary[];
 }

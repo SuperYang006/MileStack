@@ -71,6 +71,7 @@ describe("core query contract", () => {
         current: [],
         next: [summary],
         blocked: [],
+        inReview: [],
         inbox: [],
         recentlyCompleted: [],
       }),

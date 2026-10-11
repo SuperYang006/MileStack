@@ -144,6 +144,8 @@ function formatTask(task: TaskSummary, styler: ReturnType<typeof createStyler>):
     availability = styler.boldCyan(`[${task.status}]`);
   } else if (task.status === "blocked") {
     availability = styler.boldRed(`[${task.status}]`);
+  } else if (task.status === "in_review") {
+    availability = styler.boldYellow(`[${task.status}]`);
   } else if (task.status === "completed") {
     availability = styler.green(`[${task.status}]`);
   } else if (task.status === "inbox") {
@@ -178,6 +180,7 @@ export function formatProjectStatus(status: ProjectStatus, enableColor = shouldE
     ...formatTaskSection("当前", status.current, styler),
     ...formatTaskSection("下一步", status.next, styler),
     ...formatTaskSection("阻塞", status.blocked, styler),
+    ...formatTaskSection("待审核", status.inReview, styler),
     ...formatTaskSection("Inbox", status.inbox, styler),
     ...formatTaskSection("最近完成", status.recentlyCompleted, styler),
   ];

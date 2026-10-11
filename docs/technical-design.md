@@ -136,7 +136,7 @@ WAL 允许 Web 服务和多个 MCP 进程并发读取，并串行完成短事务
 
 ### 4.3 当前状态与历史
 
-- `Task` 是任务当前状态的权威记录；
+- `Task` 是任务当前状态的权威记录。任务状态包括 `inbox`、`ready`、`running`、`blocked`、`in_review` 和 `completed`；
 - `TaskEvent` 是只追加的语义历史；
 - `task_dependencies` 以 `(task_id, depends_on_task_id)` 关系保存前置依赖，并对两列建立外键；
 - `runnable`、`waitingFor` 和“可并行”是查询时的派生结果，不写入数据库；
@@ -185,6 +185,7 @@ MCP Tool ------/
 - 校验 `runId`；
 - 更新任务当前快照；
 - 追加 `TaskEvent`；
+- Agent 的 `finish_task` 只提交 `in_review`，开发者审核操作负责批准、退回返工或重新打开；
 - 生成项目状态和任务简报；
 - 批量创建用于旧项目基线的 inbox 任务。
 
@@ -230,7 +231,7 @@ WHERE id = ?
 input.runId == task.activeRunId
 ```
 
-任务被释放或完成后清除 `activeRunId`。旧 MCP 进程随后发出的更新必须被拒绝。
+任务被释放或提交审核后清除 `activeRunId`。开发者退回返工或重新打开后，Agent 必须获得新的 `runId`；旧 MCP 进程随后发出的更新必须被拒绝。
 
 ### 6.3 V0 并发边界
 
@@ -241,10 +242,12 @@ V0 不实现通用乐观锁和请求幂等键。所有写事务应保持短小�
 React V0 页面只包含一个项目状态视图：
 
 - 正在进行；
+- 待开发者审核；
 - 下一任务；
 - 需要处理的阻塞；
 - 待整理的 inbox；
 - 最近完成。
+- 审核操作只通过开发者侧 HTTP/UI 暴露：批准、填写反馈退回返工，以及将已完成任务重新打开。
 
 下一任务区域应区分：
 

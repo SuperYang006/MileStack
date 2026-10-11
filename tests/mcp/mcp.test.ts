@@ -227,7 +227,9 @@ describe("MCP task tools", () => {
       },
     });
     const finishedValue = JSON.parse(textContent(finished));
-    expect(finishedValue.task.status).toBe("completed");
+    expect(finishedValue.task.status).toBe("in_review");
+    expect(finishedValue.task.completedAt).toBeNull();
+    expect(finishedValue.events.at(-1).type).toBe("submitted_for_review");
     expect(finishedValue.events.at(-1).actorLabel).toBe("gpt-5-codex");
 
     await client.close();
