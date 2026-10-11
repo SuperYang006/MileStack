@@ -33,7 +33,7 @@ export const Header: React.FC<HeaderProps> = ({
               </span>
               <span className="font-mono text-xs text-zinc-500">::</span>
               <span className="font-mono text-xs text-zinc-400 truncate">
-                {project.goal || "shared truth engine for dev & agent"}
+                {project.goal || "纵览项目全局，推进每个里程碑。"}
               </span>
             </div>
           </div>
