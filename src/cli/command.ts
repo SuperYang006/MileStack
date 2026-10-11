@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 
 import { runMcp } from "../mcp/server.js";
+import { startHttpServer } from "../server/server.js";
 import type { ProjectStatus, TaskSummary } from "../core/query-contract.js";
 import {
   initializeProject,
@@ -14,7 +15,7 @@ Commands:
   init                 Initialize MileStack for a project
   status               Show the current project status
   mcp                  Run the MCP stdio server
-
+  serve                Run the HTTP web and API server
 Options:
   --project <path>     Project root (defaults to the current directory)
   -h, --help           Show this help message
@@ -31,17 +32,19 @@ const defaultOutput: CliOutput = {
 };
 
 type ParsedCommand = {
-  command: "init" | "status" | "mcp";
+  command: "init" | "status" | "mcp" | "serve";
   projectPath?: string | undefined;
+  port?: number | undefined;
 };
 
 function parseCommand(args: readonly string[]): ParsedCommand {
   const [command, ...options] = args;
-  if (command !== "init" && command !== "status" && command !== "mcp") {
+  if (command !== "init" && command !== "status" && command !== "mcp" && command !== "serve") {
     throw new Error(`Unknown command '${command ?? ""}'.`);
   }
 
   let projectPath: string | undefined;
+  let port: number | undefined;
   for (let index = 0; index < options.length; index += 1) {
     const option = options[index];
     if (option === "--project") {
@@ -58,7 +61,23 @@ function parseCommand(args: readonly string[]): ParsedCommand {
       if (!value) {
         throw new Error("--project requires a directory path.");
       }
-      projectPath = value;
+      continue;
+    }
+    if (option === "--port") {
+      const value = options[index + 1];
+      if (!value || isNaN(Number(value))) {
+        throw new Error("--port requires a valid port number.");
+      }
+      port = Number(value);
+      index += 1;
+      continue;
+    }
+    if (option?.startsWith("--port=")) {
+      const value = option.slice("--port=".length);
+      if (!value || isNaN(Number(value))) {
+        throw new Error("--port requires a valid port number.");
+      }
+      port = Number(value);
       continue;
     }
     if (option === "--help" || option === "-h") {
@@ -67,7 +86,7 @@ function parseCommand(args: readonly string[]): ParsedCommand {
     throw new Error(`Unknown option '${option}'.`);
   }
 
-  return { command, projectPath };
+  return { command, projectPath, port };
 }
 
 function ensureGitignoreEntry(projectRoot: string): void {
@@ -185,6 +204,23 @@ export async function runCli(
     }
     if (parsed.command === "status") {
       await runStatus(parsed.projectPath, output);
+      return 0;
+    }
+    if (parsed.command === "serve") {
+      const { app, url } = await startHttpServer({
+        projectRoot: parsed.projectPath,
+        port: parsed.port ?? 7331,
+      });
+      output.writeStdout(`MileStack HTTP service running at ${url}\n`);
+      await new Promise<void>((resolve) => {
+        const handleSignal = () => {
+          process.off("SIGINT", handleSignal);
+          process.off("SIGTERM", handleSignal);
+          app.close().finally(resolve);
+        };
+        process.on("SIGINT", handleSignal);
+        process.on("SIGTERM", handleSignal);
+      });
       return 0;
     }
     await runMcp(resolveProjectRoot(parsed.projectPath));

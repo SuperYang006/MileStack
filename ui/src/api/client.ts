@@ -60,11 +60,10 @@ export const apiClient = {
     return backendAvailable;
   },
 
-  async getProjectStatus(projectId = "proj_milestack"): Promise<ProjectStatus> {
+  async getProjectStatus(projectId?: string): Promise<ProjectStatus> {
     try {
-      const res = await fetch(`/api/status?projectId=${encodeURIComponent(projectId)}`, {
-        signal: AbortSignal.timeout(2000),
-      });
+      const url = projectId ? `/api/status?projectId=${encodeURIComponent(projectId)}` : "/api/status";
+      const res = await fetch(url, { signal: AbortSignal.timeout(2000) });
       if (res.ok) {
         backendAvailable = true;
         return (await res.json()) as ProjectStatus;
@@ -77,12 +76,12 @@ export const apiClient = {
     return loadStoredStatus();
   },
 
-  async getTaskDetails(taskId: string, projectId = "proj_milestack"): Promise<TaskDetails> {
+  async getTaskDetails(taskId: string, projectId?: string): Promise<TaskDetails> {
     try {
-      const res = await fetch(
-        `/api/tasks/${encodeURIComponent(taskId)}?projectId=${encodeURIComponent(projectId)}`,
-        { signal: AbortSignal.timeout(2000) },
-      );
+      const url = projectId
+        ? `/api/tasks/${encodeURIComponent(taskId)}?projectId=${encodeURIComponent(projectId)}`
+        : `/api/tasks/${encodeURIComponent(taskId)}`;
+      const res = await fetch(url, { signal: AbortSignal.timeout(2000) });
       if (res.ok) {
         return (await res.json()) as TaskDetails;
       }
@@ -107,7 +106,7 @@ export const apiClient = {
     const found = allSummaries.find((t) => t.id === taskId);
     const mockModel: TaskModel = {
       id: taskId,
-      projectId: projectId,
+      projectId: projectId || "proj_milestack",
       title: found?.title ?? `任务 ${taskId}`,
       objective: "暂无详细目标说明",
       acceptanceCriteria: ["功能正常通过类型检查与自动化测试"],
@@ -129,7 +128,7 @@ export const apiClient = {
     const mockEvents: TaskEvent[] = [
       {
         id: `evt-${Date.now()}`,
-        projectId,
+        projectId: mockModel.projectId,
         taskId,
         runId: null,
         type: "created",
@@ -148,15 +147,16 @@ export const apiClient = {
     return { task: mockModel, events: mockEvents };
   },
 
-  async createTask(payload: CreateTaskPayload, projectId = "proj_milestack"): Promise<TaskSummary> {
+  async createTask(payload: CreateTaskPayload, projectId?: string): Promise<TaskSummary> {
     try {
       const res = await fetch("/api/tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...payload, projectId }),
+        body: JSON.stringify(projectId ? { ...payload, projectId } : payload),
       });
       if (res.ok) {
-        return (await res.json()) as TaskSummary;
+        const data = await res.json();
+        return (data.task || data) as TaskSummary;
       }
     } catch {
       // fallback
@@ -167,7 +167,7 @@ export const apiClient = {
     const newId = `task-${Date.now().toString(36)}`;
     const newSummary: TaskSummary = {
       id: newId,
-      projectId,
+      projectId: projectId || "proj_milestack",
       title: payload.title,
       status: targetStatus,
       queuePosition: targetStatus === "ready" ? status.next.length + 1 : null,
@@ -193,7 +193,7 @@ export const apiClient = {
     details[newId] = {
       task: {
         id: newId,
-        projectId,
+        projectId: newSummary.projectId,
         title: payload.title,
         objective: payload.objective ?? null,
         acceptanceCriteria: payload.acceptanceCriteria ?? [],
@@ -215,7 +215,7 @@ export const apiClient = {
       events: [
         {
           id: `evt-${Date.now()}`,
-          projectId,
+          projectId: newSummary.projectId,
           taskId: newId,
           runId: null,
           type: "created",
@@ -236,15 +236,16 @@ export const apiClient = {
     return newSummary;
   },
 
-  async createTasks(payloads: CreateTaskPayload[], projectId = "proj_milestack"): Promise<TaskSummary[]> {
+  async createTasks(payloads: CreateTaskPayload[], projectId?: string): Promise<TaskSummary[]> {
     try {
       const res = await fetch("/api/tasks/batch", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tasks: payloads, projectId }),
+        body: JSON.stringify(projectId ? { tasks: payloads, projectId } : { tasks: payloads }),
       });
       if (res.ok) {
-        return (await res.json()) as TaskSummary[];
+        const data = await res.json();
+        return (Array.isArray(data) ? data.map((d: any) => d.task || d) : []) as TaskSummary[];
       }
     } catch {
       // fallback
@@ -257,12 +258,12 @@ export const apiClient = {
     return results;
   },
 
-  async confirmInboxTask(taskId: string, projectId = "proj_milestack"): Promise<void> {
+  async confirmInboxTask(taskId: string, projectId?: string): Promise<void> {
     try {
       const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/confirm`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId }),
+        body: JSON.stringify(projectId ? { projectId } : {}),
       });
       if (res.ok) return;
     } catch {
@@ -283,12 +284,12 @@ export const apiClient = {
     }
   },
 
-  async deleteInboxTask(taskId: string, projectId = "proj_milestack"): Promise<void> {
+  async deleteInboxTask(taskId: string, projectId?: string): Promise<void> {
     try {
       const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/delete`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId }),
+        body: JSON.stringify(projectId ? { projectId } : {}),
       });
       if (res.ok) return;
     } catch {
@@ -303,13 +304,13 @@ export const apiClient = {
   async reorderReadyTask(
     taskId: string,
     direction: "up" | "down",
-    projectId = "proj_milestack",
+    projectId?: string,
   ): Promise<void> {
     try {
       const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/reorder`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ direction, projectId }),
+        body: JSON.stringify(projectId ? { direction, projectId } : { direction }),
       });
       if (res.ok) return;
     } catch {
@@ -338,12 +339,12 @@ export const apiClient = {
     saveStoredStatus(status);
   },
 
-  async releaseTask(taskId: string, reason?: string, projectId = "proj_milestack"): Promise<void> {
+  async releaseTask(taskId: string, reason?: string, projectId?: string): Promise<void> {
     try {
       const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/release`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reason, projectId }),
+        body: JSON.stringify(projectId ? { reason, projectId } : { reason }),
       });
       if (res.ok) return;
     } catch {
