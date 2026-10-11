@@ -1051,6 +1051,11 @@ describe("TaskService", () => {
       status: "ready",
       queuePosition: 2,
     });
+    expect(
+      service
+        .getProjectStatus({ projectId: "project-1" })
+        .next.find((task) => task.id === unconfirmed.task.id),
+    ).toMatchObject({ runnable: false, riskConfirmed: false });
     expect(() =>
       service.startTask({ projectId: "project-1", taskId: unconfirmed.task.id }),
     ).toThrow(TaskRiskNotConfirmedError);

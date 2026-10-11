@@ -19,6 +19,7 @@ import {
   projects,
   taskDependencies,
   taskEvents,
+  taskReviews,
   tasks,
 } from "../../src/db/schema.js";
 import {
@@ -358,5 +359,212 @@ describe("SQLite database foundation", () => {
     expect(migrated.db.select().from(tasks).get()?.status).toBe("in_review");
     expect(migrated.db.select().from(taskEvents).all()).toHaveLength(2);
     migrated.close();
+  });
+
+  it("applies review migration after a closed 0002 database and recovers legacy reviews", async () => {
+    const projectRoot = createTemporaryProject();
+    const migrationsAt0002 = path.join(projectRoot, "migrations-at-0002");
+    cpSync(migrationsFolder, migrationsAt0002, { recursive: true });
+    rmSync(path.join(migrationsAt0002, "0003_elite_tombstone.sql"));
+    rmSync(path.join(migrationsAt0002, "0004_recover_legacy_review_tasks.sql"));
+    rmSync(path.join(migrationsAt0002, "meta", "0003_snapshot.json"));
+    rmSync(path.join(migrationsAt0002, "meta", "0004_snapshot.json"));
+    const journalPath = path.join(migrationsAt0002, "meta", "_journal.json");
+    const journal = JSON.parse(readFileSync(journalPath, "utf8")) as {
+      entries: Array<Record<string, boolean | number | string>>;
+    };
+    journal.entries = journal.entries.slice(0, 3);
+    writeFileSync(journalPath, `${JSON.stringify(journal, null, 2)}\n`);
+
+    const legacy = await ensureDatabase(projectRoot, {
+      migrationsFolder: migrationsAt0002,
+    });
+    legacy.sqlite
+      .prepare(
+        "INSERT INTO projects (id, name, root_path, goal, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+      )
+      .run(
+        "project-1",
+        "MileStack",
+        projectRoot,
+        "Track review migrations",
+        "2026-10-12T00:00:00.000Z",
+        "2026-10-12T00:00:00.000Z",
+      );
+    legacy.sqlite
+      .prepare(
+        "INSERT INTO tasks (id, project_id, title, status, queue_position, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      )
+      .run(
+        "task-legacy-review",
+        "project-1",
+        "Recover old review",
+        "in_review",
+        null,
+        "developer",
+        "2026-10-12T00:01:00.000Z",
+        "2026-10-12T00:01:00.000Z",
+      );
+    legacy.sqlite
+      .prepare(
+        "INSERT INTO tasks (id, project_id, title, status, queue_position, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      )
+      .run(
+        "task-ready",
+        "project-1",
+        "Keep dependency",
+        "ready",
+        1,
+        "developer",
+        "2026-10-12T00:02:00.000Z",
+        "2026-10-12T00:02:00.000Z",
+      );
+    legacy.sqlite
+      .prepare(
+        "INSERT INTO task_dependencies (task_id, depends_on_task_id) VALUES (?, ?)",
+      )
+      .run("task-ready", "task-legacy-review");
+    legacy.sqlite
+      .prepare(
+        "INSERT INTO task_events (id, project_id, task_id, type, summary, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+      )
+      .run(
+        "legacy-created",
+        "project-1",
+        "task-legacy-review",
+        "created",
+        "Task created",
+        "2026-10-12T00:01:00.000Z",
+      );
+    legacy.sqlite
+      .prepare(
+        "INSERT INTO task_events (id, project_id, task_id, type, summary, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+      )
+      .run(
+        "legacy-submitted",
+        "project-1",
+        "task-legacy-review",
+        "submitted_for_review",
+        "Submitted before review records existed",
+        "2026-10-12T00:03:00.000Z",
+      );
+    legacy.close();
+
+    const migrated = await ensureDatabase(projectRoot, {
+      now: () => new Date("2026-10-12T00:04:00.000Z"),
+    });
+    expect(migrated.sqlite.pragma("foreign_keys", { simple: true })).toBe(1);
+    const recoveredTask = migrated.db
+      .select()
+      .from(tasks)
+      .where(eq(tasks.id, "task-legacy-review"))
+      .get();
+    expect(recoveredTask).toMatchObject({
+      status: "ready",
+      queuePosition: 2,
+      activeRunId: null,
+      activeReviewRunId: null,
+      riskLevel: "medium",
+      riskConfirmed: true,
+    });
+    expect(recoveredTask?.handoffNote).toContain(
+      "fresh submission with a real commit SHA",
+    );
+    expect(migrated.db.select().from(taskReviews).all()).toEqual([]);
+    expect(
+      migrated.db
+        .select()
+        .from(taskDependencies)
+        .all(),
+    ).toEqual([{ taskId: "task-ready", dependsOnTaskId: "task-legacy-review" }]);
+    expect(
+      migrated.db
+        .select()
+        .from(taskEvents)
+        .all()
+        .filter((event) => event.taskId === "task-legacy-review")
+        .map((event) => event.type),
+    ).toEqual(["created", "submitted_for_review", "progress"]);
+    const eventCount = migrated.db.select().from(taskEvents).all().length;
+    migrated.close();
+
+    const reopened = await ensureDatabase(projectRoot);
+    expect(reopened.db.select().from(taskEvents).all()).toHaveLength(eventCount);
+    reopened.close();
+  });
+
+  it("recovers a legacy in_review task from a database that already applied 0003", async () => {
+    const projectRoot = createTemporaryProject();
+    const migrationsAt0003 = path.join(projectRoot, "migrations-at-0003");
+    cpSync(migrationsFolder, migrationsAt0003, { recursive: true });
+    rmSync(path.join(migrationsAt0003, "0004_recover_legacy_review_tasks.sql"));
+    rmSync(path.join(migrationsAt0003, "meta", "0004_snapshot.json"));
+    const journalPath = path.join(migrationsAt0003, "meta", "_journal.json");
+    const journal = JSON.parse(readFileSync(journalPath, "utf8")) as {
+      entries: Array<Record<string, boolean | number | string>>;
+    };
+    journal.entries = journal.entries.slice(0, 4);
+    writeFileSync(journalPath, `${JSON.stringify(journal, null, 2)}\n`);
+
+    const databaseAt0003 = await ensureDatabase(projectRoot, {
+      migrationsFolder: migrationsAt0003,
+    });
+    databaseAt0003.db
+      .insert(projects)
+      .values({
+        id: "project-1",
+        name: "MileStack",
+        rootPath: projectRoot,
+        goal: "Recover legacy review state",
+        createdAt: "2026-10-12T01:00:00.000Z",
+        updatedAt: "2026-10-12T01:00:00.000Z",
+      })
+      .run();
+    databaseAt0003.db
+      .insert(tasks)
+      .values({
+        id: "task-legacy-0003",
+        projectId: "project-1",
+        title: "Recover already migrated review",
+        status: "in_review",
+        createdBy: "developer",
+        createdAt: "2026-10-12T01:01:00.000Z",
+        updatedAt: "2026-10-12T01:01:00.000Z",
+      })
+      .run();
+    databaseAt0003.db
+      .insert(taskEvents)
+      .values({
+        id: "legacy-0003-submitted",
+        projectId: "project-1",
+        taskId: "task-legacy-0003",
+        type: "submitted_for_review",
+        summary: "Submitted before review recovery existed",
+        createdAt: "2026-10-12T01:02:00.000Z",
+      })
+      .run();
+    databaseAt0003.close();
+
+    const recovered = await ensureDatabase(projectRoot);
+    expect(
+      recovered.db
+        .select()
+        .from(tasks)
+        .where(eq(tasks.id, "task-legacy-0003"))
+        .get(),
+    ).toMatchObject({
+      status: "ready",
+      activeReviewRunId: null,
+      riskLevel: "medium",
+      riskConfirmed: true,
+    });
+    expect(
+      recovered.db
+        .select()
+        .from(taskEvents)
+        .all()
+        .map((event) => event.type),
+    ).toEqual(["submitted_for_review", "progress"]);
+    recovered.close();
   });
 });

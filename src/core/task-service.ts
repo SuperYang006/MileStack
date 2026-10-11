@@ -138,7 +138,8 @@ function taskToSummary(
     queuePosition: task.queuePosition,
     dependencyIds,
     waitingFor,
-    runnable: task.status === "ready" && waitingFor.length === 0,
+    runnable:
+      task.status === "ready" && task.riskConfirmed && waitingFor.length === 0,
     currentStep: task.currentStep,
     nextStep: task.nextStep,
     blocker: task.blocker,

@@ -197,7 +197,7 @@ AI 可以通过 MCP：
 
 `ready` 任务包含明确的队列位置。项目状态中的 `next` 按该位置排序。
 
-任务可以声明零个或多个前置依赖。只有状态为 `ready` 且所有依赖任务均为 `completed` 时，任务的 `runnable` 才为 `true`，并允许被 `start_task` 领取。
+任务可以声明零个或多个前置依赖。只有状态为 `ready`、风险已由开发者确认且所有依赖任务均为 `completed` 时，任务的 `runnable` 才为 `true`，并允许被 `start_task` 领取。
 
 当多个任务同时满足 `runnable = true` 时，界面和 MCP 可以将它们标记为当前可并行推进。V0 不保存容易过期的 `parallelizable` 布尔字段；可并行性根据任务状态和依赖动态计算。
 
@@ -425,6 +425,7 @@ start_task -> 生成 runId -> update/block/release/submit_for_review 携带 runI
 - 任务释放或提交审核后，旧 `runId` 立即失效；退回返工或重新打开后必须重新 `start_task`；
 - `start_review` 使用独立的 `reviewRunId` 原子领取审核；审核结束或退回后立即失效；
 - 新一轮提交创建新的审核记录并使旧审核结论不再决定当前任务；
+- 如果前向迁移发现旧数据库中的 `in_review` 任务没有 `TaskReview`，不得伪造 commit SHA；任务应带着恢复说明返回 `ready`，由 AI 使用新 `runId` 重新提交真实制品；
 - 旧执行者的迟到更新不能修改任务。
 
 风险策略：
