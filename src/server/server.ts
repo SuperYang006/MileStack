@@ -20,10 +20,10 @@ import {
 } from "../core/errors.js";
 
 export type HttpServerOptions = {
-  projectRoot?: string;
-  port?: number;
-  host?: string;
-  staticDir?: string;
+  projectRoot?: string | undefined;
+  port?: number | undefined;
+  host?: string | undefined;
+  staticDir?: string | undefined;
 };
 
 export async function createHttpServer(
