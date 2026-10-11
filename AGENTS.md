@@ -27,6 +27,11 @@ current tasks, progress, blockers, next steps, and handoffs belong in MileStack.
 ## Working rules
 
 - Implement only the assigned task and the smallest supporting changes required for it.
+- Track work at the level of a meaningful, independently verifiable outcome, not at the level of individual file edits or lines changed.
+- Do not create a separate MileStack task for typo or copy corrections, minor styling adjustments, read-only diagnosis, build or restart operations, or small supporting changes that already belong to an active task.
+- A developer's explicit request for an immediate trivial change may be implemented directly without creating or claiming a MileStack task. Keep the change narrow and report the verification performed.
+- Create a new inbox task when discovered work is an independent bug, feature, migration, or other outcome that falls outside the active task and benefits from its own acceptance criteria, prioritization, or handoff.
+- When related work fits the objective and acceptance criteria of an active task, record it through that task's progress instead of fragmenting it into additional tasks.
 - Do not add speculative features, abstractions, configuration, extension points, or compatibility layers.
 - Preserve existing user and agent changes. Never rewrite unrelated files to make a local change easier.
 - Prefer a small coherent implementation over a generic framework.

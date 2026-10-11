@@ -56,6 +56,16 @@ describe("CLI entry point", () => {
     expect(readFileSync(path.join(projectRoot, ".gitignore"), "utf8")).toBe(
       "dist/\n.milestack/\n",
     );
+    const firstOutput = first.stdout.join("");
+    expect(firstOutput).toContain('"command": "milestack"');
+    expect(firstOutput).toContain(
+      `codex mcp add milestack -- milestack mcp --project ${projectRoot}`,
+    );
+    expect(firstOutput).toContain("codex mcp list");
+    expect(firstOutput).toContain("codex mcp get milestack");
+    expect(firstOutput).toContain("新的 Codex CLI 会话");
+    expect(firstOutput).toContain("~/.codex/config.toml");
+    expect(firstOutput).toContain("pnpm link --global");
 
     const second = outputCapture();
     expect(await runCli(["init", "--project", projectRoot], second.output)).toBe(0);

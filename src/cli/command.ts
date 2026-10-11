@@ -197,6 +197,34 @@ function integrationInstructions(): string {
 MILESTACK_END`;
 }
 
+function shellQuote(value: string): string {
+  if (/^[A-Za-z0-9_./:@%+=,-]+$/.test(value)) {
+    return value;
+  }
+  return `'${value.replace(/'/g, "'\\''")}'`;
+}
+
+function codexMcpInstructions(projectRoot: string): string {
+  const startupCommand = ["milestack", "mcp", "--project", projectRoot]
+    .map(shellQuote)
+    .join(" ");
+
+  return [
+    "Codex CLI MCP 注册（请手动执行）：",
+    `  codex mcp add milestack -- ${startupCommand}`,
+    "",
+    "验证配置：",
+    "  codex mcp list",
+    "  codex mcp get milestack",
+    "",
+    "新增配置只会在新的 Codex CLI 会话中进入工具清单。",
+    "milestack init 只输出命令，不会修改 ~/.codex/config.toml，也不会覆盖已有的同名 MCP 配置。",
+    "如果当前环境找不到 milestack，请先在 MileStack 仓库完成构建和全局链接：",
+    "  pnpm build",
+    "  pnpm link --global",
+  ].join("\n");
+}
+
 async function runInit(projectPath: string | undefined, output: CliOutput): Promise<void> {
   const projectRoot = resolveProjectRoot(projectPath);
   const context = await initializeProject(projectRoot);
@@ -214,6 +242,7 @@ async function runInit(projectPath: string | undefined, output: CliOutput): Prom
       `${context.created ? "Initialized" : "Already initialized"} ${projectRoot}\n` +
         `Database: ${context.database.databasePath}\n\n` +
         `MCP configuration:\n${JSON.stringify(configuration, null, 2)}\n\n` +
+        `${codexMcpInstructions(projectRoot)}\n\n` +
         `AI integration instructions:\n${integrationInstructions()}\n`,
     );
   } finally {
