@@ -5,6 +5,7 @@ import type {
   TaskSummary,
   TaskModel,
   TaskEvent,
+  EditInboxTaskPayload,
 } from "../types";
 import { initialProjectStatus, sampleTaskDetails } from "./mock-data";
 
@@ -258,6 +259,66 @@ export const apiClient = {
       results.push(await this.createTask(payload, projectId));
     }
     return results;
+  },
+  async editInboxTask(
+    taskId: string,
+    payload: EditInboxTaskPayload,
+    projectId?: string,
+  ): Promise<TaskDetails> {
+    try {
+      const url = projectId
+        ? `/api/tasks/${encodeURIComponent(taskId)}?projectId=${encodeURIComponent(projectId)}`
+        : `/api/tasks/${encodeURIComponent(taskId)}`;
+      const res = await fetch(url, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...payload, projectId }),
+      });
+      if (res.ok) {
+        return (await res.json()) as TaskDetails;
+      }
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || `HTTP ${res.status}`);
+    } catch (e) {
+      if (backendAvailable) throw e;
+    }
+
+    // Mock fallback
+    const status = loadStoredStatus();
+    const task = status.inbox.find((t) => t.id === taskId);
+    if (task) {
+      task.title = payload.title;
+      task.dependencyIds = payload.dependencyIds || [];
+      task.updatedAt = new Date().toISOString();
+      saveStoredStatus(status);
+    }
+    const detailsMap = loadStoredDetails();
+    if (detailsMap[taskId]) {
+      detailsMap[taskId].task.title = payload.title;
+      detailsMap[taskId].task.objective = payload.objective ?? null;
+      detailsMap[taskId].task.acceptanceCriteria = payload.acceptanceCriteria || null;
+      detailsMap[taskId].task.dependencyIds = payload.dependencyIds || [];
+      detailsMap[taskId].task.updatedAt = new Date().toISOString();
+      detailsMap[taskId].events.push({
+        id: `evt-${Date.now()}`,
+        projectId: detailsMap[taskId].task.projectId,
+        taskId,
+        runId: null,
+        type: "progress",
+        summary: "Inbox task definition updated by developer.",
+        completedWork: null,
+        currentStep: null,
+        nextStep: null,
+        blocker: null,
+        requiredAction: null,
+        handoffNote: null,
+        actorLabel: "developer",
+        createdAt: new Date().toISOString(),
+      });
+      saveStoredDetails(detailsMap);
+      return detailsMap[taskId];
+    }
+    return this.getTaskDetails(taskId, projectId);
   },
 
   async confirmInboxTask(taskId: string, projectId?: string): Promise<void> {

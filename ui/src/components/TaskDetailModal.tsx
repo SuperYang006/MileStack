@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
-import { X, GitCommit, CheckCircle2, Clock, Timer } from "lucide-react";
+import { X, GitCommit, CheckCircle2, Clock, Timer, Edit3 } from "lucide-react";
 import type { TaskDetails, TaskEvent } from "../types";
+import { CopyTaskIdButton } from "./CopyTaskIdButton";
 
 function formatDuration(ms: number): string {
   if (ms < 0) return "0秒";
@@ -121,6 +122,7 @@ interface TaskDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
   isLoading?: boolean;
+  onEditInboxTask?: (task: TaskDetails) => void;
 }
 
 export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
@@ -128,6 +130,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
   isOpen,
   onClose,
   isLoading = false,
+  onEditInboxTask,
 }) => {
   const [now, setNow] = useState(() => Date.now());
 
@@ -178,8 +181,9 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
         {/* Header */}
         <div className="px-5 py-3 border-b border-zinc-800 flex items-center justify-between">
           <div className="flex items-center space-x-2.5">
-            <span className="font-mono text-xs px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-zinc-300 font-semibold">
-              {details?.task.id ?? "LOADING..."}
+            <span className="font-mono text-xs px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-zinc-300 font-semibold flex items-center space-x-1.5">
+              <span>{details?.task.id ?? "LOADING..."}</span>
+              {details?.task && <CopyTaskIdButton taskId={details.task.id} />}
             </span>
             <span
               className={`font-mono text-[11px] px-2 py-0.5 rounded uppercase font-medium ${
@@ -194,6 +198,17 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
             >
               {details?.task.status}
             </span>
+
+            {details?.task.status === "inbox" && onEditInboxTask && (
+              <button
+                onClick={() => onEditInboxTask(details)}
+                className="inline-flex items-center space-x-1 px-2 py-0.5 text-[11px] font-mono text-amber-300 bg-amber-950/50 hover:bg-amber-950/80 border border-amber-900/60 rounded transition-colors"
+                title="编辑此 Inbox 任务"
+              >
+                <Edit3 className="w-3 h-3" />
+                <span>编辑草稿</span>
+              </button>
+            )}
           </div>
 
           <button

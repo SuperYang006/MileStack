@@ -19,6 +19,7 @@ import {
   startTaskInputSchema,
   taskDetailsSchema,
   updateTaskInputSchema,
+  editInboxTaskInputSchema,
   type CreateTaskInput,
   type CreateTasksInput,
   type ConfirmTaskInput,
@@ -39,6 +40,7 @@ import {
   type TaskPage,
   type TaskSummary,
   type UpdateTaskInput,
+  type EditInboxTaskInput,
 } from "./query-contract.js";
 import {
   InvalidTaskStateError,
@@ -418,6 +420,64 @@ export class TaskService {
         handoffNote: task.handoffNote,
         actorLabel: "developer",
         createdAt: this.now().toISOString(),
+      });
+    });
+
+    return this.getTask({ projectId: project.id, taskId: parsed.taskId });
+  }
+  editInboxTask(input: EditInboxTaskInput): TaskDetails {
+    const parsed = editInboxTaskInputSchema.parse(input);
+    const project = this.requireProject(parsed.projectId);
+
+    this.repository.transaction((transaction) => {
+      const task = transaction.findTaskById(parsed.taskId);
+      if (!task || task.projectId !== project.id) {
+        throw new TaskNotFoundError(parsed.taskId);
+      }
+      if (task.status !== "inbox") {
+        throw new InvalidTaskStateError(task.id, "inbox", task.status);
+      }
+
+      const projectTasks = transaction.listByProjectId(project.id);
+      const projectDependencies = transaction.listDependenciesByProjectId(
+        project.id,
+      );
+      validateTaskDependencies(
+        task,
+        parsed.dependencyIds,
+        project.id,
+        projectTasks,
+        projectDependencies,
+        transaction,
+      );
+
+      const now = this.now().toISOString();
+      const objective =
+        parsed.objective && parsed.objective.trim().length > 0
+          ? parsed.objective.trim()
+          : null;
+      transaction.updateTask(task.id, {
+        title: parsed.title,
+        objective,
+        acceptanceCriteria: parsed.acceptanceCriteria,
+        updatedAt: now,
+      });
+      transaction.replaceTaskDependencies(task.id, parsed.dependencyIds);
+      transaction.insertTaskEvent({
+        id: this.generateId(),
+        projectId: task.projectId,
+        taskId: task.id,
+        runId: null,
+        type: "progress",
+        summary: "Inbox task definition updated by developer.",
+        completedWork: null,
+        currentStep: task.currentStep,
+        nextStep: task.nextStep,
+        blocker: task.blocker,
+        requiredAction: task.requiredAction,
+        handoffNote: task.handoffNote,
+        actorLabel: parsed.actorLabel ?? "developer",
+        createdAt: now,
       });
     });
 

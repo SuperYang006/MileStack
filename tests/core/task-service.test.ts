@@ -6,6 +6,7 @@ import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  InvalidTaskStateError,
   InvalidTaskDependencyError,
   TaskDependenciesIncompleteError,
   ProjectNotFoundError,
@@ -623,5 +624,75 @@ describe("TaskService", () => {
     expect(results.filter((result) => result.status === "rejected")).toHaveLength(1);
     secondDatabase.close();
     first.database.close();
+  });
+
+  it("edits an inbox task snapshot, replaces dependencies, and appends an audit event in one transaction", async () => {
+    const { database, service } = await createService(createTemporaryProject());
+    const dep = service.createTask({
+      projectId: "project-1",
+      title: "Dependency Task",
+      createdBy: "developer",
+      status: "ready",
+    });
+    const inbox = service.createTask({
+      projectId: "project-1",
+      title: "Draft by Agent",
+      objective: "Old draft objective",
+      acceptanceCriteria: ["Old AC 1"],
+      createdBy: "agent",
+      status: "inbox",
+    });
+
+    const edited = service.editInboxTask({
+      projectId: "project-1",
+      taskId: inbox.task.id,
+      title: "Refined Task Title",
+      objective: "Refined objective by developer",
+      acceptanceCriteria: ["Refined AC 1", "Refined AC 2"],
+      dependencyIds: [dep.task.id],
+      actorLabel: "developer",
+    });
+
+    expect(edited.task.title).toBe("Refined Task Title");
+    expect(edited.task.objective).toBe("Refined objective by developer");
+    expect(edited.task.acceptanceCriteria).toEqual(["Refined AC 1", "Refined AC 2"]);
+    expect(edited.task.dependencyIds).toEqual([dep.task.id]);
+    expect(edited.task.status).toBe("inbox");
+    expect(edited.task.createdBy).toBe("agent"); // preserved
+    expect(edited.events.at(-1)).toMatchObject({
+      type: "progress",
+      summary: "Inbox task definition updated by developer.",
+      actorLabel: "developer",
+    });
+
+    // Rejects editing non-inbox task
+    expect(() =>
+      service.editInboxTask({
+        projectId: "project-1",
+        taskId: dep.task.id,
+        title: "Try to edit ready task",
+      }),
+    ).toThrow(InvalidTaskStateError);
+
+    // Rejects self-dependency
+    expect(() =>
+      service.editInboxTask({
+        projectId: "project-1",
+        taskId: inbox.task.id,
+        title: "Self dependency attempt",
+        dependencyIds: [inbox.task.id],
+      }),
+    ).toThrow(InvalidTaskDependencyError);
+
+    // Rejects non-existent task
+    expect(() =>
+      service.editInboxTask({
+        projectId: "project-1",
+        taskId: "non-existent-id",
+        title: "Non-existent",
+      }),
+    ).toThrow(TaskNotFoundError);
+
+    database.close();
   });
 });

@@ -235,4 +235,71 @@ describe("HTTP API Server", () => {
       actorLabel: "developer",
     });
   });
+
+  it("edits an inbox task via PUT /api/tasks/:id and enforces inbox status and dependency checks", async () => {
+    const ready = await serverInstance.app.inject({
+      method: "POST",
+      url: "/api/tasks",
+      payload: { title: "Ready Pre-requisite", status: "ready" },
+    });
+    const readyTask = JSON.parse(ready.payload).task;
+
+    const inbox = await serverInstance.app.inject({
+      method: "POST",
+      url: "/api/tasks",
+      payload: {
+        title: "Initial Draft Title",
+        objective: "Initial Draft Objective",
+        status: "inbox",
+      },
+    });
+    const inboxTask = JSON.parse(inbox.payload).task;
+
+    // Legitimate edit
+    const editRes = await serverInstance.app.inject({
+      method: "PUT",
+      url: `/api/tasks/${inboxTask.id}`,
+      payload: {
+        title: "Updated Title By Developer",
+        objective: "Updated Objective",
+        acceptanceCriteria: ["AC 1", "AC 2"],
+        dependencyIds: [readyTask.id],
+      },
+    });
+    expect(editRes.statusCode).toBe(200);
+    const edited = JSON.parse(editRes.payload);
+    expect(edited.task.title).toBe("Updated Title By Developer");
+    expect(edited.task.objective).toBe("Updated Objective");
+    expect(edited.task.acceptanceCriteria).toEqual(["AC 1", "AC 2"]);
+    expect(edited.task.dependencyIds).toEqual([readyTask.id]);
+    expect(edited.task.status).toBe("inbox");
+    expect(edited.events.at(-1).summary).toBe("Inbox task definition updated by developer.");
+
+    // Reject editing non-inbox task
+    const editReadyRes = await serverInstance.app.inject({
+      method: "PUT",
+      url: `/api/tasks/${readyTask.id}`,
+      payload: { title: "Cannot Edit Ready" },
+    });
+    expect(editReadyRes.statusCode).toBe(400);
+
+    // Reject non-existent task
+    const editNotFound = await serverInstance.app.inject({
+      method: "PUT",
+      url: "/api/tasks/not-found-id",
+      payload: { title: "Not Found" },
+    });
+    expect(editNotFound.statusCode).toBe(404);
+
+    // Reject self dependency
+    const editSelfDep = await serverInstance.app.inject({
+      method: "PUT",
+      url: `/api/tasks/${inboxTask.id}`,
+      payload: {
+        title: "Self Dep",
+        dependencyIds: [inboxTask.id],
+      },
+    });
+    expect(editSelfDep.statusCode).toBe(400);
+  });
 });

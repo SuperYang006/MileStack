@@ -7,6 +7,7 @@ import {
   Zap,
 } from "lucide-react";
 import type { TaskSummary } from "../types";
+import { CopyTaskIdButton } from "./CopyTaskIdButton";
 
 interface NextTasksProps {
   tasks: TaskSummary[];
@@ -101,8 +102,9 @@ export const NextTasks: React.FC<NextTasksProps> = ({
                         title={task.runnable ? "可执行" : "等待前置依赖"}
                       />
 
-                      <span className="font-mono text-[11px] text-zinc-500">
-                        {task.id}
+                      <span className="font-mono text-[11px] text-zinc-500 inline-flex items-center space-x-1">
+                        <span>{task.id}</span>
+                        <CopyTaskIdButton taskId={task.id} />
                       </span>
 
                       <h3 className="text-xs font-mono font-medium text-zinc-200 truncate group-hover:text-indigo-300 transition-colors">
@@ -140,7 +142,6 @@ export const NextTasks: React.FC<NextTasksProps> = ({
                   {/* Action buttons */}
                   <div className="flex items-center space-x-1.5 shrink-0">
                     <button
-                      onClick={() => onOpenBriefing(task)}
                       className="inline-flex items-center space-x-1 px-2 py-0.5 text-[11px] font-mono text-zinc-400 hover:text-cyan-300 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded transition-colors"
                       title="生成并复制 AI 任务简报"
                     >

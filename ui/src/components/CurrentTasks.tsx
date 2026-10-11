@@ -1,6 +1,7 @@
 import React from "react";
 import { CornerDownRight, ArrowRight, LogOut, ArrowUpRight, Activity } from "lucide-react";
 import type { TaskSummary } from "../types";
+import { CopyTaskIdButton } from "./CopyTaskIdButton";
 
 interface CurrentTasksProps {
   tasks: TaskSummary[];
@@ -64,8 +65,9 @@ export const CurrentTasks: React.FC<CurrentTasksProps> = ({
                       onClick={() => onSelectTask(task.id)}
                     >
                       <div className="flex items-center space-x-2 mb-2 flex-wrap gap-y-1">
-                        <span className="font-mono text-xs px-1.5 py-0.5 rounded bg-cyan-950/60 border border-cyan-800/60 text-cyan-300">
-                          {task.id}
+                        <span className="font-mono text-xs px-1.5 py-0.5 rounded bg-cyan-950/60 border border-cyan-800/60 text-cyan-300 flex items-center space-x-1">
+                          <span>{task.id}</span>
+                          <CopyTaskIdButton taskId={task.id} />
                         </span>
                         <h3 className="text-xs font-mono font-semibold text-zinc-100 group-hover:text-cyan-400 transition-colors truncate">
                           {task.title}
@@ -92,26 +94,28 @@ export const CurrentTasks: React.FC<CurrentTasksProps> = ({
                         </div>
                       </div>
 
-                      <div className="space-y-1.5 text-xs font-mono mt-2 bg-zinc-900/90 p-2.5 rounded border border-zinc-850">
-                        {task.currentStep && (
-                          <div className="flex items-start space-x-2 text-zinc-300">
-                            <span className="text-cyan-400 shrink-0 select-none">&gt;</span>
-                            <div className="flex-1 min-w-0">
-                              <span className="text-zinc-500 mr-1.5">当前步骤:</span>
-                              <span className="text-zinc-200">{task.currentStep}</span>
+                      {(task.currentStep || task.nextStep) && (
+                        <div className="space-y-1 text-xs font-mono mt-2">
+                          {task.currentStep && (
+                            <div className="flex items-start space-x-2 text-zinc-300">
+                              <span className="text-cyan-400 shrink-0 select-none">&gt;</span>
+                              <div className="flex-1 min-w-0">
+                                <span className="text-zinc-500 mr-1.5">当前步骤:</span>
+                                <span className="text-zinc-200">{task.currentStep}</span>
+                              </div>
                             </div>
-                          </div>
-                        )}
-                        {task.nextStep && (
-                          <div className="flex items-start space-x-2 text-zinc-400">
-                            <span className="text-emerald-400 shrink-0 select-none">&gt;&gt;</span>
-                            <div className="flex-1 min-w-0">
-                              <span className="text-zinc-500 mr-1.5">下一步骤:</span>
-                              <span className="text-zinc-300">{task.nextStep}</span>
+                          )}
+                          {task.nextStep && (
+                            <div className="flex items-start space-x-2 text-zinc-400">
+                              <span className="text-emerald-400 shrink-0 select-none">&gt;&gt;</span>
+                              <div className="flex-1 min-w-0">
+                                <span className="text-zinc-500 mr-1.5">下一步骤:</span>
+                                <span className="text-zinc-300">{task.nextStep}</span>
+                              </div>
                             </div>
-                          </div>
-                        )}
-                      </div>
+                          )}
+                        </div>
+                      )}
                     </div>
 
                     <div className="flex items-center space-x-1.5 shrink-0 pt-0.5">

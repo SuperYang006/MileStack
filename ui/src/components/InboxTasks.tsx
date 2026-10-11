@@ -1,12 +1,14 @@
 import React from "react";
-import { Check, Trash2, ArrowUpRight } from "lucide-react";
+import { Check, Trash2, ArrowUpRight, Edit3 } from "lucide-react";
 import type { TaskSummary } from "../types";
+import { CopyTaskIdButton } from "./CopyTaskIdButton";
 
 interface InboxTasksProps {
   tasks: TaskSummary[];
   onConfirmTask: (taskId: string) => void;
   onDeleteTask: (taskId: string) => void;
   onSelectTask: (taskId: string) => void;
+  onEditTask?: (task: TaskSummary) => void;
 }
 
 export const InboxTasks: React.FC<InboxTasksProps> = ({
@@ -14,6 +16,7 @@ export const InboxTasks: React.FC<InboxTasksProps> = ({
   onConfirmTask,
   onDeleteTask,
   onSelectTask,
+  onEditTask,
 }) => {
   return (
     <section className="rounded-lg border border-zinc-800 bg-zinc-900/50 backdrop-blur-xs overflow-hidden">
@@ -46,8 +49,9 @@ export const InboxTasks: React.FC<InboxTasksProps> = ({
                   onClick={() => onSelectTask(task.id)}
                 >
                   <div className="flex items-center space-x-2">
-                    <span className="font-mono text-[11px] text-zinc-500">
-                      {task.id}
+                    <span className="font-mono text-[11px] text-zinc-500 flex items-center space-x-1">
+                      <span>{task.id}</span>
+                      <CopyTaskIdButton taskId={task.id} />
                     </span>
                     <h3 className="text-xs font-mono text-zinc-300 group-hover:text-amber-300 transition-colors truncate">
                       {task.title}
@@ -65,6 +69,18 @@ export const InboxTasks: React.FC<InboxTasksProps> = ({
                     <span>确认排队</span>
                   </button>
 
+                  {onEditTask && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onEditTask(task);
+                      }}
+                      className="p-1 text-zinc-500 hover:text-amber-300 rounded transition-colors"
+                      title="编辑任务草稿"
+                    >
+                      <Edit3 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                   <button
                     onClick={() => onSelectTask(task.id)}
                     className="p-1 text-zinc-500 hover:text-zinc-300 rounded transition-colors"

@@ -213,6 +213,43 @@ export async function createHttpServer(
       throw err;
     }
   });
+  // Edit Inbox Task
+  app.put("/api/tasks/:id", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const body = (request.body || {}) as any;
+    const projectId = body.projectId || context.project.id;
+
+    try {
+      const updated = context.service.editInboxTask({
+        projectId,
+        taskId: id,
+        title: body.title,
+        objective: body.objective,
+        acceptanceCriteria: body.acceptanceCriteria,
+        dependencyIds: body.dependencyIds,
+        actorLabel: "developer",
+      });
+      return updated;
+    } catch (err) {
+      if (err instanceof TaskNotFoundError) {
+        return reply.status(404).send({ error: err.message });
+      }
+      if (err instanceof ProjectNotFoundError) {
+        return reply.status(404).send({ error: err.message });
+      }
+      if (
+        err instanceof InvalidTaskStateError ||
+        err instanceof InvalidTaskDependencyError ||
+        err instanceof InvalidTaskError ||
+        err instanceof z.ZodError
+      ) {
+        return reply
+          .status(400)
+          .send({ error: err instanceof z.ZodError ? err.issues : err.message });
+      }
+      throw err;
+    }
+  });
 
   // Confirm Inbox Task -> Ready
   app.post("/api/tasks/:id/confirm", async (request, reply) => {

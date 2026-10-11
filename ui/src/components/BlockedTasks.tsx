@@ -1,6 +1,7 @@
 import React from "react";
 import { AlertCircle, ArrowUpRight } from "lucide-react";
 import type { TaskSummary } from "../types";
+import { CopyTaskIdButton } from "./CopyTaskIdButton";
 
 interface BlockedTasksProps {
   tasks: TaskSummary[];
@@ -34,8 +35,9 @@ export const BlockedTasks: React.FC<BlockedTasksProps> = ({ tasks, onSelectTask 
             <div className="flex items-start justify-between gap-3">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center space-x-2.5 mb-1.5">
-                  <span className="font-mono text-xs px-1.5 py-0.5 rounded bg-rose-950/80 border border-rose-800/60 text-rose-300">
-                    {task.id}
+                  <span className="font-mono text-xs px-1.5 py-0.5 rounded bg-rose-950/80 border border-rose-800/60 text-rose-300 flex items-center space-x-1">
+                    <span>{task.id}</span>
+                    <CopyTaskIdButton taskId={task.id} />
                   </span>
                   <h3 className="text-xs font-mono font-semibold text-zinc-100 group-hover:text-rose-300 transition-colors truncate">
                     {task.title}

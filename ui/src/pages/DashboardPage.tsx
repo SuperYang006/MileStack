@@ -10,7 +10,8 @@ import { RecentTasks } from "../components/RecentTasks";
 import { TaskDetailModal } from "../components/TaskDetailModal";
 import { CreateTaskModal } from "../components/CreateTaskModal";
 import { BriefingModal } from "../components/BriefingModal";
-import type { TaskSummary, CreateTaskPayload } from "../types";
+import { EditInboxModal } from "../components/EditInboxModal";
+import type { TaskSummary, CreateTaskPayload, EditInboxTaskPayload, TaskDetails } from "../types";
 
 export const DashboardPage: React.FC = () => {
   const queryClient = useQueryClient();
@@ -19,6 +20,7 @@ export const DashboardPage: React.FC = () => {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [briefingTask, setBriefingTask] = useState<TaskSummary | null>(null);
+  const [editingInboxTask, setEditingInboxTask] = useState<TaskSummary | TaskDetails | null>(null);
 
   // Queries
   const {
@@ -59,6 +61,16 @@ export const DashboardPage: React.FC = () => {
     mutationFn: (taskId: string) => apiClient.confirmInboxTask(taskId),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["projectStatus"] }),
   });
+
+  const editInboxTaskMutation = useMutation({
+    mutationFn: ({ taskId, payload }: { taskId: string; payload: EditInboxTaskPayload }) =>
+      apiClient.editInboxTask(taskId, payload),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["projectStatus"] });
+      queryClient.invalidateQueries({ queryKey: ["taskDetails", variables.taskId] });
+    },
+  });
+
 
   const deleteInboxMutation = useMutation({
     mutationFn: (taskId: string) => apiClient.deleteInboxTask(taskId),
@@ -124,6 +136,7 @@ export const DashboardPage: React.FC = () => {
               onConfirmTask={(id) => confirmInboxMutation.mutate(id)}
               onDeleteTask={(id) => deleteInboxMutation.mutate(id)}
               onSelectTask={(id) => setSelectedTaskId(id)}
+              onEditTask={(task) => setEditingInboxTask(task)}
             />
           </div>
 
@@ -151,8 +164,23 @@ export const DashboardPage: React.FC = () => {
         isOpen={!!selectedTaskId}
         onClose={() => setSelectedTaskId(null)}
         isLoading={isDetailsLoading}
+        onEditInboxTask={(task) => setEditingInboxTask(task)}
       />
 
+      <EditInboxModal
+        task={editingInboxTask}
+        isOpen={!!editingInboxTask}
+        onClose={() => setEditingInboxTask(null)}
+        availableTasks={[
+          ...status.current,
+          ...status.next,
+          ...status.blocked,
+          ...status.inbox,
+        ]}
+        onSubmit={async (taskId, payload) => {
+          await editInboxTaskMutation.mutateAsync({ taskId, payload });
+        }}
+      />
       <CreateTaskModal
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}

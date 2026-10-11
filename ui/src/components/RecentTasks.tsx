@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { ChevronDown, ChevronRight, ArrowUpRight } from "lucide-react";
 import type { TaskSummary } from "../types";
+import { CopyTaskIdButton } from "./CopyTaskIdButton";
 
 interface RecentTasksProps {
   tasks: TaskSummary[];
@@ -48,7 +49,8 @@ export const RecentTasks: React.FC<RecentTasksProps> = ({ tasks, onSelectTask })
                 </span>
               </div>
 
-              <div className="flex items-center space-x-2 shrink-0">
+              <div className="flex items-center space-x-1.5 shrink-0">
+                <CopyTaskIdButton taskId={task.id} />
                 {task.completedAt && (
                   <span className="text-zinc-600 text-[10px]">
                     {new Date(task.completedAt).toLocaleTimeString([], {

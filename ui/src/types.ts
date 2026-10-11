@@ -103,3 +103,10 @@ export interface CreateTaskPayload {
   dependencyIds?: string[];
   status?: "inbox" | "ready";
 }
+
+export interface EditInboxTaskPayload {
+  title: string;
+  objective?: string | null;
+  acceptanceCriteria?: string[];
+  dependencyIds?: string[];
+}

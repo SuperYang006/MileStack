@@ -280,6 +280,17 @@ export const confirmTaskInputSchema = z
   })
   .strict();
 
+export const editInboxTaskInputSchema = z
+  .object({
+    projectId: identifierSchema,
+    taskId: identifierSchema,
+    title: z.string().trim().min(1),
+    objective: z.string().trim().min(1).nullable().optional(),
+    acceptanceCriteria: z.array(z.string().trim().min(1)).default([]),
+    dependencyIds: dependencyIdsSchema.default([]),
+    actorLabel: z.string().trim().min(1).optional(),
+  })
+  .strict();
 export const deleteTaskInputSchema = z
   .object({ projectId: identifierSchema, taskId: identifierSchema })
   .strict();
@@ -328,3 +339,4 @@ export type ConfirmTaskInput = z.input<typeof confirmTaskInputSchema>;
 export type DeleteTaskInput = z.input<typeof deleteTaskInputSchema>;
 export type ReorderTaskInput = z.input<typeof reorderTaskInputSchema>;
 export type ReleaseTaskInput = z.input<typeof releaseTaskInputSchema>;
+export type EditInboxTaskInput = z.input<typeof editInboxTaskInputSchema>;
