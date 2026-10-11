@@ -32,7 +32,19 @@ export async function createHttpServer(
   options: HttpServerOptions = {},
 ): Promise<{ app: FastifyInstance; context: ProjectContext; port: number; host: string }> {
   const rootPath = resolveProjectRoot(options.projectRoot);
-  await initializeProject(rootPath);
+
+  const staticPath = options.staticDir
+    ? path.resolve(options.staticDir)
+    : path.resolve(rootPath, "dist/ui");
+  const staticIndexPath = path.join(staticPath, "index.html");
+  if (!existsSync(staticIndexPath)) {
+    throw new Error(
+      `UI build output is missing at '${staticPath}'. Run 'pnpm build' before 'pnpm serve', or run 'pnpm build:ui' if the backend is already built.`,
+    );
+  }
+
+  const initialized = await initializeProject(rootPath);
+  initialized.database.close();
   const context = await openProjectContext(rootPath);
 
   const app = Fastify({
@@ -44,17 +56,11 @@ export async function createHttpServer(
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   });
 
-  // Serve static UI assets if present
-  const staticPath = options.staticDir
-    ? path.resolve(options.staticDir)
-    : path.resolve(rootPath, "dist/ui");
-
-  if (existsSync(staticPath)) {
-    await app.register(fastifyStatic, {
-      root: staticPath,
-      prefix: "/",
-    });
-  }
+  // Serve static UI assets.
+  await app.register(fastifyStatic, {
+    root: staticPath,
+    prefix: "/",
+  });
 
   // --- API Routes ---
 

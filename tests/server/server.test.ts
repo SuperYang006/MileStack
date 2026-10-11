@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createHttpServer } from "../../src/server/server.js";
@@ -10,7 +10,10 @@ describe("HTTP API Server", () => {
 
   beforeEach(async () => {
     tempDir = mkdtempSync(path.join(tmpdir(), "milestack-http-test-"));
-    serverInstance = await createHttpServer({ projectRoot: tempDir });
+    const staticDir = path.join(tempDir, "dist", "ui");
+    mkdirSync(staticDir, { recursive: true });
+    writeFileSync(path.join(staticDir, "index.html"), "<h1>MileStack test UI</h1>\n");
+    serverInstance = await createHttpServer({ projectRoot: tempDir, staticDir });
   });
 
   afterEach(async () => {
@@ -38,6 +41,17 @@ describe("HTTP API Server", () => {
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.payload);
     expect(body.id).toBe(serverInstance.context.project.id);
+  });
+
+  it("serves the built UI from the root path", async () => {
+    const res = await serverInstance.app.inject({
+      method: "GET",
+      url: "/",
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["content-type"]).toContain("text/html");
+    expect(res.payload).toContain("MileStack test UI");
   });
 
   it("creates tasks via POST /api/tasks and queries status via GET /api/status", async () => {

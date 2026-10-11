@@ -11,7 +11,7 @@
     "milestack": "dist/index.js"
   },
   "scripts": {
-    "build": "tsup",
+    "build": "tsup && pnpm run build:ui",
     "build:ui": "vite build",
     "dev:ui": "vite",
     "serve": "node dist/index.js serve",
