@@ -7,29 +7,13 @@ import {
   text,
 } from "drizzle-orm/sqlite-core";
 import { sql } from "drizzle-orm";
+import {
+  taskEventTypes,
+  taskStatuses,
+} from "../core/task-model.js";
 
-export const taskStatuses = [
-  "inbox",
-  "ready",
-  "running",
-  "blocked",
-  "completed",
-] as const;
-
-export type TaskStatus = (typeof taskStatuses)[number];
-
-export const taskEventTypes = [
-  "created",
-  "confirmed",
-  "started",
-  "progress",
-  "blocked",
-  "resumed",
-  "released",
-  "completed",
-] as const;
-
-export type TaskEventType = (typeof taskEventTypes)[number];
+export { taskEventTypes, taskStatuses } from "../core/task-model.js";
+export type { TaskEventType, TaskStatus } from "../core/task-model.js";
 
 export const projects = sqliteTable("projects", {
   id: text("id").primaryKey(),

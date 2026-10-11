@@ -1,3 +1,7 @@
+import type { TaskEventType, TaskStatus } from "./task-model.js";
+
+export type { TaskEventType, TaskStatus } from "./task-model.js";
+
 export type ProjectRecord = {
   id: string;
   name: string;
@@ -6,13 +10,6 @@ export type ProjectRecord = {
   createdAt: string;
   updatedAt: string;
 };
-
-export type TaskStatus =
-  | "inbox"
-  | "ready"
-  | "running"
-  | "blocked"
-  | "completed";
 
 export type TaskRecord = {
   id: string;
@@ -34,16 +31,6 @@ export type TaskRecord = {
   updatedAt: string;
   completedAt: string | null;
 };
-
-export type TaskEventType =
-  | "created"
-  | "confirmed"
-  | "started"
-  | "progress"
-  | "blocked"
-  | "resumed"
-  | "released"
-  | "completed";
 
 export type TaskEventRecord = {
   id: string;
