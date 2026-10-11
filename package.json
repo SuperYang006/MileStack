@@ -35,6 +35,7 @@
     "vitest": "^3.2.4"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.1",
     "@tanstack/react-query": "^5.104.1",
     "better-sqlite3": "^13.0.3",
     "drizzle-orm": "^0.45.4",
