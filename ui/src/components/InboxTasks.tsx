@@ -89,7 +89,11 @@ export const InboxTasks: React.FC<InboxTasksProps> = ({
                     <ArrowUpRight className="w-3.5 h-3.5" />
                   </button>
                   <button
-                    onClick={() => onDeleteTask(task.id)}
+                    onClick={() => {
+                      if (window.confirm(`确认删除 Inbox 任务“${task.title}”？`)) {
+                        onDeleteTask(task.id);
+                      }
+                    }}
                     className="p-1 text-zinc-500 hover:text-rose-400 rounded transition-colors"
                     title="删除任务"
                   >

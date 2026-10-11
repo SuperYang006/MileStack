@@ -355,12 +355,97 @@ export const apiClient = {
         body: JSON.stringify(projectId ? { projectId } : {}),
       });
       if (res.ok) return;
-    } catch {
-      // fallback
+      backendAvailable = true;
+      const error = await res.json().catch(() => ({}));
+      throw new Error(error.error || `HTTP ${res.status}`);
+    } catch (error) {
+      if (backendAvailable) throw error;
     }
 
     const status = loadStoredStatus();
     status.inbox = status.inbox.filter((t) => t.id !== taskId);
+    saveStoredStatus(status);
+  },
+
+  async returnReadyTaskToInbox(taskId: string, projectId?: string): Promise<void> {
+    try {
+      const res = await fetch(
+        `/api/tasks/${encodeURIComponent(taskId)}/return-to-inbox`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(projectId ? { projectId } : {}),
+        },
+      );
+      if (res.ok) return;
+      backendAvailable = true;
+      const error = await res.json().catch(() => ({}));
+      throw new Error(error.error || `HTTP ${res.status}`);
+    } catch (error) {
+      if (backendAvailable) throw error;
+    }
+
+    const status = loadStoredStatus();
+    const taskIdx = status.next.findIndex((task) => task.id === taskId);
+    if (taskIdx >= 0) {
+      const [task] = status.next.splice(taskIdx, 1);
+      if (task) {
+        task.status = "inbox";
+        task.queuePosition = null;
+        status.next.forEach((item, index) => {
+          item.queuePosition = index + 1;
+        });
+        status.inbox.push(task);
+        saveStoredStatus(status);
+
+        const detailsMap = loadStoredDetails();
+        const details = detailsMap[taskId];
+        if (details) {
+          details.task.status = "inbox";
+          details.task.queuePosition = null;
+          details.task.updatedAt = new Date().toISOString();
+          details.events.push({
+            id: `evt-${Date.now()}`,
+            projectId: details.task.projectId,
+            taskId,
+            runId: null,
+            type: "progress",
+            summary: "Ready task returned to inbox by developer.",
+            completedWork: null,
+            currentStep: details.task.currentStep,
+            nextStep: details.task.nextStep,
+            blocker: details.task.blocker,
+            requiredAction: details.task.requiredAction,
+            handoffNote: details.task.handoffNote,
+            actorLabel: "developer",
+            createdAt: details.task.updatedAt,
+          });
+          saveStoredDetails(detailsMap);
+        }
+      }
+    }
+  },
+
+  async deleteReadyTask(taskId: string, projectId?: string): Promise<void> {
+    try {
+      const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/delete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(projectId ? { projectId } : {}),
+      });
+      if (res.ok) return;
+      backendAvailable = true;
+      const error = await res.json().catch(() => ({}));
+      throw new Error(error.error || `HTTP ${res.status}`);
+    } catch (error) {
+      if (backendAvailable) throw error;
+    }
+
+    const status = loadStoredStatus();
+    status.next = status.next.filter((task) => task.id !== taskId);
+    status.next.forEach((item, index) => {
+      item.queuePosition = index + 1;
+    });
     saveStoredStatus(status);
   },
 

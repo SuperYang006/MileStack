@@ -11,6 +11,7 @@ import {
   listTasksInputSchema,
   projectStatusSchema,
   compactProjectStatusSchema,
+  returnTaskToInboxInputSchema,
   taskCursorSchema,
   taskPageSchema,
   releaseTaskInputSchema,
@@ -33,6 +34,7 @@ import {
   type ProjectStatusResult,
   type ReleaseTaskInput,
   type ReorderTaskInput,
+  type ReturnTaskToInboxInput,
   type SetTaskDependenciesInput,
   type StartTaskInput,
   type TaskDetails,
@@ -524,6 +526,54 @@ export class TaskService {
     return this.getTask({ projectId: project.id, taskId: parsed.taskId });
   }
 
+  returnTaskToInbox(input: ReturnTaskToInboxInput): TaskDetails {
+    const parsed = returnTaskToInboxInputSchema.parse(input);
+    const project = this.requireProject(parsed.projectId);
+    this.repository.transaction((transaction) => {
+      const task = transaction.findTaskById(parsed.taskId);
+      if (!task || task.projectId !== project.id) {
+        throw new TaskNotFoundError(parsed.taskId);
+      }
+      if (task.status !== "ready") {
+        throw new InvalidTaskStateError(task.id, "ready", task.status);
+      }
+
+      const readyTasks = transaction
+        .listByProjectId(project.id)
+        .filter((candidate) => candidate.status === "ready" && candidate.id !== task.id)
+        .sort(compareQueuePosition);
+      const now = this.now().toISOString();
+      transaction.updateTask(task.id, {
+        status: "inbox",
+        queuePosition: null,
+        updatedAt: now,
+      });
+      readyTasks.forEach((candidate, position) => {
+        transaction.updateTask(candidate.id, {
+          queuePosition: position + 1,
+          updatedAt: now,
+        });
+      });
+      transaction.insertTaskEvent({
+        id: this.generateId(),
+        projectId: task.projectId,
+        taskId: task.id,
+        runId: null,
+        type: "progress",
+        summary: "Ready task returned to inbox by developer.",
+        completedWork: null,
+        currentStep: task.currentStep,
+        nextStep: task.nextStep,
+        blocker: task.blocker,
+        requiredAction: task.requiredAction,
+        handoffNote: task.handoffNote,
+        actorLabel: parsed.actorLabel ?? "developer",
+        createdAt: now,
+      });
+    });
+    return this.getTask({ projectId: project.id, taskId: parsed.taskId });
+  }
+
   deleteTask(input: DeleteTaskInput): void {
     const parsed = deleteTaskInputSchema.parse(input);
     const project = this.requireProject(parsed.projectId);
@@ -532,8 +582,8 @@ export class TaskService {
       if (!task || task.projectId !== project.id) {
         throw new TaskNotFoundError(parsed.taskId);
       }
-      if (task.status !== "inbox") {
-        throw new InvalidTaskStateError(task.id, "inbox", task.status);
+      if (task.status !== "inbox" && task.status !== "ready") {
+        throw new InvalidTaskStateError(task.id, "inbox or ready", task.status);
       }
       const dependentTaskIds = transaction
         .listDependenciesByProjectId(project.id)
@@ -542,7 +592,20 @@ export class TaskService {
       if (dependentTaskIds.length > 0) {
         throw new TaskHasDependentsError(task.id, dependentTaskIds);
       }
+      const readyTasks = task.status === "ready"
+        ? transaction
+            .listByProjectId(project.id)
+            .filter((candidate) => candidate.status === "ready" && candidate.id !== task.id)
+            .sort(compareQueuePosition)
+        : [];
       transaction.deleteTask(task.id);
+      const now = this.now().toISOString();
+      readyTasks.forEach((candidate, position) => {
+        transaction.updateTask(candidate.id, {
+          queuePosition: position + 1,
+          updatedAt: now,
+        });
+      });
     });
   }
 

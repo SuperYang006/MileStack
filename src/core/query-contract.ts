@@ -280,6 +280,14 @@ export const confirmTaskInputSchema = z
   })
   .strict();
 
+export const returnTaskToInboxInputSchema = z
+  .object({
+    projectId: identifierSchema,
+    taskId: identifierSchema,
+    actorLabel: z.string().trim().min(1).optional(),
+  })
+  .strict();
+
 export const editInboxTaskInputSchema = z
   .object({
     projectId: identifierSchema,
@@ -336,6 +344,9 @@ export type StartTaskInput = z.input<typeof startTaskInputSchema>;
 export type UpdateTaskInput = z.input<typeof updateTaskInputSchema>;
 export type FinishTaskInput = z.input<typeof finishTaskInputSchema>;
 export type ConfirmTaskInput = z.input<typeof confirmTaskInputSchema>;
+export type ReturnTaskToInboxInput = z.input<
+  typeof returnTaskToInboxInputSchema
+>;
 export type DeleteTaskInput = z.input<typeof deleteTaskInputSchema>;
 export type ReorderTaskInput = z.input<typeof reorderTaskInputSchema>;
 export type ReleaseTaskInput = z.input<typeof releaseTaskInputSchema>;

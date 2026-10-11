@@ -1,9 +1,11 @@
 import React from "react";
 import {
+  ArrowUpRight,
   ChevronUp,
   ChevronDown,
   Copy,
-  ArrowUpRight,
+  RotateCcw,
+  Trash2,
   Zap,
 } from "lucide-react";
 import type { TaskSummary } from "../types";
@@ -12,6 +14,8 @@ import { CopyTaskIdButton } from "./CopyTaskIdButton";
 interface NextTasksProps {
   tasks: TaskSummary[];
   onReorder: (taskId: string, direction: "up" | "down") => void;
+  onReturnToInbox: (taskId: string) => void;
+  onDeleteTask: (taskId: string) => void;
   onSelectTask: (taskId: string) => void;
   onOpenBriefing: (task: TaskSummary) => void;
 }
@@ -19,6 +23,8 @@ interface NextTasksProps {
 export const NextTasks: React.FC<NextTasksProps> = ({
   tasks,
   onReorder,
+  onReturnToInbox,
+  onDeleteTask,
   onSelectTask,
   onOpenBriefing,
 }) => {
@@ -147,6 +153,28 @@ export const NextTasks: React.FC<NextTasksProps> = ({
                     >
                       <Copy className="w-3 h-3" />
                       <span>复制简报</span>
+                    </button>
+
+                    <button
+                      onClick={() => onReturnToInbox(task.id)}
+                      className="inline-flex items-center space-x-1 px-2 py-0.5 text-[11px] font-mono text-zinc-400 hover:text-amber-300 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded transition-colors"
+                      title="退回待整理收件箱"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      <span>退回 Inbox</span>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        if (window.confirm(`确认删除 Ready 任务“${task.title}”？`)) {
+                          onDeleteTask(task.id);
+                        }
+                      }}
+                      className="inline-flex items-center space-x-1 px-2 py-0.5 text-[11px] font-mono text-zinc-400 hover:text-rose-300 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded transition-colors"
+                      title="删除任务"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                      <span>删除</span>
                     </button>
 
                     <button

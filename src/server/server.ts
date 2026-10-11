@@ -271,7 +271,33 @@ export async function createHttpServer(
     }
   });
 
-  // Delete Inbox Task
+  // Return Ready Task -> Inbox
+  app.post("/api/tasks/:id/return-to-inbox", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const body = (request.body || {}) as { projectId?: string };
+    const projectId = body.projectId || context.project.id;
+
+    try {
+      context.service.returnTaskToInbox({
+        projectId,
+        taskId: id,
+        actorLabel: "developer",
+      });
+      return { success: true };
+    } catch (err) {
+      if (err instanceof TaskNotFoundError) {
+        return reply.status(404).send({ error: err.message });
+      }
+      if (err instanceof InvalidTaskStateError || err instanceof z.ZodError) {
+        return reply
+          .status(400)
+          .send({ error: err instanceof z.ZodError ? err.issues : err.message });
+      }
+      throw err;
+    }
+  });
+
+  // Delete Inbox or Ready Task
   app.post("/api/tasks/:id/delete", async (request, reply) => {
     const { id } = request.params as { id: string };
     const body = (request.body || {}) as any;
@@ -284,8 +310,17 @@ export async function createHttpServer(
       if (err instanceof TaskNotFoundError) {
         return reply.status(404).send({ error: err.message });
       }
-      if (err instanceof InvalidTaskStateError || err instanceof TaskHasDependentsError || err instanceof z.ZodError) {
-        return reply.status(400).send({ error: err instanceof z.ZodError ? err.issues : err.message });
+      if (err instanceof TaskHasDependentsError) {
+        return reply.status(400).send({
+          error: err.message,
+          code: err.code,
+          dependentTaskIds: err.dependentTaskIds,
+        });
+      }
+      if (err instanceof InvalidTaskStateError || err instanceof z.ZodError) {
+        return reply
+          .status(400)
+          .send({ error: err instanceof z.ZodError ? err.issues : err.message });
       }
       throw err;
     }

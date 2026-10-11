@@ -202,7 +202,7 @@ describe("HTTP API Server", () => {
       method: "POST",
       url: `/api/tasks/${inboxTask.task.id}/delete`,
     });
-    expect(deleteInbox.statusCode).toBe(400);
+    expect(deleteInbox.statusCode).toBe(200);
 
     const ready = await serverInstance.app.inject({
       method: "POST",
@@ -301,5 +301,96 @@ describe("HTTP API Server", () => {
       },
     });
     expect(editSelfDep.statusCode).toBe(400);
+  });
+
+  it("returns ready tasks to inbox and safely deletes ready tasks", async () => {
+    const firstRes = await serverInstance.app.inject({
+      method: "POST",
+      url: "/api/tasks",
+      payload: { title: "First ready", status: "ready" },
+    });
+    const first = JSON.parse(firstRes.payload).task;
+    const secondRes = await serverInstance.app.inject({
+      method: "POST",
+      url: "/api/tasks",
+      payload: {
+        title: "Return to inbox",
+        objective: "Preserve this content",
+        status: "ready",
+        dependencyIds: [first.id],
+      },
+    });
+    const second = JSON.parse(secondRes.payload).task;
+
+    const returnRes = await serverInstance.app.inject({
+      method: "POST",
+      url: `/api/tasks/${second.id}/return-to-inbox`,
+    });
+    expect(returnRes.statusCode).toBe(200);
+
+    const afterReturn = JSON.parse(
+      (await serverInstance.app.inject({ method: "GET", url: "/api/status" })).payload,
+    );
+    expect(afterReturn.inbox).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: second.id, status: "inbox", queuePosition: null }),
+      ]),
+    );
+    expect(afterReturn.next).toEqual([
+      expect.objectContaining({ id: first.id, queuePosition: 1 }),
+    ]);
+    const returnedDetails = serverInstance.context.service.getTask({
+      projectId: serverInstance.context.project.id,
+      taskId: second.id,
+    });
+    expect(returnedDetails.task).toMatchObject({
+      objective: "Preserve this content",
+      dependencyIds: [first.id],
+    });
+    expect(returnedDetails.events.at(-1)).toMatchObject({
+      type: "progress",
+      summary: "Ready task returned to inbox by developer.",
+    });
+
+    const deleteReady = await serverInstance.app.inject({
+      method: "POST",
+      url: `/api/tasks/${first.id}/delete`,
+    });
+    expect(deleteReady.statusCode).toBe(400);
+
+    const deleteInbox = await serverInstance.app.inject({
+      method: "POST",
+      url: `/api/tasks/${second.id}/delete`,
+    });
+    expect(deleteInbox.statusCode).toBe(200);
+  });
+
+  it("rejects deleting a ready task that is still referenced", async () => {
+    const prerequisiteRes = await serverInstance.app.inject({
+      method: "POST",
+      url: "/api/tasks",
+      payload: { title: "Referenced ready", status: "ready" },
+    });
+    const prerequisite = JSON.parse(prerequisiteRes.payload).task;
+    const dependentRes = await serverInstance.app.inject({
+      method: "POST",
+      url: "/api/tasks",
+      payload: {
+        title: "Inbox dependent",
+        status: "inbox",
+        dependencyIds: [prerequisite.id],
+      },
+    });
+    expect(JSON.parse(dependentRes.payload).task.dependencyIds).toEqual([prerequisite.id]);
+
+    const deleteRes = await serverInstance.app.inject({
+      method: "POST",
+      url: `/api/tasks/${prerequisite.id}/delete`,
+    });
+    expect(deleteRes.statusCode).toBe(400);
+    expect(JSON.parse(deleteRes.payload).error).toContain(prerequisite.id);
+    expect(JSON.parse(deleteRes.payload).error).toContain(
+      JSON.parse(dependentRes.payload).task.id,
+    );
   });
 });

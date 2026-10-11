@@ -12,6 +12,7 @@ import {
   ProjectNotFoundError,
   TaskRunOwnershipError,
   TaskDependenciesNotEditableError,
+  TaskHasDependentsError,
   TaskNotFoundError,
 } from "../../src/core/errors.js";
 import { TaskService } from "../../src/core/task-service.js";
@@ -693,6 +694,151 @@ describe("TaskService", () => {
       }),
     ).toThrow(TaskNotFoundError);
 
+    database.close();
+  });
+
+  it("returns ready tasks to inbox and compresses the remaining queue atomically", async () => {
+    const { database, service } = await createService(createTemporaryProject());
+    const dependency = service.createTask({
+      projectId: "project-1",
+      title: "Dependency",
+      createdBy: "developer",
+      status: "ready",
+      queuePosition: 1,
+    });
+    const first = service.createTask({
+      projectId: "project-1",
+      title: "First",
+      createdBy: "developer",
+      status: "ready",
+      queuePosition: 2,
+    });
+    const returned = service.createTask({
+      projectId: "project-1",
+      title: "Return me",
+      objective: "Keep this objective",
+      acceptanceCriteria: ["Keep this criterion"],
+      dependencyIds: [dependency.task.id],
+      createdBy: "agent",
+      status: "ready",
+      queuePosition: 3,
+    });
+    const last = service.createTask({
+      projectId: "project-1",
+      title: "Last",
+      createdBy: "developer",
+      status: "ready",
+      queuePosition: 4,
+    });
+
+    const result = service.returnTaskToInbox({
+      projectId: "project-1",
+      taskId: returned.task.id,
+      actorLabel: "developer",
+    });
+
+    expect(result.task).toMatchObject({
+      id: returned.task.id,
+      status: "inbox",
+      queuePosition: null,
+      title: "Return me",
+      objective: "Keep this objective",
+      acceptanceCriteria: ["Keep this criterion"],
+      dependencyIds: [dependency.task.id],
+    });
+    expect(result.events.at(-1)).toMatchObject({
+      type: "progress",
+      summary: "Ready task returned to inbox by developer.",
+      actorLabel: "developer",
+    });
+    expect(service.getProjectStatus({ projectId: "project-1" }).next).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: dependency.task.id, queuePosition: 1 }),
+        expect.objectContaining({ id: first.task.id, queuePosition: 2 }),
+        expect.objectContaining({ id: last.task.id, queuePosition: 3 }),
+      ]),
+    );
+    expect(database.db.select().from(tasks).all().find((task) => task.id === returned.task.id))
+      .toMatchObject({ status: "inbox", queuePosition: null });
+    database.close();
+  });
+
+  it("safely deletes inbox and ready tasks while rejecting dependents and other states", async () => {
+    const { database, service } = await createService(createTemporaryProject());
+    const prerequisite = service.createTask({
+      projectId: "project-1",
+      title: "Prerequisite",
+      createdBy: "developer",
+      status: "ready",
+      queuePosition: 1,
+    });
+    const readyToDelete = service.createTask({
+      projectId: "project-1",
+      title: "Delete ready",
+      createdBy: "developer",
+      status: "ready",
+      queuePosition: 2,
+    });
+    const dependent = service.createTask({
+      projectId: "project-1",
+      title: "Dependent",
+      createdBy: "developer",
+      dependencyIds: [readyToDelete.task.id],
+      status: "inbox",
+    });
+
+    expect(() =>
+      service.deleteTask({ projectId: "project-1", taskId: readyToDelete.task.id }),
+    ).toThrow(TaskHasDependentsError);
+    expect(() =>
+      service.deleteTask({ projectId: "project-1", taskId: readyToDelete.task.id }),
+    ).toThrowError(expect.objectContaining({
+      dependentTaskIds: [dependent.task.id],
+    }));
+
+    service.deleteTask({ projectId: "project-1", taskId: dependent.task.id });
+    service.deleteTask({ projectId: "project-1", taskId: readyToDelete.task.id });
+    expect(service.getTask({ projectId: "project-1", taskId: prerequisite.task.id }).task.queuePosition)
+      .toBe(1);
+
+    const inbox = service.createTask({
+      projectId: "project-1",
+      title: "Delete inbox",
+      createdBy: "developer",
+    });
+    service.deleteTask({ projectId: "project-1", taskId: inbox.task.id });
+    expect(() => service.getTask({ projectId: "project-1", taskId: inbox.task.id })).toThrow(
+      TaskNotFoundError,
+    );
+
+    const running = service.createTask({
+      projectId: "project-1",
+      title: "Running",
+      createdBy: "developer",
+      status: "ready",
+      queuePosition: 2,
+    });
+    service.startTask({ projectId: "project-1", taskId: running.task.id });
+    expect(() => service.deleteTask({ projectId: "project-1", taskId: running.task.id })).toThrow(
+      InvalidTaskStateError,
+    );
+
+    database.db
+      .update(tasks)
+      .set({ status: "blocked" })
+      .where(eq(tasks.id, prerequisite.task.id))
+      .run();
+    expect(() => service.deleteTask({ projectId: "project-1", taskId: prerequisite.task.id })).toThrow(
+      InvalidTaskStateError,
+    );
+    database.db
+      .update(tasks)
+      .set({ status: "completed", completedAt: "2026-10-11T13:00:00.000Z" })
+      .where(eq(tasks.id, prerequisite.task.id))
+      .run();
+    expect(() => service.deleteTask({ projectId: "project-1", taskId: prerequisite.task.id })).toThrow(
+      InvalidTaskStateError,
+    );
     database.close();
   });
 });

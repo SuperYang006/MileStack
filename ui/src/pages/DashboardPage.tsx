@@ -74,7 +74,28 @@ export const DashboardPage: React.FC = () => {
 
   const deleteInboxMutation = useMutation({
     mutationFn: (taskId: string) => apiClient.deleteInboxTask(taskId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["projectStatus"] }),
+    onSuccess: (_, taskId) => {
+      queryClient.invalidateQueries({ queryKey: ["projectStatus"] });
+      queryClient.invalidateQueries({ queryKey: ["taskDetails", taskId] });
+      if (selectedTaskId === taskId) setSelectedTaskId(null);
+    },
+  });
+
+  const returnReadyMutation = useMutation({
+    mutationFn: (taskId: string) => apiClient.returnReadyTaskToInbox(taskId),
+    onSuccess: (_, taskId) => {
+      queryClient.invalidateQueries({ queryKey: ["projectStatus"] });
+      queryClient.invalidateQueries({ queryKey: ["taskDetails", taskId] });
+    },
+  });
+
+  const deleteReadyMutation = useMutation({
+    mutationFn: (taskId: string) => apiClient.deleteReadyTask(taskId),
+    onSuccess: (_, taskId) => {
+      queryClient.invalidateQueries({ queryKey: ["projectStatus"] });
+      queryClient.invalidateQueries({ queryKey: ["taskDetails", taskId] });
+      if (selectedTaskId === taskId) setSelectedTaskId(null);
+    },
   });
 
   const reorderTaskMutation = useMutation({
@@ -145,6 +166,8 @@ export const DashboardPage: React.FC = () => {
             <NextTasks
               tasks={status.next}
               onReorder={(id, dir) => reorderTaskMutation.mutate({ taskId: id, direction: dir })}
+              onReturnToInbox={(id) => returnReadyMutation.mutate(id)}
+              onDeleteTask={(id) => deleteReadyMutation.mutate(id)}
               onSelectTask={(id) => setSelectedTaskId(id)}
               onOpenBriefing={(task) => setBriefingTask(task)}
             />
