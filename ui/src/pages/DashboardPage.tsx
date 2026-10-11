@@ -42,6 +42,7 @@ export const DashboardPage: React.FC = () => {
     queryKey: ["taskDetails", selectedTaskId],
     queryFn: () => (selectedTaskId ? apiClient.getTaskDetails(selectedTaskId) : null),
     enabled: !!selectedTaskId,
+    refetchInterval: 5000,
   });
 
   // Mutations
@@ -89,7 +90,12 @@ export const DashboardPage: React.FC = () => {
       <Header
         project={status.project}
         isBackendConnected={backendConnected}
-        onRefresh={() => refetch()}
+        onRefresh={() => {
+          refetch();
+          if (selectedTaskId) {
+            queryClient.invalidateQueries({ queryKey: ["taskDetails", selectedTaskId] });
+          }
+        }}
         onOpenCreateModal={() => setIsCreateModalOpen(true)}
         isRefreshing={isRefetching}
       />
@@ -104,7 +110,7 @@ export const DashboardPage: React.FC = () => {
 
         {/* Current & Next Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-          {/* Left Column: Currently in progress */}
+          {/* Left Column: Currently running */}
           <div className="space-y-6">
             <CurrentTasks
               tasks={status.current}

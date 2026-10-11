@@ -1,7 +1,7 @@
 export type TaskStatus =
   | "inbox"
   | "ready"
-  | "in_progress"
+  | "running"
   | "blocked"
   | "completed";
 

@@ -30,7 +30,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
               className={`font-mono text-[11px] px-2 py-0.5 rounded uppercase font-medium ${
                 details?.task.status === "completed"
                   ? "text-emerald-400 bg-emerald-950/60 border border-emerald-900/60"
-                  : details?.task.status === "in_progress"
+                  : details?.task.status === "running"
                   ? "text-cyan-400 bg-cyan-950/60 border border-cyan-900/60"
                   : details?.task.status === "blocked"
                   ? "text-rose-400 bg-rose-950/60 border border-rose-900/60"

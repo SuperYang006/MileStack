@@ -230,7 +230,7 @@ export async function createHttpServer(
     }
   });
 
-  // Release in-progress/running task back to ready queue
+  // Release running task back to ready queue
   app.post("/api/tasks/:id/release", async (request, reply) => {
     const { id } = request.params as { id: string };
     const body = (request.body || {}) as { reason?: string; handoffNote?: string; runId?: string; projectId?: string };
