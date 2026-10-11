@@ -18,6 +18,8 @@ export const taskEventTypes = [
   "resumed",
   "released",
   "submitted_for_review",
+  "review_started",
+  "review_passed",
   "approved",
   "changes_requested",
   "reopened",

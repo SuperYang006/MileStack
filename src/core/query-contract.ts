@@ -4,6 +4,10 @@ import {
   taskEventTypes,
   taskStatuses,
 } from "./task-model.js";
+import {
+  reviewStatuses,
+  riskLevels,
+} from "./review-model.js";
 
 const identifierSchema = z.string().min(1);
 const nullableTextSchema = z.string().nullable();
@@ -21,6 +25,45 @@ const dependencyIdsSchema = z
 
 export const taskStatusSchema = z.enum(taskStatuses);
 export const taskEventTypeSchema = z.enum(taskEventTypes);
+export const riskLevelSchema = z.enum(riskLevels);
+export const reviewStatusSchema = z.enum(reviewStatuses);
+
+export const reviewFindingSchema = z
+  .object({
+    issue: z.string().trim().min(1),
+    suggestion: z.string().trim().min(1),
+    severity: riskLevelSchema.default("medium"),
+  })
+  .strict();
+
+export const verificationEvidenceSchema = z
+  .object({
+    command: z.string().trim().min(1),
+    result: z.string().trim().min(1),
+  })
+  .strict();
+
+export const reviewSchema = z
+  .object({
+    id: identifierSchema,
+    projectId: identifierSchema,
+    taskId: identifierSchema,
+    reviewRound: z.number().int().positive(),
+    commitSha: z.string().regex(/^[0-9a-f]{40}$/i),
+    branch: nullableTextSchema,
+    worktree: nullableTextSchema,
+    reviewRunId: nullableTextSchema,
+    status: reviewStatusSchema,
+    reviewerActorLabel: nullableTextSchema,
+    summary: nullableTextSchema,
+    findings: z.array(reviewFindingSchema),
+    verificationEvidence: z.array(verificationEvidenceSchema),
+    createdAt: z.string().min(1),
+    startedAt: nullableTextSchema,
+    concludedAt: nullableTextSchema,
+    updatedAt: z.string().min(1),
+  })
+  .strict();
 
 export const projectSummarySchema = z
   .object({
@@ -54,6 +97,8 @@ export const taskSummarySchema = z
     requiredAction: nullableTextSchema,
     updatedAt: z.string().min(1),
     completedAt: nullableTextSchema,
+    riskLevel: riskLevelSchema,
+    riskConfirmed: z.boolean(),
   })
   .strict();
 
@@ -74,6 +119,11 @@ export const taskSchema = z
     handoffNote: nullableTextSchema,
     sourceTaskId: identifierSchema.nullable(),
     activeRunId: nullableTextSchema,
+    activeReviewRunId: nullableTextSchema,
+    riskLevel: riskLevelSchema,
+    riskConfirmed: z.boolean(),
+    riskConfirmedBy: nullableTextSchema,
+    riskConfirmedAt: nullableTextSchema,
     createdBy: z.enum(["developer", "agent"]),
     createdAt: z.string().min(1),
     updatedAt: z.string().min(1),
@@ -160,6 +210,7 @@ export const taskDetailsSchema = z
   .object({
     task: taskSchema,
     events: z.array(taskEventSchema),
+    reviews: z.array(reviewSchema),
   })
   .strict();
 
@@ -218,6 +269,7 @@ export const createTaskInputSchema = z
     status: z.enum(["inbox", "ready"]).optional(),
     queuePosition: z.number().int().nonnegative().optional(),
     sourceTaskId: identifierSchema.optional(),
+    riskLevel: riskLevelSchema.optional(),
     createdBy: z.enum(["developer", "agent"]),
     actorLabel: z.string().trim().min(1).optional(),
   })
@@ -270,6 +322,9 @@ export const submitForReviewInputSchema = z
     projectId: identifierSchema,
     taskId: identifierSchema,
     runId: identifierSchema,
+    commitSha: z.string().regex(/^[0-9a-f]{40}$/i),
+    branch: z.string().trim().min(1).optional(),
+    worktree: z.string().trim().min(1).optional(),
     summary: z.string().trim().min(1),
     completedWork: z.array(z.string().trim().min(1)).default([]),
     actorLabel: z.string().trim().min(1).optional(),
@@ -280,6 +335,7 @@ export const confirmTaskInputSchema = z
   .object({
     projectId: identifierSchema,
     taskId: identifierSchema,
+    riskLevel: riskLevelSchema.optional(),
     actorLabel: z.string().trim().min(1).optional(),
   })
   .strict();
@@ -304,7 +360,39 @@ export const requestTaskChangesInputSchema = z
   .object({
     projectId: identifierSchema,
     taskId: identifierSchema,
-    feedback: z.string().trim().min(1),
+    reviewRunId: identifierSchema.optional(),
+    feedback: z.string().trim().min(1).optional(),
+    findings: z.array(reviewFindingSchema).default([]),
+    actorLabel: z.string().trim().min(1).optional(),
+  })
+  .strict()
+  .superRefine((input, context) => {
+    if (!input.feedback && input.findings.length === 0) {
+      context.addIssue({
+        code: "custom",
+        path: ["feedback"],
+        message: "feedback or findings must be provided.",
+      });
+    }
+  });
+
+export const startReviewInputSchema = z
+  .object({
+    projectId: identifierSchema,
+    taskId: identifierSchema,
+    actorLabel: z.string().trim().min(1).optional(),
+  })
+  .strict();
+
+export const completeReviewInputSchema = z
+  .object({
+    projectId: identifierSchema,
+    taskId: identifierSchema,
+    reviewRunId: identifierSchema,
+    decision: z.enum(["passed", "changes_requested"]),
+    summary: z.string().trim().min(1),
+    findings: z.array(reviewFindingSchema).default([]),
+    verificationEvidence: z.array(verificationEvidenceSchema).default([]),
     actorLabel: z.string().trim().min(1).optional(),
   })
   .strict();
@@ -355,6 +443,7 @@ export const releaseTaskInputSchema = z
 export type ProjectSummary = z.infer<typeof projectSummarySchema>;
 export type TaskSummary = z.infer<typeof taskSummarySchema>;
 export type TaskDetails = z.infer<typeof taskDetailsSchema>;
+export type Review = z.infer<typeof reviewSchema>;
 export type ProjectStatus = z.infer<typeof projectStatusSchema>;
 export type CompactProjectStatus = z.infer<typeof compactProjectStatusSchema>;
 export type ProjectStatusResult = z.infer<typeof projectStatusResultSchema>;
@@ -373,6 +462,8 @@ export type SetTaskDependenciesInput = z.input<
 export type StartTaskInput = z.input<typeof startTaskInputSchema>;
 export type UpdateTaskInput = z.input<typeof updateTaskInputSchema>;
 export type SubmitForReviewInput = z.input<typeof submitForReviewInputSchema>;
+export type StartReviewInput = z.input<typeof startReviewInputSchema>;
+export type CompleteReviewInput = z.input<typeof completeReviewInputSchema>;
 export type ConfirmTaskInput = z.input<typeof confirmTaskInputSchema>;
 export type ReturnTaskToInboxInput = z.input<
   typeof returnTaskToInboxInputSchema

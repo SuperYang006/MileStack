@@ -271,20 +271,58 @@ describe("SQLite database foundation", () => {
     const legacyDatabase = await ensureDatabase(projectRoot, {
       migrationsFolder: legacyMigrationsFolder,
     });
-    insertProjectData(legacyDatabase);
     legacyDatabase.db
-      .insert(tasks)
+      .insert(projects)
       .values({
-        id: "task-2",
-        projectId: "project-1",
-        title: "Preserve dependency",
-        status: "ready",
-        queuePosition: 2,
-        createdBy: "developer",
-        createdAt: "2026-10-11T00:01:00.000Z",
-        updatedAt: "2026-10-11T00:01:00.000Z",
+        id: "project-1",
+        name: "MileStack",
+        rootPath: "/tmp/milestack",
+        goal: "Track project progress",
+        createdAt: "2026-10-11T00:00:00.000Z",
+        updatedAt: "2026-10-11T00:00:00.000Z",
       })
       .run();
+    legacyDatabase.sqlite
+      .prepare(
+        "INSERT INTO tasks (id, project_id, title, status, queue_position, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      )
+      .run(
+        "task-1",
+        "project-1",
+        "Persist data",
+        "ready",
+        1,
+        "developer",
+        "2026-10-11T00:00:00.000Z",
+        "2026-10-11T00:00:00.000Z",
+      );
+    legacyDatabase.sqlite
+      .prepare(
+        "INSERT INTO task_events (id, project_id, task_id, type, summary, completed_work, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      )
+      .run(
+        "event-1",
+        "project-1",
+        "task-1",
+        "created",
+        "Task created",
+        JSON.stringify(["Defined the task"]),
+        "2026-10-11T00:00:00.000Z",
+      );
+    legacyDatabase.sqlite
+      .prepare(
+        "INSERT INTO tasks (id, project_id, title, status, queue_position, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      )
+      .run(
+        "task-2",
+        "project-1",
+        "Preserve dependency",
+        "ready",
+        2,
+        "developer",
+        "2026-10-11T00:01:00.000Z",
+        "2026-10-11T00:01:00.000Z",
+      );
     legacyDatabase.db
       .insert(taskDependencies)
       .values({ taskId: "task-2", dependsOnTaskId: "task-1" })

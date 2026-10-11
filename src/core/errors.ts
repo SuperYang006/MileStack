@@ -59,6 +59,33 @@ export class TaskRunOwnershipError extends DomainError {
   }
 }
 
+export class TaskRiskNotConfirmedError extends DomainError {
+  constructor(taskId: string) {
+    super(
+      "TASK_RISK_NOT_CONFIRMED",
+      `Task '${taskId}' risk must be confirmed by a developer before it can start.`,
+    );
+  }
+}
+
+export class ReviewRunOwnershipError extends DomainError {
+  constructor(taskId: string) {
+    super(
+      "REVIEW_RUN_OWNERSHIP_MISMATCH",
+      `The supplied reviewRunId does not own the current review for task '${taskId}'.`,
+    );
+  }
+}
+
+export class ReviewEvidenceIncompleteError extends DomainError {
+  constructor(taskId: string) {
+    super(
+      "REVIEW_EVIDENCE_INCOMPLETE",
+      `AI review for task '${taskId}' must include at least one verification command and result.`,
+    );
+  }
+}
+
 export class TaskDependenciesIncompleteError extends DomainError {
   readonly dependencyIds: string[];
 

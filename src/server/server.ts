@@ -19,11 +19,14 @@ import {
   InvalidTaskStateError,
   TaskHasDependentsError,
   TaskRunOwnershipError,
+  ReviewRunOwnershipError,
+  ReviewEvidenceIncompleteError,
 } from "../core/errors.js";
 import {
   getProjectStatusInputSchema,
   listTasksInputSchema,
 } from "../core/query-contract.js";
+import type { ReviewFinding, VerificationEvidence } from "../core/review-model.js";
 
 export type HttpServerOptions = {
   projectRoot?: string | undefined;
@@ -168,6 +171,7 @@ export async function createHttpServer(
         acceptanceCriteria: body.acceptanceCriteria,
         dependencyIds: body.dependencyIds,
         status: body.status,
+        riskLevel: body.riskLevel,
         createdBy: "developer",
         actorLabel: "developer",
       });
@@ -198,6 +202,7 @@ export async function createHttpServer(
           acceptanceCriteria: t.acceptanceCriteria,
           dependencyIds: t.dependencyIds,
           status: t.status,
+          riskLevel: t.riskLevel,
           createdBy: "developer",
           actorLabel: "developer",
         })),
@@ -258,13 +263,21 @@ export async function createHttpServer(
     const projectId = body.projectId || context.project.id;
 
     try {
-      context.service.confirmTask({ projectId, taskId: id, actorLabel: "developer" });
+      context.service.confirmTask({
+        projectId,
+        taskId: id,
+        riskLevel: body.riskLevel,
+        actorLabel: "developer",
+      });
       return { success: true };
     } catch (err) {
       if (err instanceof TaskNotFoundError) {
         return reply.status(404).send({ error: err.message });
       }
-      if (err instanceof InvalidTaskStateError || err instanceof z.ZodError) {
+      if (
+        err instanceof InvalidTaskStateError ||
+        err instanceof z.ZodError
+      ) {
         return reply.status(400).send({ error: err instanceof z.ZodError ? err.issues : err.message });
       }
       throw err;
@@ -288,7 +301,10 @@ export async function createHttpServer(
       if (err instanceof TaskNotFoundError) {
         return reply.status(404).send({ error: err.message });
       }
-      if (err instanceof InvalidTaskStateError || err instanceof z.ZodError) {
+      if (
+        err instanceof InvalidTaskStateError ||
+        err instanceof z.ZodError
+      ) {
         return reply
           .status(400)
           .send({ error: err instanceof z.ZodError ? err.issues : err.message });
@@ -300,14 +316,21 @@ export async function createHttpServer(
   // Request changes In-review Task -> Ready
   app.post("/api/tasks/:id/request-changes", async (request, reply) => {
     const { id } = request.params as { id: string };
-    const body = (request.body || {}) as { feedback?: string; projectId?: string };
+    const body = (request.body || {}) as {
+      feedback?: string;
+      findings?: ReviewFinding[];
+      reviewRunId?: string;
+      projectId?: string;
+    };
     const projectId = body.projectId || context.project.id;
 
     try {
       context.service.requestTaskChanges({
         projectId,
         taskId: id,
+        reviewRunId: body.reviewRunId,
         feedback: body.feedback ?? "",
+        findings: body.findings,
         actorLabel: "developer",
       });
       return { success: true };
@@ -315,7 +338,83 @@ export async function createHttpServer(
       if (err instanceof TaskNotFoundError) {
         return reply.status(404).send({ error: err.message });
       }
-      if (err instanceof InvalidTaskStateError || err instanceof z.ZodError) {
+      if (
+        err instanceof InvalidTaskStateError ||
+        err instanceof ReviewRunOwnershipError ||
+        err instanceof z.ZodError
+      ) {
+        return reply
+          .status(400)
+          .send({ error: err instanceof z.ZodError ? err.issues : err.message });
+      }
+      throw err;
+    }
+  });
+
+  // Start an AI review session for the latest submitted artifact.
+  app.post("/api/tasks/:id/start-review", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const body = (request.body || {}) as { projectId?: string; actorLabel?: string };
+    const projectId = body.projectId || context.project.id;
+
+    try {
+      return context.service.startReview({
+        projectId,
+        taskId: id,
+        actorLabel: body.actorLabel,
+      });
+    } catch (err) {
+      if (err instanceof TaskNotFoundError) {
+        return reply.status(404).send({ error: err.message });
+      }
+      if (
+        err instanceof InvalidTaskStateError ||
+        err instanceof ReviewRunOwnershipError ||
+        err instanceof z.ZodError
+      ) {
+        return reply
+          .status(400)
+          .send({ error: err instanceof z.ZodError ? err.issues : err.message });
+      }
+      throw err;
+    }
+  });
+
+  // Record an AI review conclusion and apply the risk-based decision policy.
+  app.post("/api/tasks/:id/complete-review", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const body = (request.body || {}) as {
+      projectId?: string;
+      reviewRunId?: string;
+      decision?: "passed" | "changes_requested";
+      summary?: string;
+      findings?: ReviewFinding[];
+      verificationEvidence?: VerificationEvidence[];
+      actorLabel?: string;
+    };
+    const projectId = (body.projectId as string | undefined) || context.project.id;
+
+    try {
+      return context.service.completeReview({
+        projectId,
+        taskId: id,
+        reviewRunId: body.reviewRunId as string,
+        decision: body.decision as "passed" | "changes_requested",
+        summary: body.summary as string,
+        findings: body.findings,
+        verificationEvidence: body.verificationEvidence,
+        actorLabel: body.actorLabel as string | undefined,
+      });
+    } catch (err) {
+      if (err instanceof TaskNotFoundError) {
+        return reply.status(404).send({ error: err.message });
+      }
+      if (
+        err instanceof InvalidTaskStateError ||
+        err instanceof ReviewRunOwnershipError ||
+        err instanceof ReviewEvidenceIncompleteError ||
+        err instanceof z.ZodError
+      ) {
         return reply
           .status(400)
           .send({ error: err instanceof z.ZodError ? err.issues : err.message });

@@ -12,9 +12,18 @@ import {
   taskEventTypes,
   taskStatuses,
 } from "../core/task-model.js";
+import { reviewStatuses, riskLevels } from "../core/review-model.js";
+import type { ReviewFinding, VerificationEvidence } from "../core/review-model.js";
 
 export { taskEventTypes, taskStatuses } from "../core/task-model.js";
 export type { TaskEventType, TaskStatus } from "../core/task-model.js";
+export { reviewStatuses, riskLevels } from "../core/review-model.js";
+export type {
+  ReviewFinding,
+  ReviewStatus,
+  RiskLevel,
+  VerificationEvidence,
+} from "../core/review-model.js";
 
 export const projects = sqliteTable("projects", {
   id: text("id").primaryKey(),
@@ -51,6 +60,15 @@ export const tasks = sqliteTable(
       },
     ),
     activeRunId: text("active_run_id"),
+    activeReviewRunId: text("active_review_run_id"),
+    riskLevel: text("risk_level", { enum: riskLevels })
+      .notNull()
+      .default("medium"),
+    riskConfirmed: integer("risk_confirmed", { mode: "boolean" })
+      .notNull()
+      .default(true),
+    riskConfirmedBy: text("risk_confirmed_by"),
+    riskConfirmedAt: text("risk_confirmed_at"),
     createdBy: text("created_by", { enum: ["developer", "agent"] }).notNull(),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
@@ -64,6 +82,10 @@ export const tasks = sqliteTable(
     check(
       "tasks_created_by_check",
       sql`${table.createdBy} in ('developer', 'agent')`,
+    ),
+    check(
+      "tasks_risk_level_check",
+      sql`${table.riskLevel} in ('low', 'medium', 'high')`,
     ),
     index("tasks_project_status_idx").on(table.projectId, table.status),
     index("tasks_project_queue_idx").on(
@@ -99,10 +121,50 @@ export const taskEvents = sqliteTable(
   (table) => [
     check(
       "task_events_type_check",
-      sql`${table.type} in ('created', 'confirmed', 'started', 'progress', 'blocked', 'resumed', 'released', 'submitted_for_review', 'approved', 'changes_requested', 'reopened', 'completed')`,
+      sql`${table.type} in ('created', 'confirmed', 'started', 'progress', 'blocked', 'resumed', 'released', 'submitted_for_review', 'review_started', 'review_passed', 'approved', 'changes_requested', 'reopened', 'completed')`,
     ),
     index("task_events_task_created_idx").on(table.taskId, table.createdAt),
     index("task_events_project_created_idx").on(table.projectId, table.createdAt),
+  ],
+);
+
+export const taskReviews = sqliteTable(
+  "task_reviews",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    taskId: text("task_id")
+      .notNull()
+      .references(() => tasks.id, { onDelete: "cascade" }),
+    reviewRound: integer("review_round").notNull(),
+    commitSha: text("commit_sha").notNull(),
+    branch: text("branch"),
+    worktree: text("worktree"),
+    reviewRunId: text("review_run_id"),
+    status: text("status", { enum: reviewStatuses })
+      .notNull()
+      .default("pending"),
+    reviewerActorLabel: text("reviewer_actor_label"),
+    summary: text("summary"),
+    findings: text("findings", { mode: "json" }).$type<ReviewFinding[]>(),
+    verificationEvidence: text("verification_evidence", { mode: "json" }).$type<
+      VerificationEvidence[]
+    >(),
+    createdAt: text("created_at").notNull(),
+    startedAt: text("started_at"),
+    concludedAt: text("concluded_at"),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    check(
+      "task_reviews_status_check",
+      sql`${table.status} in ('pending', 'in_progress', 'passed', 'changes_requested')`,
+    ),
+    check("task_reviews_round_check", sql`${table.reviewRound} > 0`),
+    index("task_reviews_task_round_idx").on(table.taskId, table.reviewRound),
+    index("task_reviews_project_created_idx").on(table.projectId, table.createdAt),
   ],
 );
 
@@ -122,7 +184,7 @@ export const taskDependencies = sqliteTable(
   ],
 );
 
-export const schema = { projects, tasks, taskEvents, taskDependencies };
+export const schema = { projects, tasks, taskEvents, taskDependencies, taskReviews };
 
 export type Project = typeof projects.$inferSelect;
 export type NewProject = typeof projects.$inferInsert;
@@ -132,3 +194,5 @@ export type TaskEvent = typeof taskEvents.$inferSelect;
 export type NewTaskEvent = typeof taskEvents.$inferInsert;
 export type TaskDependency = typeof taskDependencies.$inferSelect;
 export type NewTaskDependency = typeof taskDependencies.$inferInsert;
+export type TaskReview = typeof taskReviews.$inferSelect;
+export type NewTaskReview = typeof taskReviews.$inferInsert;

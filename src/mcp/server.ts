@@ -12,10 +12,12 @@ import { formatMcpInstructions } from "../core/agent-instructions.js";
 import {
   createTaskInputSchema,
   createTasksInputSchema,
+  completeReviewInputSchema,
   submitForReviewInputSchema,
   getProjectStatusInputSchema,
   getTaskInputSchema,
   listTasksInputSchema,
+  startReviewInputSchema,
   startTaskInputSchema,
   updateTaskInputSchema,
 } from "../core/query-contract.js";
@@ -38,6 +40,8 @@ const taskArgumentsSchema = getTaskInputSchema.omit({ projectId: true });
 const startTaskArgumentsSchema = startTaskInputSchema.omit({ projectId: true });
 const updateTaskArgumentsSchema = updateTaskInputSchema.omit({ projectId: true });
 const submitForReviewArgumentsSchema = submitForReviewInputSchema.omit({ projectId: true });
+const startReviewArgumentsSchema = startReviewInputSchema.omit({ projectId: true });
+const completeReviewArgumentsSchema = completeReviewInputSchema.omit({ projectId: true });
 
 const toolDefinitions: Tool[] = [
   {
@@ -85,8 +89,20 @@ const toolDefinitions: Tool[] = [
   {
     name: "submit_for_review",
     description:
-      "Submit a running task for developer review with a completion summary. The task changes to in_review, the runId becomes invalid after submission, and only developer approval can move it to completed.",
+      "Submit a running task for review with a completion summary and fixed commit SHA. The task changes to in_review and the runId becomes invalid after submission.",
     inputSchema: toJSONSchema(submitForReviewArgumentsSchema) as Tool["inputSchema"],
+  },
+  {
+    name: "start_review",
+    description:
+      "Atomically claim the latest pending review and save the returned reviewRunId before inspecting the submitted artifact.",
+    inputSchema: toJSONSchema(startReviewArgumentsSchema) as Tool["inputSchema"],
+  },
+  {
+    name: "complete_review",
+    description:
+      "Record a passed or changes-requested AI review with structured findings and verification evidence. Low-risk passes may complete automatically; medium- and high-risk tasks remain for developer approval.",
+    inputSchema: toJSONSchema(completeReviewArgumentsSchema) as Tool["inputSchema"],
   },
 ];
 
@@ -207,6 +223,24 @@ export function createMcpServer(context: ProjectContext): Server {
           const parsed = submitForReviewArgumentsSchema.parse(args);
           return jsonResult(
             context.service.submitForReview({
+              ...parsed,
+              projectId: context.project.id,
+            }),
+          );
+        }
+        case "start_review": {
+          const parsed = startReviewArgumentsSchema.parse(args);
+          return jsonResult(
+            context.service.startReview({
+              ...parsed,
+              projectId: context.project.id,
+            }),
+          );
+        }
+        case "complete_review": {
+          const parsed = completeReviewArgumentsSchema.parse(args);
+          return jsonResult(
+            context.service.completeReview({
               ...parsed,
               projectId: context.project.id,
             }),

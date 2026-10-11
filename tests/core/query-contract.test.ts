@@ -27,6 +27,11 @@ describe("core query contract", () => {
       handoffNote: null,
       sourceTaskId: null,
       activeRunId: null,
+      activeReviewRunId: null,
+      riskLevel: "medium" as const,
+      riskConfirmed: true,
+      riskConfirmedBy: "developer",
+      riskConfirmedAt: "2026-10-11T00:00:00.000Z",
       createdBy: "developer" as const,
       createdAt: "2026-10-11T00:00:00.000Z",
       updatedAt: "2026-10-11T00:00:00.000Z",
@@ -63,6 +68,8 @@ describe("core query contract", () => {
       requiredAction: task.requiredAction,
       updatedAt: task.updatedAt,
       completedAt: task.completedAt,
+      riskLevel: task.riskLevel,
+      riskConfirmed: task.riskConfirmed,
     };
 
     expect(
@@ -76,9 +83,10 @@ describe("core query contract", () => {
         recentlyCompleted: [],
       }),
     ).toMatchObject({ next: [summary] });
-    expect(taskDetailsSchema.parse({ task, events: [event] })).toEqual({
+    expect(taskDetailsSchema.parse({ task, events: [event], reviews: [] })).toEqual({
       task,
       events: [event],
+      reviews: [],
     });
   });
 

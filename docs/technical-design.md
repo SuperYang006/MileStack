@@ -138,10 +138,25 @@ WAL 允许 Web 服务和多个 MCP 进程并发读取，并串行完成短事务
 
 - `Task` 是任务当前状态的权威记录。任务状态包括 `inbox`、`ready`、`running`、`blocked`、`in_review` 和 `completed`；
 - `TaskEvent` 是只追加的语义历史；
+- `TaskReview` 是每轮审核的不可覆盖记录，保存固定的完整 40 位 commit SHA、可选 branch/worktree、审核领取凭证、结论、结构化 findings 和验证证据；
 - `task_dependencies` 以 `(task_id, depends_on_task_id)` 关系保存前置依赖，并对两列建立外键；
 - `runnable`、`waitingFor` 和“可并行”是查询时的派生结果，不写入数据库；
-- 修改任务和追加事件必须处于同一个 SQLite 事务；
+- 修改任务、审核快照和追加事件必须处于同一个 SQLite 事务；
 - V0 不通过重放事件重建任务状态。
+
+任务风险字段由 `Task` 保存：`riskLevel` 为 `low`、`medium` 或 `high`，默认 `medium`；`riskConfirmed`、确认者和确认时间记录开发者是否确认过风险。新建任务只有开发者直接创建为 `ready`，或开发者调用确认操作后，才允许执行领取；AI 不能自行确认风险或降低风险等级。历史数据库通过前向迁移补充 `medium` 和已确认的默认值，以保持已有任务可继续工作。
+
+每次 `submit_for_review` 都创建新的 `TaskReview`，并清除执行 `activeRunId`。审核使用独立的 `activeReviewRunId`/`reviewRunId`，领取和完成都必须在短事务中校验当前凭证；审核退回或结束后凭证立即失效。新的提交创建新的 review round，旧审核结论不再决定当前任务。
+
+审核策略如下：
+
+| 风险 | AI 审核通过条件 | 通过后的状态 |
+| --- | --- | --- |
+| `low` | 开发者已确认风险，且至少有一条验证命令及结果 | 自动进入 `completed` |
+| `medium` | 审核记录完整，可含结构化 findings 和验证证据 | 保持 `in_review`，等待开发者批准 |
+| `high` | 审核记录完整，可含结构化 findings 和验证证据 | 保持 `in_review`，等待开发者批准 |
+
+`request_changes` 会将结构化问题与修改建议写入当前审核记录和任务交接说明，清除审核及执行凭证，并将任务放回 `ready`；返工后必须重新领取执行凭证。开发者 `approve` 只能批准最新一轮已经通过 AI 审核的任务，且中高风险任务必须经过此最终批准。
 
 ### 4.4 数据库迁移与备份
 
@@ -183,9 +198,13 @@ MCP Tool ------/
 - 根据依赖状态计算 `runnable`、`waitingFor` 和当前可并行任务；
 - 原子领取任务；
 - 校验 `runId`；
+- 保存开发者确认的风险等级并拒绝未经确认的执行；
 - 更新任务当前快照；
 - 追加 `TaskEvent`；
-- Agent 的 `submit_for_review` 只提交 `in_review`，开发者审核操作负责批准、退回返工或重新打开；
+- 固定提交审核的 commit SHA 和 branch/worktree 元数据；
+- 原子领取独立的 AI 审核会话，保存结构化结论和验证证据；
+- 按风险策略自动完成低风险任务，或将中高风险任务留在 `in_review` 等待开发者最终批准；
+- `request_changes` 记录 findings、清除旧凭证并将任务返回 `ready`；
 - 生成项目状态和任务简报；
 - 批量创建用于旧项目基线的 inbox 任务。
 
@@ -233,7 +252,13 @@ input.runId == task.activeRunId
 
 任务被释放或提交审核后清除 `activeRunId`。开发者退回返工或重新打开后，Agent 必须获得新的 `runId`；旧 MCP 进程随后发出的更新必须被拒绝。
 
-### 6.3 V0 并发边界
+### 6.3 审核权校验
+
+`start_review` 只允许领取最新的 `pending` 审核记录，并生成独立的 `reviewRunId`。同一任务已有 `activeReviewRunId` 时，第二个审核者必须失败；`complete_review` 必须同时匹配任务和最新审核记录上的 `reviewRunId`，否则拒绝过期凭证。通过结论必须至少带一条 `{ command, result }` 验证证据。审核结束或退回后清除 `activeReviewRunId`。
+
+审核者的 actor label、摘要、结构化 finding（问题、建议、严重度）和验证证据都属于审计数据；actor label 只是展示和审计信息，不能替代 `reviewRunId` 的并发所有权。
+
+### 6.4 V0 并发边界
 
 V0 不实现通用乐观锁和请求幂等键。所有写事务应保持短小，不在事务中执行文件、网络或 AI 操作。如果真实验证中出现重复请求或更复杂的并发编辑，再增加 `requestId` 和版本字段。
 
@@ -267,6 +292,8 @@ V0 不绘制依赖关系图，也不保存静态 `parallelizable` 字段。
 - 复制任务简报；
 - 查看任务详情和事件历史；
 - 手动释放任务。
+
+开发者审核页面或 HTTP API 还应支持查看固定制品引用和审核记录、批准已通过的中高风险任务、提交带结构化 findings 的返工意见。AI 审核使用 `start_review` 和 `complete_review`，不绕过 `TaskService` 直接写入审核或任务表。
 
 V0 可以用上移、下移操作调整队列顺序，不要求一开始实现拖拽。
 
@@ -304,7 +331,7 @@ MileStack 不等待完整 Web 页面完成后才开始自用。实现以下自�
 2. `TaskService` 与 repository；
 3. `milestack init`；
 4. MCP stdio 入口；
-5. `get_project_status`、`create_task(s)`、`start_task`、`update_task` 和 `submit_for_review`；
+5. `get_project_status`、`create_task(s)`、`start_task`、`update_task`、`submit_for_review`、`start_review` 和 `complete_review`；
 6. `milestack status`。
 
 从此阶段开始，后续功能、缺陷和使用反馈记录到 MileStack 自身的 inbox 和 ready 队列。开发中的真实摩擦是调整 MCP 返回结构、任务简报和状态模型的主要依据。
@@ -365,7 +392,9 @@ V0 优先测试影响事实可信度的行为：
 9. `get_project_status` 能正确聚合当前、下一步、阻塞和最近完成；
 10. `create_tasks` 在任一输入无效时不会写入部分基线任务；
 11. 已有数据库可以通过前向迁移升级并保留原任务和事件；
-12. 完整 MCP 流程可以执行领取、更新、阻塞、恢复、释放和完成。
+12. 审核领取具有并发保护，旧执行或审核凭证不能继续写入；
+13. 低风险审核通过可自动完成，中高风险审核通过仍需开发者批准；
+14. 完整 MCP 流程可以执行领取、更新、阻塞、恢复、释放、提交审核和审核决策。
 
 页面视觉和复杂交互测试不作为 V0 的首要工作。
 

@@ -74,6 +74,8 @@ describe("MCP task tools", () => {
       "start_task",
       "update_task",
       "submit_for_review",
+      "start_review",
+      "complete_review",
     ]);
     expect(toolNames).toContain("submit_for_review");
     expect(toolNames).not.toContain("finish_task");
@@ -226,6 +228,7 @@ describe("MCP task tools", () => {
       arguments: {
         taskId: ready.task.id,
         runId: startedValue.runId,
+        commitSha: "7777777777777777777777777777777777777777",
         summary: "Done",
       },
     });
@@ -235,6 +238,34 @@ describe("MCP task tools", () => {
     expect(submittedValue.task.activeRunId).toBeNull();
     expect(submittedValue.events.at(-1).type).toBe("submitted_for_review");
     expect(submittedValue.events.at(-1).actorLabel).toBe("gpt-5-codex");
+
+    const reviewStarted = await client.callTool({
+      name: "start_review",
+      arguments: { taskId: ready.task.id, actorLabel: "review-model" },
+    });
+    const reviewStartedValue = JSON.parse(textContent(reviewStarted));
+    expect(reviewStartedValue.reviewRunId).toBeTruthy();
+    expect(reviewStartedValue.task.reviews.at(-1)).toMatchObject({
+      status: "in_progress",
+      reviewerActorLabel: "review-model",
+    });
+
+    const reviewCompleted = await client.callTool({
+      name: "complete_review",
+      arguments: {
+        taskId: ready.task.id,
+        reviewRunId: reviewStartedValue.reviewRunId,
+        decision: "passed",
+        summary: "Verified the implementation.",
+        verificationEvidence: [{ command: "pnpm test", result: "passed" }],
+      },
+    });
+    const reviewCompletedValue = JSON.parse(textContent(reviewCompleted));
+    expect(reviewCompletedValue.task.status).toBe("in_review");
+    expect(reviewCompletedValue.reviews.at(-1)).toMatchObject({
+      status: "passed",
+      verificationEvidence: [{ command: "pnpm test", result: "passed" }],
+    });
 
     await client.close();
     await server.close();

@@ -1,4 +1,10 @@
 import type { TaskEventType, TaskStatus } from "./task-model.js";
+import type {
+  ReviewFinding,
+  ReviewStatus,
+  RiskLevel,
+  VerificationEvidence,
+} from "./review-model.js";
 
 export type { TaskEventType, TaskStatus } from "./task-model.js";
 
@@ -26,10 +32,35 @@ export type TaskRecord = {
   handoffNote: string | null;
   sourceTaskId: string | null;
   activeRunId: string | null;
+  activeReviewRunId: string | null;
+  riskLevel: RiskLevel;
+  riskConfirmed: boolean;
+  riskConfirmedBy: string | null;
+  riskConfirmedAt: string | null;
   createdBy: "developer" | "agent";
   createdAt: string;
   updatedAt: string;
   completedAt: string | null;
+};
+
+export type ReviewRecord = {
+  id: string;
+  projectId: string;
+  taskId: string;
+  reviewRound: number;
+  commitSha: string;
+  branch: string | null;
+  worktree: string | null;
+  reviewRunId: string | null;
+  status: ReviewStatus;
+  reviewerActorLabel: string | null;
+  summary: string | null;
+  findings: ReviewFinding[];
+  verificationEvidence: VerificationEvidence[];
+  createdAt: string;
+  startedAt: string | null;
+  concludedAt: string | null;
+  updatedAt: string;
 };
 
 export type TaskEventRecord = {
@@ -74,11 +105,16 @@ export interface TaskEventRepository {
   listByTaskId(taskId: string): TaskEventRecord[];
 }
 
+export interface TaskReviewRepository {
+  listReviewsByTaskId(taskId: string): ReviewRecord[];
+}
+
 export interface TaskRepositoryTransaction {
   findTaskById(id: string): TaskRecord | null;
   listByProjectId(projectId: string): TaskRecord[];
   listEventsByTaskId(taskId: string): TaskEventRecord[];
   listDependenciesByProjectId(projectId: string): TaskDependencyRecord[];
+  listReviewsByTaskId(taskId: string): ReviewRecord[];
   updateTask(
     id: string,
     changes: Partial<TaskRecord>,
@@ -87,6 +123,8 @@ export interface TaskRepositoryTransaction {
   deleteTask(id: string): void;
   insertTask(task: TaskRecord): TaskRecord;
   insertTaskEvent(event: TaskEventRecord): TaskEventRecord;
+  insertReview(review: ReviewRecord): ReviewRecord;
+  updateReview(id: string, changes: Partial<ReviewRecord>): ReviewRecord | null;
   replaceTaskDependencies(taskId: string, dependencyIds: string[]): void;
 }
 
@@ -94,6 +132,7 @@ export interface MileStackRepository
   extends ProjectRepository,
     TaskRepository,
     TaskEventRepository,
-    TaskDependencyRepository {
+    TaskDependencyRepository,
+    TaskReviewRepository {
   transaction<T>(work: (transaction: TaskRepositoryTransaction) => T): T;
 }

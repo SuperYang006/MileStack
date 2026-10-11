@@ -6,6 +6,8 @@ import {
   confirmTaskInputSchema,
   deleteTaskInputSchema,
   submitForReviewInputSchema,
+  startReviewInputSchema,
+  completeReviewInputSchema,
   getProjectStatusInputSchema,
   getTaskInputSchema,
   listTasksInputSchema,
@@ -29,6 +31,8 @@ import {
   type ConfirmTaskInput,
   type DeleteTaskInput,
   type SubmitForReviewInput,
+  type StartReviewInput,
+  type CompleteReviewInput,
   type GetProjectStatusInput,
   type GetTaskInput,
   type CompactProjectStatus,
@@ -60,12 +64,19 @@ import {
   TaskHasDependentsError,
   TaskNotFoundError,
   TaskRunOwnershipError,
+  TaskRiskNotConfirmedError,
+  ReviewRunOwnershipError,
+  ReviewEvidenceIncompleteError,
 } from "./errors.js";
+import type {
+  ReviewFinding,
+} from "./review-model.js";
 import type {
   MileStackRepository,
   ProjectRecord,
   TaskDependencyRecord,
   TaskEventRecord,
+  ReviewRecord,
   TaskRecord,
   TaskRepositoryTransaction,
 } from "./repositories.js";
@@ -90,6 +101,11 @@ export type StartedTask = {
   task: TaskDetails;
 };
 
+export type StartedReview = {
+  reviewRunId: string;
+  task: TaskDetails;
+};
+
 const emptyTaskFields = {
   currentStep: null,
   nextStep: null,
@@ -97,6 +113,7 @@ const emptyTaskFields = {
   requiredAction: null,
   handoffNote: null,
   activeRunId: null,
+  activeReviewRunId: null,
   completedAt: null,
 } as const;
 
@@ -128,6 +145,8 @@ function taskToSummary(
     requiredAction: task.requiredAction,
     updatedAt: task.updatedAt,
     completedAt: task.completedAt,
+    riskLevel: task.riskLevel,
+    riskConfirmed: task.riskConfirmed,
   };
 }
 
@@ -135,10 +154,12 @@ function taskToDetails(
   task: TaskRecord,
   events: TaskEventRecord[],
   dependencyIds: string[],
+  reviews: ReviewRecord[],
 ): TaskDetails {
   return taskDetailsSchema.parse({
     task: { ...task, dependencyIds },
     events,
+    reviews,
   });
 }
 
@@ -290,6 +311,7 @@ export class TaskService {
           status: parsed.status,
           queuePosition: parsed.queuePosition,
           sourceTaskId: parsed.sourceTaskId,
+          riskLevel: parsed.riskLevel,
           createdBy: parsed.createdBy,
           actorLabel: parsed.actorLabel,
         },
@@ -367,6 +389,7 @@ export class TaskService {
         this.repository
           .listDependenciesByTaskId(task.id)
           .map((dependency) => dependency.dependsOnTaskId),
+        this.repository.listReviewsByTaskId(task.id),
       ),
     );
   }
@@ -385,6 +408,7 @@ export class TaskService {
       this.repository
         .listDependenciesByTaskId(task.id)
         .map((dependency) => dependency.dependsOnTaskId),
+      this.repository.listReviewsByTaskId(task.id),
     );
   }
 
@@ -511,6 +535,10 @@ export class TaskService {
       transaction.updateTask(task.id, {
         status: "ready",
         queuePosition,
+        riskLevel: parsed.riskLevel ?? task.riskLevel,
+        riskConfirmed: true,
+        riskConfirmedBy: parsed.actorLabel ?? "developer",
+        riskConfirmedAt: now,
         updatedAt: now,
       });
       transaction.insertTaskEvent({
@@ -663,6 +691,9 @@ export class TaskService {
       if (task.status !== "ready") {
         throw new InvalidTaskStateError(task.id, "ready", task.status);
       }
+      if (!task.riskConfirmed) {
+        throw new TaskRiskNotConfirmedError(task.id);
+      }
       const dependencies = transaction
         .listDependenciesByProjectId(project.id)
         .filter((dependency) => dependency.taskId === task.id);
@@ -789,6 +820,28 @@ export class TaskService {
         completedAt: null,
         updatedAt: now,
       });
+      const previousReviews = transaction.listReviewsByTaskId(task.id);
+      const reviewRound =
+        (previousReviews.at(-1)?.reviewRound ?? 0) + 1;
+      transaction.insertReview({
+        id: this.generateId(),
+        projectId: task.projectId,
+        taskId: task.id,
+        reviewRound,
+        commitSha: parsed.commitSha,
+        branch: parsed.branch ?? null,
+        worktree: parsed.worktree ?? null,
+        reviewRunId: null,
+        status: "pending",
+        reviewerActorLabel: null,
+        summary: null,
+        findings: [],
+        verificationEvidence: [],
+        createdAt: now,
+        startedAt: null,
+        concludedAt: null,
+        updatedAt: now,
+      });
       transaction.insertTaskEvent({
         id: this.generateId(),
         projectId: task.projectId,
@@ -809,6 +862,193 @@ export class TaskService {
     return this.getTask({ projectId: project.id, taskId: parsed.taskId });
   }
 
+  startReview(input: StartReviewInput): StartedReview {
+    const parsed = startReviewInputSchema.parse(input);
+    const project = this.requireProject(parsed.projectId);
+    let reviewRunId = "";
+
+    this.repository.transaction((transaction) => {
+      const task = transaction.findTaskById(parsed.taskId);
+      if (!task || task.projectId !== project.id) {
+        throw new TaskNotFoundError(parsed.taskId);
+      }
+      if (task.status !== "in_review") {
+        throw new InvalidTaskStateError(task.id, "in_review", task.status);
+      }
+      if (task.activeReviewRunId) {
+        throw new InvalidTaskStateError(task.id, "an unclaimed review", "claimed");
+      }
+
+      const review = transaction.listReviewsByTaskId(task.id).at(-1);
+      if (!review || review.status !== "pending") {
+        throw new InvalidTaskStateError(task.id, "a pending review", review?.status ?? "missing");
+      }
+
+      reviewRunId = this.generateId();
+      const now = this.now().toISOString();
+      const reviewerActorLabel = parsed.actorLabel ?? "agent";
+      transaction.updateTask(task.id, {
+        activeReviewRunId: reviewRunId,
+        updatedAt: now,
+      });
+      transaction.updateReview(review.id, {
+        status: "in_progress",
+        reviewRunId,
+        reviewerActorLabel,
+        startedAt: now,
+        updatedAt: now,
+      });
+      transaction.insertTaskEvent({
+        id: this.generateId(),
+        projectId: task.projectId,
+        taskId: task.id,
+        runId: reviewRunId,
+        type: "review_started",
+        summary: `Started AI review for commit ${review.commitSha}.`,
+        completedWork: null,
+        currentStep: null,
+        nextStep: null,
+        blocker: null,
+        requiredAction: null,
+        handoffNote: task.handoffNote,
+        actorLabel: reviewerActorLabel,
+        createdAt: now,
+      });
+    });
+
+    return {
+      reviewRunId,
+      task: this.getTask({ projectId: project.id, taskId: parsed.taskId }),
+    };
+  }
+
+  completeReview(input: CompleteReviewInput): TaskDetails {
+    const parsed = completeReviewInputSchema.parse(input);
+    const project = this.requireProject(parsed.projectId);
+    this.repository.transaction((transaction) => {
+      const task = transaction.findTaskById(parsed.taskId);
+      if (!task || task.projectId !== project.id) {
+        throw new TaskNotFoundError(parsed.taskId);
+      }
+      if (task.status !== "in_review") {
+        throw new InvalidTaskStateError(task.id, "in_review", task.status);
+      }
+      if (task.activeReviewRunId !== parsed.reviewRunId) {
+        throw new ReviewRunOwnershipError(task.id);
+      }
+
+      const review = transaction.listReviewsByTaskId(task.id).at(-1);
+      if (
+        !review ||
+        review.status !== "in_progress" ||
+        review.reviewRunId !== parsed.reviewRunId
+      ) {
+        throw new ReviewRunOwnershipError(task.id);
+      }
+      if (parsed.decision === "passed" && parsed.verificationEvidence.length === 0) {
+        throw new ReviewEvidenceIncompleteError(task.id);
+      }
+
+      const now = this.now().toISOString();
+      const actorLabel =
+        parsed.actorLabel ?? review.reviewerActorLabel ?? "agent";
+      transaction.updateReview(review.id, {
+        status: parsed.decision,
+        reviewerActorLabel: actorLabel,
+        summary: parsed.summary,
+        findings: parsed.findings,
+        verificationEvidence: parsed.verificationEvidence,
+        concludedAt: now,
+        updatedAt: now,
+      });
+
+      if (parsed.decision === "changes_requested") {
+        transaction
+          .listByProjectId(project.id)
+          .filter((candidate) => candidate.status === "ready")
+          .forEach((candidate) => {
+            transaction.updateTask(candidate.id, {
+              queuePosition: (candidate.queuePosition ?? 0) + 1,
+              updatedAt: now,
+            });
+          });
+        transaction.updateTask(task.id, {
+          status: "ready",
+          queuePosition: 1,
+          activeRunId: null,
+          activeReviewRunId: null,
+          currentStep: null,
+          nextStep: null,
+          blocker: null,
+          requiredAction: null,
+          handoffNote: formatReviewFeedback(parsed.summary, parsed.findings),
+          completedAt: null,
+          updatedAt: now,
+        });
+        transaction.insertTaskEvent({
+          id: this.generateId(),
+          projectId: task.projectId,
+          taskId: task.id,
+          runId: parsed.reviewRunId,
+          type: "changes_requested",
+          summary: parsed.summary,
+          completedWork: null,
+          currentStep: null,
+          nextStep: null,
+          blocker: null,
+          requiredAction: null,
+          handoffNote: formatReviewFeedback(parsed.summary, parsed.findings),
+          actorLabel,
+          createdAt: now,
+        });
+        return;
+      }
+
+      transaction.updateTask(task.id, {
+        activeReviewRunId: null,
+        ...(task.riskLevel === "low" && task.riskConfirmed
+          ? { status: "completed" as const, completedAt: now }
+          : {}),
+        updatedAt: now,
+      });
+      transaction.insertTaskEvent({
+        id: this.generateId(),
+        projectId: task.projectId,
+        taskId: task.id,
+        runId: parsed.reviewRunId,
+        type: "review_passed",
+        summary: parsed.summary,
+        completedWork: null,
+        currentStep: null,
+        nextStep: null,
+        blocker: null,
+        requiredAction: null,
+        handoffNote: task.handoffNote,
+        actorLabel,
+        createdAt: now,
+      });
+      if (task.riskLevel === "low" && task.riskConfirmed) {
+        transaction.insertTaskEvent({
+          id: this.generateId(),
+          projectId: task.projectId,
+          taskId: task.id,
+          runId: parsed.reviewRunId,
+          type: "completed",
+          summary: "Task automatically completed after low-risk AI review passed.",
+          completedWork: null,
+          currentStep: null,
+          nextStep: null,
+          blocker: null,
+          requiredAction: null,
+          handoffNote: task.handoffNote,
+          actorLabel,
+          createdAt: now,
+        });
+      }
+    });
+    return this.getTask({ projectId: project.id, taskId: parsed.taskId });
+  }
+
   approveTask(input: ApproveTaskInput): TaskDetails {
     const parsed = approveTaskInputSchema.parse(input);
     const project = this.requireProject(parsed.projectId);
@@ -820,11 +1060,20 @@ export class TaskService {
       if (task.status !== "in_review") {
         throw new InvalidTaskStateError(task.id, "in_review", task.status);
       }
+      const review = transaction.listReviewsByTaskId(task.id).at(-1);
+      if (!review || review.status !== "passed") {
+        throw new InvalidTaskStateError(
+          task.id,
+          "an AI review with a passed conclusion",
+          review?.status ?? "missing",
+        );
+      }
       const now = this.now().toISOString();
       transaction.updateTask(task.id, {
         status: "completed",
         queuePosition: null,
         activeRunId: null,
+        activeReviewRunId: null,
         currentStep: null,
         nextStep: null,
         blocker: null,
@@ -863,7 +1112,26 @@ export class TaskService {
       if (task.status !== "in_review") {
         throw new InvalidTaskStateError(task.id, "in_review", task.status);
       }
+      if (
+        parsed.reviewRunId &&
+        task.activeReviewRunId !== parsed.reviewRunId
+      ) {
+        throw new ReviewRunOwnershipError(task.id);
+      }
       const now = this.now().toISOString();
+      const review = transaction.listReviewsByTaskId(task.id).at(-1);
+      const feedback = formatReviewFeedback(parsed.feedback, parsed.findings);
+      if (review) {
+        transaction.updateReview(review.id, {
+          status: "changes_requested",
+          reviewerActorLabel:
+            parsed.actorLabel ?? review.reviewerActorLabel ?? "developer",
+          summary: feedback,
+          findings: parsed.findings,
+          concludedAt: now,
+          updatedAt: now,
+        });
+      }
       transaction
         .listByProjectId(project.id)
         .filter((candidate) => candidate.status === "ready")
@@ -877,11 +1145,12 @@ export class TaskService {
         status: "ready",
         queuePosition: 1,
         activeRunId: null,
+        activeReviewRunId: null,
         currentStep: null,
         nextStep: null,
         blocker: null,
         requiredAction: null,
-        handoffNote: parsed.feedback,
+        handoffNote: feedback,
         completedAt: null,
         updatedAt: now,
       });
@@ -889,15 +1158,15 @@ export class TaskService {
         id: this.generateId(),
         projectId: task.projectId,
         taskId: task.id,
-        runId: null,
+        runId: parsed.reviewRunId ?? task.activeReviewRunId,
         type: "changes_requested",
-        summary: parsed.feedback,
+        summary: feedback,
         completedWork: null,
         currentStep: null,
         nextStep: null,
         blocker: null,
         requiredAction: null,
-        handoffNote: parsed.feedback,
+        handoffNote: feedback,
         actorLabel: parsed.actorLabel ?? "developer",
         createdAt: now,
       });
@@ -930,6 +1199,7 @@ export class TaskService {
         status: "ready",
         queuePosition: 1,
         activeRunId: null,
+        activeReviewRunId: null,
         currentStep: null,
         nextStep: null,
         blocker: null,
@@ -1170,6 +1440,7 @@ export class TaskService {
     timestamp: string,
   ): TaskRecord {
     const status = input.status ?? (input.createdBy === "agent" ? "inbox" : "ready");
+    const riskConfirmed = status === "ready" && input.createdBy === "developer";
 
     if (status !== "ready" && input.queuePosition !== undefined) {
       throw new InvalidTaskError(
@@ -1186,6 +1457,10 @@ export class TaskService {
       status,
       queuePosition: input.queuePosition ?? null,
       ...emptyTaskFields,
+      riskLevel: input.riskLevel ?? "medium",
+      riskConfirmed,
+      riskConfirmedBy: riskConfirmed ? input.actorLabel ?? "developer" : null,
+      riskConfirmedAt: riskConfirmed ? timestamp : null,
       sourceTaskId: input.sourceTaskId ?? null,
       createdBy: input.createdBy,
       createdAt: timestamp,
@@ -1221,6 +1496,16 @@ function compareQueuePosition(left: TaskRecord, right: TaskRecord): number {
     left.createdAt.localeCompare(right.createdAt) ||
     left.id.localeCompare(right.id)
   );
+}
+
+function formatReviewFeedback(
+  summary: string | undefined,
+  findings: ReviewFinding[],
+): string {
+  const findingText = findings
+    .map((finding) => `${finding.issue} 建议：${finding.suggestion}`)
+    .join("；");
+  return [summary, findingText].filter(Boolean).join("；");
 }
 
 function compareCreatedAt(left: TaskRecord, right: TaskRecord): number {

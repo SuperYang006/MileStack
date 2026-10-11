@@ -14,6 +14,8 @@ export type TaskEventType =
   | "resumed"
   | "released"
   | "submitted_for_review"
+  | "review_started"
+  | "review_passed"
   | "approved"
   | "changes_requested"
   | "reopened"
@@ -46,6 +48,41 @@ export interface TaskSummary {
   requiredAction: string | null;
   updatedAt: string;
   completedAt: string | null;
+  riskLevel?: RiskLevel;
+  riskConfirmed?: boolean;
+}
+
+export type RiskLevel = "low" | "medium" | "high";
+
+export interface ReviewFinding {
+  issue: string;
+  suggestion: string;
+  severity: RiskLevel;
+}
+
+export interface VerificationEvidence {
+  command: string;
+  result: string;
+}
+
+export interface TaskReview {
+  id: string;
+  projectId: string;
+  taskId: string;
+  reviewRound: number;
+  commitSha: string;
+  branch: string | null;
+  worktree: string | null;
+  reviewRunId: string | null;
+  status: "pending" | "in_progress" | "passed" | "changes_requested";
+  reviewerActorLabel: string | null;
+  summary: string | null;
+  findings: ReviewFinding[];
+  verificationEvidence: VerificationEvidence[];
+  createdAt: string;
+  startedAt: string | null;
+  concludedAt: string | null;
+  updatedAt: string;
 }
 
 export interface TaskModel {
@@ -64,6 +101,11 @@ export interface TaskModel {
   handoffNote: string | null;
   sourceTaskId: string | null;
   activeRunId: string | null;
+  activeReviewRunId?: string | null;
+  riskLevel?: RiskLevel;
+  riskConfirmed?: boolean;
+  riskConfirmedBy?: string | null;
+  riskConfirmedAt?: string | null;
   createdBy: "developer" | "agent";
   createdAt: string;
   updatedAt: string;
@@ -100,6 +142,7 @@ export interface ProjectStatus {
 export interface TaskDetails {
   task: TaskModel;
   events: TaskEvent[];
+  reviews?: TaskReview[];
 }
 
 export interface CreateTaskPayload {
@@ -108,6 +151,7 @@ export interface CreateTaskPayload {
   acceptanceCriteria?: string[];
   dependencyIds?: string[];
   status?: "inbox" | "ready";
+  riskLevel?: RiskLevel;
 }
 
 export interface EditInboxTaskPayload {

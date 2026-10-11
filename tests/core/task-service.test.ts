@@ -14,6 +14,8 @@ import {
   TaskDependenciesNotEditableError,
   TaskHasDependentsError,
   TaskNotFoundError,
+  TaskRiskNotConfirmedError,
+  ReviewRunOwnershipError,
 } from "../../src/core/errors.js";
 import { TaskService } from "../../src/core/task-service.js";
 import { createSqliteRepository } from "../../src/db/sqlite-repository.js";
@@ -99,6 +101,7 @@ describe("TaskService", () => {
       objective: "Expose project facts",
       acceptanceCriteria: ["Status query works"],
       queuePosition: 1,
+      riskLevel: "low",
       createdBy: "developer",
     });
     const agentTask = service.createTask({
@@ -114,6 +117,7 @@ describe("TaskService", () => {
     });
 
     expect(developerTask.task.status).toBe("ready");
+    expect(developerTask.task.riskLevel).toBe("low");
     expect(developerTask.task.queuePosition).toBe(1);
     expect(developerTask.events).toHaveLength(1);
     expect(developerTask.events[0]?.type).toBe("created");
@@ -579,6 +583,7 @@ describe("TaskService", () => {
       projectId: "project-1",
       taskId: task.task.id,
       runId: started.runId,
+      commitSha: "1111111111111111111111111111111111111111",
       summary: "Implementation complete.",
       completedWork: ["Implemented and tested the lifecycle"],
     });
@@ -588,6 +593,20 @@ describe("TaskService", () => {
       type: "submitted_for_review",
       actorLabel: "gpt-5-codex",
     });
+    const reviewRun = service.startReview({
+      projectId: "project-1",
+      taskId: task.task.id,
+      actorLabel: "review-agent",
+    });
+    const reviewed = service.completeReview({
+      projectId: "project-1",
+      taskId: task.task.id,
+      reviewRunId: reviewRun.reviewRunId,
+      decision: "passed",
+      summary: "Review passed.",
+      verificationEvidence: [{ command: "pnpm test", result: "passed" }],
+    });
+    expect(reviewed.task.status).toBe("in_review");
     const approved = service.approveTask({
       projectId: "project-1",
       taskId: task.task.id,
@@ -879,6 +898,7 @@ describe("TaskService", () => {
       projectId: "project-1",
       taskId: task.task.id,
       runId: firstRun.runId,
+      commitSha: "2222222222222222222222222222222222222222",
       summary: "Implementation is ready for review.",
       completedWork: ["Implemented the feature"],
     });
@@ -921,7 +941,20 @@ describe("TaskService", () => {
       projectId: "project-1",
       taskId: task.task.id,
       runId: secondRun.runId,
+      commitSha: "3333333333333333333333333333333333333333",
       summary: "Updated implementation is ready.",
+    });
+    const secondReviewRun = service.startReview({
+      projectId: "project-1",
+      taskId: task.task.id,
+    });
+    service.completeReview({
+      projectId: "project-1",
+      taskId: task.task.id,
+      reviewRunId: secondReviewRun.reviewRunId,
+      decision: "passed",
+      summary: "Updated review passed.",
+      verificationEvidence: [{ command: "pnpm test", result: "passed" }],
     });
     const approved = service.approveTask({
       projectId: "project-1",
@@ -952,7 +985,20 @@ describe("TaskService", () => {
       projectId: "project-1",
       taskId: dependent.task.id,
       runId: dependentSecondRun.runId,
+      commitSha: "4444444444444444444444444444444444444444",
       summary: "Dependent implementation ready.",
+    });
+    const dependentReviewRun = service.startReview({
+      projectId: "project-1",
+      taskId: dependent.task.id,
+    });
+    service.completeReview({
+      projectId: "project-1",
+      taskId: dependent.task.id,
+      reviewRunId: dependentReviewRun.reviewRunId,
+      decision: "passed",
+      summary: "Dependent review passed.",
+      verificationEvidence: [{ command: "pnpm test", result: "passed" }],
     });
     service.approveTask({ projectId: "project-1", taskId: dependent.task.id });
     expect(dependentSubmitted.task.status).toBe("in_review");
@@ -976,6 +1022,198 @@ describe("TaskService", () => {
     });
     expect(service.getProjectStatus({ projectId: "project-1" }).recentlyCompleted.map((item) => item.id))
       .not.toContain(task.task.id);
+    database.close();
+  });
+
+  it("requires developer risk confirmation and serializes independent review claims", async () => {
+    const projectRoot = createTemporaryProject();
+    const { database, service } = await createService(projectRoot);
+    const discovered = service.createTask({
+      projectId: "project-1",
+      title: "Low-risk review",
+      createdBy: "agent",
+    });
+    const confirmed = service.confirmTask({
+      projectId: "project-1",
+      taskId: discovered.task.id,
+      riskLevel: "low",
+      actorLabel: "developer",
+    });
+    expect(confirmed.task).toMatchObject({
+      riskLevel: "low",
+      riskConfirmed: true,
+    });
+
+    const unconfirmed = service.createTask({
+      projectId: "project-1",
+      title: "Unconfirmed risk",
+      createdBy: "agent",
+      status: "ready",
+      queuePosition: 2,
+    });
+    expect(() =>
+      service.startTask({ projectId: "project-1", taskId: unconfirmed.task.id }),
+    ).toThrow(TaskRiskNotConfirmedError);
+
+    const started = service.startTask({
+      projectId: "project-1",
+      taskId: discovered.task.id,
+      actorLabel: "implementer",
+    });
+    service.submitForReview({
+      projectId: "project-1",
+      taskId: discovered.task.id,
+      runId: started.runId,
+      commitSha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      branch: "feature/low-risk",
+      worktree: "/tmp/milestack-low-risk",
+      summary: "Ready for independent review.",
+    });
+
+    const secondDatabase = await ensureDatabase(projectRoot);
+    const secondService = new TaskService(createSqliteRepository(secondDatabase), {
+      now: () => new Date("2026-10-11T12:00:00.000Z"),
+      generateId: (() => {
+        let counter = 0;
+        return () => `review-claim-${++counter}`;
+      })(),
+    });
+    const claims = await Promise.allSettled([
+      Promise.resolve().then(() =>
+        service.startReview({
+          projectId: "project-1",
+          taskId: discovered.task.id,
+          actorLabel: "reviewer-a",
+        }),
+      ),
+      Promise.resolve().then(() =>
+        secondService.startReview({
+          projectId: "project-1",
+          taskId: discovered.task.id,
+          actorLabel: "reviewer-b",
+        }),
+      ),
+    ]);
+    expect(claims.filter((claim) => claim.status === "fulfilled")).toHaveLength(1);
+    expect(claims.filter((claim) => claim.status === "rejected")).toHaveLength(1);
+
+    const winningClaim = claims.find(
+      (claim): claim is PromiseFulfilledResult<ReturnType<TaskService["startReview"]>> =>
+        claim.status === "fulfilled",
+    );
+    if (!winningClaim) throw new Error("Expected one review claim to succeed.");
+    expect(() =>
+      service.completeReview({
+        projectId: "project-1",
+        taskId: discovered.task.id,
+        reviewRunId: "stale-review-run",
+        decision: "passed",
+        summary: "Stale review",
+        verificationEvidence: [{ command: "pnpm test", result: "passed" }],
+      }),
+    ).toThrow(ReviewRunOwnershipError);
+
+    const completed = service.completeReview({
+      projectId: "project-1",
+      taskId: discovered.task.id,
+      reviewRunId: winningClaim.value.reviewRunId,
+      decision: "passed",
+      summary: "Low-risk review passed.",
+      verificationEvidence: [{ command: "pnpm test", result: "passed" }],
+    });
+    expect(completed.task.status).toBe("completed");
+    expect(completed.reviews.at(-1)).toMatchObject({
+      commitSha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      branch: "feature/low-risk",
+      worktree: "/tmp/milestack-low-risk",
+      status: "passed",
+      reviewerActorLabel: expect.stringMatching(/^reviewer-/),
+    });
+    expect(completed.task.activeReviewRunId).toBeNull();
+
+    secondDatabase.close();
+    database.close();
+  });
+
+  it("keeps medium-risk review passes awaiting developer approval and records structured changes", async () => {
+    const { database, service } = await createService(createTemporaryProject());
+    const task = service.createTask({
+      projectId: "project-1",
+      title: "Medium-risk review",
+      createdBy: "developer",
+      status: "ready",
+      riskLevel: "medium",
+    });
+    const started = service.startTask({ projectId: "project-1", taskId: task.task.id });
+    service.submitForReview({
+      projectId: "project-1",
+      taskId: task.task.id,
+      runId: started.runId,
+      commitSha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      summary: "Ready for review.",
+    });
+    const review = service.startReview({ projectId: "project-1", taskId: task.task.id });
+    const passed = service.completeReview({
+      projectId: "project-1",
+      taskId: task.task.id,
+      reviewRunId: review.reviewRunId,
+      decision: "passed",
+      summary: "Review passed but needs developer approval.",
+      verificationEvidence: [{ command: "pnpm test", result: "passed" }],
+    });
+    expect(passed.task.status).toBe("in_review");
+    expect(() => service.startReview({ projectId: "project-1", taskId: task.task.id })).toThrow(
+      InvalidTaskStateError,
+    );
+    expect(service.approveTask({ projectId: "project-1", taskId: task.task.id }).task.status).toBe(
+      "completed",
+    );
+
+    const changedTask = service.createTask({
+      projectId: "project-1",
+      title: "Structured changes",
+      createdBy: "developer",
+      status: "ready",
+      queuePosition: 2,
+    });
+    const changedRun = service.startTask({ projectId: "project-1", taskId: changedTask.task.id });
+    service.submitForReview({
+      projectId: "project-1",
+      taskId: changedTask.task.id,
+      runId: changedRun.runId,
+      commitSha: "cccccccccccccccccccccccccccccccccccccccc",
+      summary: "Needs review.",
+    });
+    const changedReview = service.startReview({
+      projectId: "project-1",
+      taskId: changedTask.task.id,
+    });
+    const returned = service.completeReview({
+      projectId: "project-1",
+      taskId: changedTask.task.id,
+      reviewRunId: changedReview.reviewRunId,
+      decision: "changes_requested",
+      summary: "Please address the finding.",
+      findings: [
+        {
+          issue: "Missing rollback coverage",
+          suggestion: "Add a regression test for rollback.",
+          severity: "high",
+        },
+      ],
+    });
+    expect(returned.task).toMatchObject({
+      status: "ready",
+      activeRunId: null,
+      activeReviewRunId: null,
+    });
+    expect(returned.reviews.at(-1)?.findings).toEqual([
+      {
+        issue: "Missing rollback coverage",
+        suggestion: "Add a regression test for rollback.",
+        severity: "high",
+      },
+    ]);
     database.close();
   });
 });

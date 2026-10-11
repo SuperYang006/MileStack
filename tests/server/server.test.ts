@@ -409,6 +409,7 @@ describe("HTTP API Server", () => {
       projectId: serverInstance.context.project.id,
       taskId: created.id,
       runId: firstRun.runId,
+      commitSha: "5555555555555555555555555555555555555555",
       summary: "Ready for review",
     });
 
@@ -446,7 +447,20 @@ describe("HTTP API Server", () => {
       projectId: serverInstance.context.project.id,
       taskId: created.id,
       runId: secondRun.runId,
+      commitSha: "6666666666666666666666666666666666666666",
       summary: "Updated and ready for review",
+    });
+    const reviewRun = serverInstance.context.service.startReview({
+      projectId: serverInstance.context.project.id,
+      taskId: created.id,
+    });
+    serverInstance.context.service.completeReview({
+      projectId: serverInstance.context.project.id,
+      taskId: created.id,
+      reviewRunId: reviewRun.reviewRunId,
+      decision: "passed",
+      summary: "AI review passed",
+      verificationEvidence: [{ command: "pnpm test", result: "passed" }],
     });
 
     const approve = await serverInstance.app.inject({

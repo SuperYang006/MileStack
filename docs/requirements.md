@@ -239,7 +239,7 @@ V0 必须提供一个低成本的旧项目接入入口。初始化操作应：
 
 ## 7. 状态模型
 
-V0 只保留五种任务状态：
+V0 保留六种任务状态：
 
 | 状态 | 含义 |
 | --- | --- |
@@ -247,6 +247,7 @@ V0 只保留五种任务状态：
 | `ready` | 已确认并排入待办队列；依赖完成后可以领取 |
 | `running` | 已被某次 AI 执行领取并正在推进 |
 | `blocked` | 当前因输入、依赖或外部条件无法继续 |
+| `in_review` | AI 已提交固定制品，正在等待 AI 审核或开发者最终批准 |
 | `completed` | 已完成并满足任务验收条件 |
 
 主要状态流转：
@@ -257,7 +258,11 @@ V0 只保留五种任务状态：
 领取任务：ready -> running
 执行阻塞：running -> blocked -> running
 释放任务：running/blocked -> ready
-完成任务：running/blocked -> completed
+提交审核：running -> in_review
+审核退回：in_review -> ready
+低风险 AI 审核通过：in_review -> completed
+中高风险 AI 审核通过：in_review -> in_review
+开发者最终批准：in_review -> completed
 ```
 
 `blocked` 默认保留当前执行权。AI 可以在阻塞解除后继续，也可以通过 `release_task` 释放给其他执行者。
@@ -290,7 +295,7 @@ type Task = {
   objective?: string
   acceptanceCriteria?: string[]
 
-  status: "inbox" | "ready" | "running" | "blocked" | "completed"
+  status: "inbox" | "ready" | "running" | "blocked" | "in_review" | "completed"
   queuePosition?: number
   dependencyIds: string[]
 
@@ -302,6 +307,11 @@ type Task = {
 
   sourceTaskId?: string
   activeRunId?: string
+  activeReviewRunId?: string
+  riskLevel: "low" | "medium" | "high"
+  riskConfirmed: boolean
+  riskConfirmedBy?: string
+  riskConfirmedAt?: string
   createdBy: "developer" | "agent"
 
   createdAt: string
@@ -339,6 +349,8 @@ type TaskEvent = {
     | "resumed"
     | "released"
     | "submitted_for_review"
+    | "review_started"
+    | "review_passed"
     | "approved"
     | "changes_requested"
     | "reopened"
@@ -359,6 +371,38 @@ type TaskEvent = {
 
 `TaskEvent` 只追加、不覆盖。修改 `Task` 当前状态和追加对应事件必须在同一个数据库事务中完成。
 
+### 8.4 TaskReview
+
+每次 `submit_for_review` 创建一条不可覆盖的审核记录，固定本轮制品和审核结论：
+
+```ts
+type TaskReview = {
+  id: string
+  taskId: string
+  reviewRound: number
+  commitSha: string       // 完整 40 位 commit SHA
+  branch?: string
+  worktree?: string
+  reviewRunId?: string
+  status: "pending" | "in_progress" | "passed" | "changes_requested"
+  reviewerActorLabel?: string
+  summary?: string
+  findings: Array<{
+    issue: string
+    suggestion: string
+    severity: "low" | "medium" | "high"
+  }>
+  verificationEvidence: Array<{
+    command: string
+    result: string
+  }>
+  createdAt: string
+  startedAt?: string
+  concludedAt?: string
+  updatedAt: string
+}
+```
+
 ## 9. 执行身份与并发规则
 
 V0 不建立稳定的 Agent 身份系统。
@@ -366,17 +410,30 @@ V0 不建立稳定的 Agent 身份系统。
 `start_task` 成功时生成一个 `runId`，代表某一次任务领取和执行。后续执行类写操作必须携带该 `runId`。
 
 ```text
-start_task -> 生成 runId -> update/block/release/submit_for_review 携带 runId -> in_review -> developer approve/request-changes
+start_task -> 生成 runId -> update/block/release/submit_for_review 携带 runId -> in_review
+  -> start_review -> 生成独立 reviewRunId -> complete_review
+  -> low 自动完成 / medium、high 等待 developer approve
 ```
 
 服务端必须保证：
 
 - `start_task` 以原子操作领取任务；
 - `start_task` 拒绝存在未完成依赖的任务；
+- 任务风险必须先由开发者确认；AI 不能通过任务输入自行确认或降低风险等级；
 - 同一个 `ready` 任务只能被一个调用成功领取；
 - 写操作的 `runId` 必须等于任务的 `activeRunId`；
 - 任务释放或提交审核后，旧 `runId` 立即失效；退回返工或重新打开后必须重新 `start_task`；
+- `start_review` 使用独立的 `reviewRunId` 原子领取审核；审核结束或退回后立即失效；
+- 新一轮提交创建新的审核记录并使旧审核结论不再决定当前任务；
 - 旧执行者的迟到更新不能修改任务。
+
+风险策略：
+
+| 风险 | 默认行为 | AI 审核通过后 |
+| --- | --- | --- |
+| `low` | 必须由开发者确认风险，且审核必须提供验证命令与结果 | 自动进入 `completed` |
+| `medium` | 默认等级，必须由开发者确认 | 标记 `review_passed`，保持 `in_review`，等待开发者批准 |
+| `high` | 必须由开发者明确确认 | 标记 `review_passed`，保持 `in_review`，等待开发者批准 |
 
 Agent 名称、提供方或会话信息不是必需身份，只能作为可选的 `actorLabel` 用于页面展示。
 
@@ -402,7 +459,9 @@ V0 暂不实现请求幂等键和通用乐观锁；出现实际重复写入或�
 - `block_task`：报告阻塞原因和所需行动；
 - `resume_task`：阻塞解除后，使用当前 `runId` 恢复执行；
 - `release_task`：释放任务、写入交接说明并返回 `ready`；
-- `submit_for_review`：提交完成摘要并将任务设为 `in_review`；只有开发者批准后才进入 `completed`。
+- `submit_for_review`：提交完成摘要和固定 commit 制品并将任务设为 `in_review`；低风险任务在 AI 审核通过且验证证据完整时自动完成，中高风险任务仍等待开发者批准。
+- `start_review`：原子领取最新审核记录并返回独立 `reviewRunId`；
+- `complete_review`：提交审核摘要、结构化 findings 和验证证据，按风险策略自动完成或等待开发者批准。
 
 所有更新优先表达：
 
@@ -428,7 +487,9 @@ MileStack 应提供一段可加入项目 `AGENTS.md` 或其他 AI 指令文件�
 - 阻塞解除且继续原任务时调用 resume_task。
 - 执行中发现的新工作通过 create_task 记录到 inbox，不要写入新的任务文档。
 - 无法继续或需要其他 AI 接手时调用 release_task，并写明交接信息。
-- 只有在验收条件满足且验证完成后调用 `submit_for_review`；提交后等待开发者审核批准。
+- 只有在验收条件满足且验证完成后调用 `submit_for_review`；提交后按风险策略等待 AI 审核或开发者最终批准。
+- 审核时先调用 `start_review` 保存 `reviewRunId`；提交 `complete_review` 时必须携带该凭证和验证命令结果。
+- 不得自行修改或降低任务风险等级；发现问题时使用结构化 finding 记录问题和修改建议。
 ```
 
 ## 12. V0 页面

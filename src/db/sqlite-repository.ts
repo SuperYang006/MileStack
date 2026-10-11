@@ -7,9 +7,16 @@ import type {
   TaskDependencyRecord,
   TaskEventRecord,
   TaskRecord,
+  ReviewRecord,
   TaskRepositoryTransaction,
 } from "../core/repositories.js";
-import { taskDependencies, taskEvents, projects, tasks } from "./schema.js";
+import {
+  taskDependencies,
+  taskEvents,
+  taskReviews,
+  projects,
+  tasks,
+} from "./schema.js";
 import type { MileStackDatabase } from "./open-database.js";
 
 function mapProject(project: typeof projects.$inferSelect): ProjectRecord {
@@ -22,6 +29,14 @@ function mapTask(task: typeof tasks.$inferSelect): TaskRecord {
 
 function mapTaskEvent(event: typeof taskEvents.$inferSelect): TaskEventRecord {
   return event;
+}
+
+function mapReview(review: typeof taskReviews.$inferSelect): ReviewRecord {
+  return {
+    ...review,
+    findings: review.findings ?? [],
+    verificationEvidence: review.verificationEvidence ?? [],
+  };
 }
 
 function mapTaskDependency(
@@ -82,6 +97,16 @@ export class SqliteRepository implements MileStackRepository {
       .map(mapTaskEvent);
   }
 
+  listReviewsByTaskId(taskId: string): ReviewRecord[] {
+    return this.db
+      .select()
+      .from(taskReviews)
+      .where(eq(taskReviews.taskId, taskId))
+      .orderBy(asc(taskReviews.reviewRound))
+      .all()
+      .map(mapReview);
+  }
+
   listDependenciesByProjectId(projectId: string): TaskDependencyRecord[] {
     return this.db
       .select({
@@ -128,6 +153,14 @@ export class SqliteRepository implements MileStackRepository {
             .orderBy(asc(taskEvents.createdAt))
             .all()
             .map(mapTaskEvent),
+        listReviewsByTaskId: (taskId) =>
+          this.db
+            .select()
+            .from(taskReviews)
+            .where(eq(taskReviews.taskId, taskId))
+            .orderBy(asc(taskReviews.reviewRound))
+            .all()
+            .map(mapReview),
         listDependenciesByProjectId: (projectId) =>
           this.db
             .select({
@@ -162,6 +195,17 @@ export class SqliteRepository implements MileStackRepository {
           mapTask(this.db.insert(tasks).values(task).returning().get()),
         insertTaskEvent: (event) =>
           mapTaskEvent(this.db.insert(taskEvents).values(event).returning().get()),
+        insertReview: (review) =>
+          mapReview(this.db.insert(taskReviews).values(review).returning().get()),
+        updateReview: (id, changes) => {
+          const updated = this.db
+            .update(taskReviews)
+            .set(changes)
+            .where(eq(taskReviews.id, id))
+            .returning()
+            .get();
+          return updated ? mapReview(updated) : null;
+        },
         replaceTaskDependencies: (taskId, dependencyIds) => {
           this.db
             .delete(taskDependencies)
