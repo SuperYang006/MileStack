@@ -263,6 +263,7 @@ export class TaskService {
           queuePosition: parsed.queuePosition,
           sourceTaskId: parsed.sourceTaskId,
           createdBy: parsed.createdBy,
+          actorLabel: parsed.actorLabel,
         },
       ],
     });
@@ -327,7 +328,7 @@ export class TaskService {
           task.id,
           taskInput.dependencyIds ?? [],
         );
-        transaction.insertTaskEvent(this.createdEventFor(task));
+        transaction.insertTaskEvent(this.createdEventFor(task, taskInput.actorLabel));
       }
     });
 
@@ -398,7 +399,7 @@ export class TaskService {
         blocker: task.blocker,
         requiredAction: task.requiredAction,
         handoffNote: task.handoffNote,
-        actorLabel: null,
+        actorLabel: "developer",
         createdAt: this.now().toISOString(),
       });
     });
@@ -555,7 +556,7 @@ export class TaskService {
         blocker: null,
         requiredAction: null,
         handoffNote: null,
-        actorLabel: parsed.actorLabel ?? null,
+        actorLabel: parsed.actorLabel ?? "agent",
         createdAt: now,
       });
     });
@@ -583,6 +584,9 @@ export class TaskService {
       const blocker = parsed.blocker === undefined ? task.blocker : parsed.blocker;
       const requiredAction = parsed.requiredAction === undefined ? task.requiredAction : parsed.requiredAction;
       const handoffNote = parsed.handoffNote === undefined ? task.handoffNote : parsed.handoffNote;
+      const actorLabel =
+        parsed.actorLabel ??
+        this.actorLabelForRun(transaction, task.id, parsed.runId);
       transaction.updateTask(task.id, {
         currentStep,
         nextStep,
@@ -604,7 +608,7 @@ export class TaskService {
         blocker,
         requiredAction,
         handoffNote,
-        actorLabel: parsed.actorLabel ?? null,
+        actorLabel,
         createdAt: now,
       });
     });
@@ -624,6 +628,9 @@ export class TaskService {
         throw new InvalidTaskStateError(task.id, "running or blocked", task.status);
       }
       const now = this.now().toISOString();
+      const actorLabel =
+        parsed.actorLabel ??
+        this.actorLabelForRun(transaction, task.id, parsed.runId);
       transaction.updateTask(task.id, {
         status: "completed",
         queuePosition: null,
@@ -648,7 +655,7 @@ export class TaskService {
         blocker: null,
         requiredAction: null,
         handoffNote: task.handoffNote,
-        actorLabel: parsed.actorLabel ?? null,
+        actorLabel,
         createdAt: now,
       });
     });
@@ -668,6 +675,9 @@ export class TaskService {
       }
       this.requireRunOwner(task, parsed.runId);
       const now = this.now().toISOString();
+      const actorLabel =
+        parsed.actorLabel ??
+        this.actorLabelForRun(transaction, task.id, parsed.runId);
       transaction
         .listByProjectId(project.id)
         .filter((candidate) => candidate.status === "ready")
@@ -701,7 +711,7 @@ export class TaskService {
         blocker: null,
         requiredAction: null,
         handoffNote: parsed.handoffNote ?? task.handoffNote,
-        actorLabel: parsed.actorLabel ?? "developer",
+        actorLabel,
         createdAt: now,
       });
     });
@@ -712,6 +722,21 @@ export class TaskService {
     if (!task.activeRunId || task.activeRunId !== runId) {
       throw new TaskRunOwnershipError(task.id);
     }
+  }
+
+  private actorLabelForRun(
+    transaction: TaskRepositoryTransaction,
+    taskId: string,
+    runId: string,
+  ): string {
+    const events = transaction.listEventsByTaskId(taskId);
+    for (let index = events.length - 1; index >= 0; index -= 1) {
+      const event = events[index];
+      if (event?.type === "started" && event.runId === runId) {
+        return event.actorLabel ?? "agent";
+      }
+    }
+    return "agent";
   }
 
   getProjectStatus(input: GetProjectStatusInput): ProjectStatus {
@@ -788,7 +813,7 @@ export class TaskService {
     };
   }
 
-  private createdEventFor(task: TaskRecord): TaskEventRecord {
+  private createdEventFor(task: TaskRecord, actorLabel?: string): TaskEventRecord {
     return {
       id: this.generateId(),
       projectId: task.projectId,
@@ -802,7 +827,7 @@ export class TaskService {
       blocker: null,
       requiredAction: null,
       handoffNote: null,
-      actorLabel: null,
+      actorLabel: actorLabel ?? task.createdBy,
       createdAt: task.createdAt,
     };
   }

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   getProjectStatusInputSchema,
   getTaskInputSchema,
+  createTaskInputSchema,
   projectStatusSchema,
   taskDetailsSchema,
 } from "../../src/core/query-contract.js";
@@ -88,5 +89,16 @@ describe("core query contract", () => {
         unexpected: true,
       }),
     ).toThrow();
+  });
+
+  it("accepts an optional actor label when creating a task", () => {
+    expect(
+      createTaskInputSchema.parse({
+        projectId: "project-1",
+        title: "Record model identity",
+        createdBy: "agent",
+        actorLabel: "gpt-5-codex",
+      }),
+    ).toMatchObject({ actorLabel: "gpt-5-codex" });
   });
 });

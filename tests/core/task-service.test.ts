@@ -103,6 +103,12 @@ describe("TaskService", () => {
       projectId: "project-1",
       title: "Record follow-up",
       createdBy: "agent",
+      actorLabel: "gpt-5-codex",
+    });
+    const fallbackAgentTask = service.createTask({
+      projectId: "project-1",
+      title: "Record fallback follow-up",
+      createdBy: "agent",
     });
 
     expect(developerTask.task.status).toBe("ready");
@@ -112,6 +118,9 @@ describe("TaskService", () => {
     expect(agentTask.task.status).toBe("inbox");
     expect(agentTask.task.queuePosition).toBeNull();
     expect(agentTask.events[0]?.summary).toBe("Task created: Record follow-up");
+    expect(developerTask.events[0]?.actorLabel).toBe("developer");
+    expect(agentTask.events[0]?.actorLabel).toBe("gpt-5-codex");
+    expect(fallbackAgentTask.events[0]?.actorLabel).toBe("agent");
     database.close();
   });
 
@@ -427,10 +436,17 @@ describe("TaskService", () => {
       .where(eq(tasks.id, prerequisite.task.id))
       .run();
 
-    const started = service.startTask({ projectId: "project-1", taskId: task.task.id });
+    const started = service.startTask({
+      projectId: "project-1",
+      taskId: task.task.id,
+      actorLabel: "gpt-5-codex",
+    });
     expect(started.runId).toBeTruthy();
     expect(started.task.task.status).toBe("running");
-    expect(started.task.events.at(-1)?.type).toBe("started");
+    expect(started.task.events.at(-1)).toMatchObject({
+      type: "started",
+      actorLabel: "gpt-5-codex",
+    });
 
     const updated = service.updateTask({
       projectId: "project-1",
@@ -442,7 +458,11 @@ describe("TaskService", () => {
       completedWork: ["Designed the state transition"],
     });
     expect(updated.task.currentStep).toBe("Implementing service");
-    expect(updated.events.at(-1)).toMatchObject({ type: "progress", runId: started.runId });
+    expect(updated.events.at(-1)).toMatchObject({
+      type: "progress",
+      runId: started.runId,
+      actorLabel: "gpt-5-codex",
+    });
 
     const finished = service.finishTask({
       projectId: "project-1",
@@ -453,7 +473,10 @@ describe("TaskService", () => {
     });
     expect(finished.task.status).toBe("completed");
     expect(finished.task.activeRunId).toBeNull();
-    expect(finished.events.at(-1)?.type).toBe("completed");
+    expect(finished.events.at(-1)).toMatchObject({
+      type: "completed",
+      actorLabel: "gpt-5-codex",
+    });
     expect(() =>
       service.updateTask({
         projectId: "project-1",

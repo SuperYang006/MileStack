@@ -140,6 +140,7 @@ export const createTaskInputSchema = z
     queuePosition: z.number().int().nonnegative().optional(),
     sourceTaskId: identifierSchema.optional(),
     createdBy: z.enum(["developer", "agent"]),
+    actorLabel: z.string().trim().min(1).optional(),
   })
   .strict();
 

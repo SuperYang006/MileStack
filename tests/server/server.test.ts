@@ -49,11 +49,15 @@ describe("HTTP API Server", () => {
         title: "Test Task 1",
         objective: "Testing HTTP API creation",
         status: "inbox",
+        createdBy: "agent",
+        actorLabel: "untrusted-model-label",
       },
     });
     expect(createRes.statusCode).toBe(201);
     const created = JSON.parse(createRes.payload);
     expect(created.task.title).toBe("Test Task 1");
+    expect(created.task.createdBy).toBe("developer");
+    expect(created.events[0].actorLabel).toBe("developer");
 
     // 2. Query status
     const statusRes = await serverInstance.app.inject({
@@ -81,6 +85,14 @@ describe("HTTP API Server", () => {
     expect(afterStatus.inbox.length).toBe(0);
     expect(afterStatus.next.length).toBe(1);
     expect(afterStatus.next[0].id).toBe(created.task.id);
+    const confirmed = serverInstance.context.service.getTask({
+      projectId: serverInstance.context.project.id,
+      taskId: created.task.id,
+    });
+    expect(confirmed.events.at(-1)).toMatchObject({
+      type: "confirmed",
+      actorLabel: "developer",
+    });
   });
 
   it("supports batch task creation via POST /api/tasks/batch", async () => {
@@ -136,6 +148,10 @@ describe("HTTP API Server", () => {
       taskId: readyTask.task.id,
     });
     expect(started.task.task.status).toBe("running");
+    expect(started.task.events.at(-1)).toMatchObject({
+      type: "started",
+      actorLabel: "agent",
+    });
 
     const release = await serverInstance.app.inject({
       method: "POST",
@@ -147,6 +163,9 @@ describe("HTTP API Server", () => {
       taskId: readyTask.task.id,
     });
     expect(released.task.status).toBe("ready");
-    expect(released.events.at(-1)?.type).toBe("released");
+    expect(released.events.at(-1)).toMatchObject({
+      type: "released",
+      actorLabel: "developer",
+    });
   });
 });

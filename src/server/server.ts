@@ -122,7 +122,8 @@ export async function createHttpServer(
         acceptanceCriteria: body.acceptanceCriteria,
         dependencyIds: body.dependencyIds,
         status: body.status,
-        createdBy: body.createdBy || "developer",
+        createdBy: "developer",
+        actorLabel: "developer",
       });
       return reply.status(201).send(created);
     } catch (err) {
@@ -151,7 +152,8 @@ export async function createHttpServer(
           acceptanceCriteria: t.acceptanceCriteria,
           dependencyIds: t.dependencyIds,
           status: t.status,
-          createdBy: t.createdBy || "developer",
+          createdBy: "developer",
+          actorLabel: "developer",
         })),
       });
       return reply.status(201).send(created);
@@ -173,7 +175,7 @@ export async function createHttpServer(
     const projectId = body.projectId || context.project.id;
 
     try {
-      context.service.confirmTask({ projectId, taskId: id });
+      context.service.confirmTask({ projectId, taskId: id, actorLabel: "developer" });
       return { success: true };
     } catch (err) {
       if (err instanceof TaskNotFoundError) {

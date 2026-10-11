@@ -15,6 +15,13 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
   onClose,
   isLoading = false,
 }) => {
+  const latestClaim = details
+    ? [...details.events].reverse().find((event) => event.type === "started")
+    : undefined;
+  const latestClaimLabel = latestClaim
+    ? latestClaim.actorLabel ?? "agent"
+    : "未领取";
+
   if (!isOpen) return null;
 
   return (
@@ -88,6 +95,10 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                 <div>
                   <span className="text-zinc-500">创建者:</span>{" "}
                   <span className="text-zinc-300">{details.task.createdBy}</span>
+                </div>
+                <div>
+                  <span className="text-zinc-500">最近领取者:</span>{" "}
+                  <span className="text-cyan-300">{latestClaimLabel}</span>
                 </div>
                 <div>
                   <span className="text-zinc-500">活跃执行 ID:</span>{" "}

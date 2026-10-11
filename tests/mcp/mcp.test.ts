@@ -86,22 +86,34 @@ describe("MCP task tools", () => {
         title: "Record discovered work",
         objective: "Keep the new work in inbox until reviewed",
         acceptanceCriteria: ["It appears in the inbox"],
+        actorLabel: "gpt-5-codex",
       },
     });
     const createdTask = JSON.parse(textContent(created));
     expect(createdTask.task.status).toBe("inbox");
     expect(createdTask.task.dependencyIds).toEqual([]);
+    expect(createdTask.events[0]).toMatchObject({
+      type: "created",
+      actorLabel: "gpt-5-codex",
+    });
 
     const batch = await client.callTool({
       name: "create_tasks",
       arguments: {
         tasks: [
           { title: "First discovered item" },
-          { title: "Second discovered item", dependencyIds: [createdTask.task.id] },
+          {
+            title: "Second discovered item",
+            dependencyIds: [createdTask.task.id],
+            actorLabel: "batch-model",
+          },
         ],
       },
     });
-    expect(JSON.parse(textContent(batch))).toHaveLength(2);
+    const batchTasks = JSON.parse(textContent(batch));
+    expect(batchTasks).toHaveLength(2);
+    expect(batchTasks[0].events[0].actorLabel).toBe("agent");
+    expect(batchTasks[1].events[0].actorLabel).toBe("batch-model");
 
     const details = await client.callTool({
       name: "get_task",
@@ -144,10 +156,14 @@ describe("MCP task tools", () => {
 
     const started = await client.callTool({
       name: "start_task",
-      arguments: { taskId: ready.task.id },
+        arguments: { taskId: ready.task.id, actorLabel: "gpt-5-codex" },
     });
     const startedValue = JSON.parse(textContent(started));
     expect(startedValue.runId).toBeTruthy();
+    expect(startedValue.task.events.at(-1)).toMatchObject({
+      type: "started",
+      actorLabel: "gpt-5-codex",
+    });
 
     const updated = await client.callTool({
       name: "update_task",
@@ -159,7 +175,9 @@ describe("MCP task tools", () => {
         nextStep: "Finish",
       },
     });
-    expect(JSON.parse(textContent(updated)).task.currentStep).toBe("Working");
+    const updatedValue = JSON.parse(textContent(updated));
+    expect(updatedValue.task.currentStep).toBe("Working");
+    expect(updatedValue.events.at(-1).actorLabel).toBe("gpt-5-codex");
 
     const finished = await client.callTool({
       name: "finish_task",
@@ -169,7 +187,9 @@ describe("MCP task tools", () => {
         summary: "Done",
       },
     });
-    expect(JSON.parse(textContent(finished)).task.status).toBe("completed");
+    const finishedValue = JSON.parse(textContent(finished));
+    expect(finishedValue.task.status).toBe("completed");
+    expect(finishedValue.events.at(-1).actorLabel).toBe("gpt-5-codex");
 
     await client.close();
     await server.close();

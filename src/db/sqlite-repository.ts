@@ -120,6 +120,14 @@ export class SqliteRepository implements MileStackRepository {
             .orderBy(asc(tasks.createdAt))
             .all()
             .map(mapTask),
+        listEventsByTaskId: (taskId) =>
+          this.db
+            .select()
+            .from(taskEvents)
+            .where(eq(taskEvents.taskId, taskId))
+            .orderBy(asc(taskEvents.createdAt))
+            .all()
+            .map(mapTaskEvent),
         listDependenciesByProjectId: (projectId) =>
           this.db
             .select({

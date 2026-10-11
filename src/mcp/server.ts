@@ -52,19 +52,19 @@ const toolDefinitions: Tool[] = [
   {
     name: "create_task",
     description:
-      "Record one newly discovered task in the project's inbox. Agent-created tasks are not ready until a developer confirms and orders them.",
+      "Record one newly discovered task in the project's inbox. Optionally include the model label. Agent-created tasks are not ready until a developer confirms and orders them.",
     inputSchema: toJSONSchema(agentCreateTaskSchema) as Tool["inputSchema"],
   },
   {
     name: "create_tasks",
     description:
-      "Record several newly discovered inbox tasks atomically. If one input is invalid, the complete batch is rolled back.",
+      "Record several newly discovered inbox tasks atomically, optionally including model labels. If one input is invalid, the complete batch is rolled back.",
     inputSchema: toJSONSchema(agentCreateTasksSchema) as Tool["inputSchema"],
   },
   {
     name: "start_task",
     description:
-      "Atomically claim a runnable ready task. Save the returned runId and include it in every subsequent execution update.",
+      "Atomically claim a runnable ready task. Optionally include the model label. Save the returned runId and include it in every subsequent execution update.",
     inputSchema: toJSONSchema(startTaskArgumentsSchema) as Tool["inputSchema"],
   },
   {

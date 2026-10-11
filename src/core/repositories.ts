@@ -77,6 +77,7 @@ export interface TaskEventRepository {
 export interface TaskRepositoryTransaction {
   findTaskById(id: string): TaskRecord | null;
   listByProjectId(projectId: string): TaskRecord[];
+  listEventsByTaskId(taskId: string): TaskEventRecord[];
   listDependenciesByProjectId(projectId: string): TaskDependencyRecord[];
   updateTask(
     id: string,
