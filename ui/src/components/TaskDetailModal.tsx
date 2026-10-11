@@ -1,6 +1,120 @@
-import React from "react";
-import { X, GitCommit, CheckCircle2 } from "lucide-react";
-import type { TaskDetails } from "../types";
+import React, { useState, useEffect } from "react";
+import { X, GitCommit, CheckCircle2, Clock, Timer } from "lucide-react";
+import type { TaskDetails, TaskEvent } from "../types";
+
+function formatDuration(ms: number): string {
+  if (ms < 0) return "0秒";
+  const totalSeconds = Math.floor(ms / 1000);
+  if (totalSeconds < 60) {
+    return `${totalSeconds}秒`;
+  }
+  const totalMinutes = Math.floor(totalSeconds / 60);
+  const remainingSeconds = totalSeconds % 60;
+  if (totalMinutes < 60) {
+    return `${totalMinutes}分${remainingSeconds > 0 ? `${remainingSeconds}秒` : ""}`;
+  }
+  const totalHours = Math.floor(totalMinutes / 60);
+  const remainingMinutes = totalMinutes % 60;
+  if (totalHours < 24) {
+    return `${totalHours}小时${remainingMinutes > 0 ? `${remainingMinutes}分` : ""}`;
+  }
+  const days = Math.floor(totalHours / 24);
+  const remainingHours = totalHours % 24;
+  return `${days}天${remainingHours > 0 ? `${remainingHours}小时` : ""}`;
+}
+
+interface RunExecution {
+  runId: string;
+  actorLabel?: string | null;
+  startedAt: Date;
+  endedAt?: Date;
+  status: "running" | "completed" | "released" | "incomplete";
+  durationMs: number | null;
+}
+
+function computeRunExecutions(
+  events: TaskEvent[],
+  activeRunId: string | null,
+  taskStatus: string,
+  nowMs: number,
+): RunExecution[] {
+  const runEventsMap = new Map<string, TaskEvent[]>();
+  const runOrder: string[] = [];
+
+  for (const event of events) {
+    if (!event.runId) continue;
+    if (!runEventsMap.has(event.runId)) {
+      runEventsMap.set(event.runId, []);
+      runOrder.push(event.runId);
+    }
+    runEventsMap.get(event.runId)!.push(event);
+  }
+
+  const runs: RunExecution[] = [];
+
+  for (const runId of runOrder) {
+    const runEvts = runEventsMap.get(runId)!;
+    const startedEvent = runEvts.find((e) => e.type === "started");
+    if (!startedEvent) {
+      runs.push({
+        runId,
+        actorLabel: runEvts[0]?.actorLabel ?? null,
+        startedAt: new Date(NaN),
+        status: "incomplete",
+        durationMs: null,
+      });
+      continue;
+    }
+
+    const startMs = new Date(startedEvent.createdAt).getTime();
+    if (isNaN(startMs)) {
+      runs.push({
+        runId,
+        actorLabel: startedEvent.actorLabel,
+        startedAt: new Date(NaN),
+        status: "incomplete",
+        durationMs: null,
+      });
+      continue;
+    }
+
+    const completedEvent = runEvts.find((e) => e.type === "completed");
+    const releasedEvent = runEvts.find((e) => e.type === "released");
+    const terminalEvent = completedEvent || releasedEvent;
+
+    if (terminalEvent) {
+      const endMs = new Date(terminalEvent.createdAt).getTime();
+      const isValidEnd = !isNaN(endMs) && endMs >= startMs;
+      runs.push({
+        runId,
+        actorLabel: terminalEvent.actorLabel || startedEvent.actorLabel,
+        startedAt: new Date(startMs),
+        endedAt: isValidEnd ? new Date(endMs) : undefined,
+        status: terminalEvent.type === "completed" ? "completed" : "released",
+        durationMs: isValidEnd ? Math.max(0, endMs - startMs) : null,
+      });
+    } else if (activeRunId === runId && (taskStatus === "running" || taskStatus === "blocked")) {
+      const elapsed = Math.max(0, nowMs - startMs);
+      runs.push({
+        runId,
+        actorLabel: startedEvent.actorLabel,
+        startedAt: new Date(startMs),
+        status: "running",
+        durationMs: elapsed,
+      });
+    } else {
+      runs.push({
+        runId,
+        actorLabel: startedEvent.actorLabel,
+        startedAt: new Date(startMs),
+        status: "incomplete",
+        durationMs: null,
+      });
+    }
+  }
+
+  return runs;
+}
 
 interface TaskDetailModalProps {
   details: TaskDetails | null;
@@ -15,6 +129,23 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
   onClose,
   isLoading = false,
 }) => {
+  const [now, setNow] = useState(() => Date.now());
+
+  const isRunning =
+    isOpen &&
+    Boolean(
+      details?.task.activeRunId &&
+        (details.task.status === "running" || details.task.status === "blocked"),
+    );
+
+  useEffect(() => {
+    if (!isRunning) return;
+    const interval = setInterval(() => {
+      setNow(Date.now());
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [isRunning]);
+
   const latestClaim = details
     ? [...details.events].reverse().find((event) => event.type === "started")
     : undefined;
@@ -22,6 +153,23 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
     ? latestClaim.actorLabel ?? "agent"
     : "未领取";
 
+  const runs = details
+    ? computeRunExecutions(
+        details.events,
+        details.task.activeRunId,
+        details.task.status,
+        now,
+      )
+    : [];
+
+  const activeRun = details?.task.activeRunId
+    ? runs.find((r) => r.runId === details.task.activeRunId && r.status === "running")
+    : undefined;
+
+  const primaryRun =
+    activeRun ||
+    [...runs].reverse().find((r) => r.status === "completed") ||
+    runs[runs.length - 1];
   if (!isOpen) return null;
 
   return (
@@ -90,32 +238,122 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                 </div>
               )}
 
-              {/* Execution Metadata */}
-              <div className="grid grid-cols-2 gap-2 text-[11px] bg-zinc-900/60 p-2.5 rounded border border-zinc-850">
-                <div>
-                  <span className="text-zinc-500">创建者:</span>{" "}
-                  <span className="text-zinc-300">{details.task.createdBy}</span>
+              {/* Execution Duration & Metadata */}
+              <div className="bg-zinc-900/60 p-3 rounded border border-zinc-850 space-y-2.5">
+                {primaryRun && primaryRun.durationMs !== null && (
+                  <div className="flex items-center justify-between p-2.5 rounded bg-zinc-950/80 border border-zinc-800">
+                    <div className="flex items-center space-x-2.5">
+                      {primaryRun.status === "running" ? (
+                        <Timer className="w-4 h-4 text-cyan-400 animate-pulse shrink-0" />
+                      ) : (
+                        <Clock className="w-4 h-4 text-emerald-400 shrink-0" />
+                      )}
+                      <div>
+                        <div className="flex items-center space-x-1.5">
+                          <span className="font-semibold text-zinc-200">
+                            {primaryRun.status === "running"
+                              ? "当前执行自然耗时"
+                              : primaryRun.status === "completed"
+                              ? "最终完成自然耗时"
+                              : "上次释放前耗时"}
+                          </span>
+                          {primaryRun.status === "running" && (
+                            <span className="text-[10px] text-cyan-400 font-normal">
+                              [实时计时]
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[10px] text-zinc-500">
+                          自然流逝时间，包含阻塞与等待
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0 pl-2">
+                      <div className="font-mono text-xs font-bold text-cyan-300">
+                        {formatDuration(primaryRun.durationMs)}
+                      </div>
+                      <div className="text-[10px] text-zinc-500 font-mono">
+                        Run: {primaryRun.runId.slice(0, 8)}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-2 text-[11px]">
+                  <div>
+                    <span className="text-zinc-500">创建者:</span>{" "}
+                    <span className="text-zinc-300">{details.task.createdBy}</span>
+                  </div>
+                  <div>
+                    <span className="text-zinc-500">最近领取者:</span>{" "}
+                    <span className="text-cyan-300">{latestClaimLabel}</span>
+                  </div>
+                  <div>
+                    <span className="text-zinc-500">活跃执行 ID:</span>{" "}
+                    <span className="text-cyan-400">{details.task.activeRunId || "无"}</span>
+                  </div>
+                  <div>
+                    <span className="text-zinc-500">创建时间:</span>{" "}
+                    <span className="text-zinc-400">
+                      {new Date(details.task.createdAt).toLocaleString()}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-zinc-500">更新时间:</span>{" "}
+                    <span className="text-zinc-400">
+                      {new Date(details.task.updatedAt).toLocaleString()}
+                    </span>
+                  </div>
                 </div>
-                <div>
-                  <span className="text-zinc-500">最近领取者:</span>{" "}
-                  <span className="text-cyan-300">{latestClaimLabel}</span>
-                </div>
-                <div>
-                  <span className="text-zinc-500">活跃执行 ID:</span>{" "}
-                  <span className="text-cyan-400">{details.task.activeRunId || "无"}</span>
-                </div>
-                <div>
-                  <span className="text-zinc-500">创建时间:</span>{" "}
-                  <span className="text-zinc-400">
-                    {new Date(details.task.createdAt).toLocaleString()}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-zinc-500">更新时间:</span>{" "}
-                  <span className="text-zinc-400">
-                    {new Date(details.task.updatedAt).toLocaleString()}
-                  </span>
-                </div>
+
+                {runs.length > 1 && (
+                  <div className="pt-2 border-t border-zinc-800 space-y-1.5">
+                    <div className="text-[10px] text-zinc-500 font-semibold uppercase tracking-wider flex items-center justify-between">
+                      <span>各次执行记录 ({runs.length}次领取)</span>
+                      <span className="text-zinc-600 font-normal lowercase">按 runId 独立配对</span>
+                    </div>
+                    <div className="space-y-1">
+                      {runs.map((r, i) => (
+                        <div
+                          key={r.runId}
+                          className="flex items-center justify-between text-[11px] bg-zinc-950/60 px-2 py-1 rounded border border-zinc-850"
+                        >
+                          <div className="flex items-center space-x-1.5 min-w-0">
+                            <span className="text-zinc-500">#{i + 1}</span>
+                            <span className="font-mono text-zinc-400 truncate">
+                              {r.runId.slice(0, 8)}...
+                            </span>
+                            <span
+                              className={`text-[10px] px-1 py-0.2 rounded font-mono ${
+                                r.status === "completed"
+                                  ? "text-emerald-400 bg-emerald-950/60"
+                                  : r.status === "running"
+                                  ? "text-cyan-400 bg-cyan-950/60"
+                                  : r.status === "released"
+                                  ? "text-amber-400 bg-amber-950/60"
+                                  : "text-zinc-500 bg-zinc-900"
+                              }`}
+                            >
+                              {r.status === "completed"
+                                ? "已完成"
+                                : r.status === "running"
+                                ? "执行中"
+                                : r.status === "released"
+                                ? "已释放"
+                                : "未结束"}
+                            </span>
+                            {r.actorLabel && (
+                              <span className="text-zinc-500 text-[10px]">· {r.actorLabel}</span>
+                            )}
+                          </div>
+                          <span className="font-mono text-zinc-200 shrink-0">
+                            {r.durationMs !== null ? formatDuration(r.durationMs) : "数据缺失"}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Event Stream */}
