@@ -106,6 +106,28 @@ export const getTaskInputSchema = z
   })
   .strict();
 
+export const createTaskInputSchema = z
+  .object({
+    projectId: identifierSchema,
+    title: z.string().trim().min(1),
+    objective: z.string().trim().min(1).optional(),
+    acceptanceCriteria: z.array(z.string().trim().min(1)).default([]),
+    status: z.enum(["inbox", "ready"]).optional(),
+    queuePosition: z.number().int().nonnegative().optional(),
+    sourceTaskId: identifierSchema.optional(),
+    createdBy: z.enum(["developer", "agent"]),
+  })
+  .strict();
+
+export const createTasksInputSchema = z
+  .object({
+    projectId: identifierSchema,
+    tasks: z
+      .array(createTaskInputSchema.omit({ projectId: true }))
+      .min(1),
+  })
+  .strict();
+
 export type ProjectSummary = z.infer<typeof projectSummarySchema>;
 export type TaskSummary = z.infer<typeof taskSummarySchema>;
 export type TaskDetails = z.infer<typeof taskDetailsSchema>;
@@ -114,3 +136,5 @@ export type GetProjectStatusInput = z.infer<
   typeof getProjectStatusInputSchema
 >;
 export type GetTaskInput = z.infer<typeof getTaskInputSchema>;
+export type CreateTaskInput = z.input<typeof createTaskInputSchema>;
+export type CreateTasksInput = z.input<typeof createTasksInputSchema>;

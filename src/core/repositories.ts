@@ -50,18 +50,28 @@ export type TaskEventRecord = {
 };
 
 export interface ProjectRepository {
-  findById(id: string): ProjectRecord | null;
+  findProjectById(id: string): ProjectRecord | null;
   findByRootPath(rootPath: string): ProjectRecord | null;
   insert(project: ProjectRecord): ProjectRecord;
 }
 
 export interface TaskRepository {
-  findById(id: string): TaskRecord | null;
-  insert(task: TaskRecord): TaskRecord;
-  update(task: TaskRecord): TaskRecord;
+  findTaskById(id: string): TaskRecord | null;
+  listByProjectId(projectId: string): TaskRecord[];
 }
 
 export interface TaskEventRepository {
   listByTaskId(taskId: string): TaskEventRecord[];
-  insert(event: TaskEventRecord): TaskEventRecord;
+}
+
+export interface TaskRepositoryTransaction {
+  insertTask(task: TaskRecord): TaskRecord;
+  insertTaskEvent(event: TaskEventRecord): TaskEventRecord;
+}
+
+export interface MileStackRepository
+  extends ProjectRepository,
+    TaskRepository,
+    TaskEventRepository {
+  transaction<T>(work: (transaction: TaskRepositoryTransaction) => T): T;
 }
