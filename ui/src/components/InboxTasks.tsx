@@ -1,7 +1,7 @@
 import React from "react";
-import { Check, Trash2, ArrowUpRight, Edit3 } from "lucide-react";
+import { Check, Trash2, Edit3 } from "lucide-react";
 import type { TaskSummary } from "../types";
-import { CopyTaskIdButton } from "./CopyTaskIdButton";
+import { TaskIdBadge } from "./CopyTaskIdButton";
 
 interface InboxTasksProps {
   tasks: TaskSummary[];
@@ -49,10 +49,7 @@ export const InboxTasks: React.FC<InboxTasksProps> = ({
                   onClick={() => onSelectTask(task.id)}
                 >
                   <div className="flex items-center space-x-2">
-                    <span className="font-mono text-[11px] text-zinc-500 flex items-center space-x-1">
-                      <span>{task.id}</span>
-                      <CopyTaskIdButton taskId={task.id} />
-                    </span>
+                    <TaskIdBadge taskId={task.id} variant="muted" />
                     <h3 className="text-xs font-mono text-zinc-300 group-hover:text-amber-300 transition-colors truncate">
                       {task.title}
                     </h3>
@@ -75,26 +72,20 @@ export const InboxTasks: React.FC<InboxTasksProps> = ({
                         e.stopPropagation();
                         onEditTask(task);
                       }}
-                      className="p-1 text-zinc-500 hover:text-amber-300 rounded transition-colors"
+                      className="p-1 text-zinc-500 hover:text-amber-300 rounded transition-all opacity-0 group-hover:opacity-100"
                       title="编辑任务草稿"
                     >
                       <Edit3 className="w-3.5 h-3.5" />
                     </button>
                   )}
                   <button
-                    onClick={() => onSelectTask(task.id)}
-                    className="p-1 text-zinc-500 hover:text-zinc-300 rounded transition-colors"
-                    title="查看详情"
-                  >
-                    <ArrowUpRight className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    onClick={() => {
+                    onClick={(e) => {
+                      e.stopPropagation();
                       if (window.confirm(`确认删除 Inbox 任务“${task.title}”？`)) {
                         onDeleteTask(task.id);
                       }
                     }}
-                    className="p-1 text-zinc-500 hover:text-rose-400 rounded transition-colors"
+                    className="p-1 text-zinc-500 hover:text-rose-400 rounded transition-all opacity-0 group-hover:opacity-100"
                     title="删除任务"
                   >
                     <Trash2 className="w-3.5 h-3.5" />

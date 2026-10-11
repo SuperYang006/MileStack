@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { X, GitCommit, CheckCircle2, Clock, Timer, Edit3 } from "lucide-react";
 import type { TaskDetails, TaskEvent } from "../types";
-import { CopyTaskIdButton } from "./CopyTaskIdButton";
+import { TaskIdBadge } from "./CopyTaskIdButton";
 
 function formatDuration(ms: number): string {
   if (ms < 0) return "0秒";
@@ -187,10 +187,17 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
         {/* Header */}
         <div className="px-5 py-3 border-b border-zinc-800 flex items-center justify-between">
           <div className="flex items-center space-x-2.5">
-            <span className="font-mono text-xs px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-zinc-300 font-semibold flex items-center space-x-1.5">
-              <span>{details?.task.id ?? "LOADING..."}</span>
-              {details?.task && <CopyTaskIdButton taskId={details.task.id} />}
-            </span>
+            {details?.task ? (
+              <TaskIdBadge
+                taskId={details.task.id}
+                variant="zinc"
+                className="text-xs px-2 py-0.5 font-semibold"
+              />
+            ) : (
+              <span className="font-mono text-xs px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-zinc-500">
+                LOADING...
+              </span>
+            )}
             <span
               className={`font-mono text-[11px] px-2 py-0.5 rounded uppercase font-medium ${
                 details?.task.status === "completed"

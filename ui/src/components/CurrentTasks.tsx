@@ -1,7 +1,7 @@
 import React from "react";
-import { CornerDownRight, ArrowRight, LogOut, ArrowUpRight, Activity } from "lucide-react";
+import { LogOut, Activity } from "lucide-react";
 import type { TaskSummary } from "../types";
-import { CopyTaskIdButton } from "./CopyTaskIdButton";
+import { TaskIdBadge } from "./CopyTaskIdButton";
 
 interface CurrentTasksProps {
   tasks: TaskSummary[];
@@ -47,7 +47,7 @@ export const CurrentTasks: React.FC<CurrentTasksProps> = ({
       <div className="p-3">
         {tasks.length === 0 ? (
           <div className="py-6 text-center text-zinc-600 font-mono text-xs">
-            // 暂无执行中任务，Agent 空闲
+            暂无执行中任务，Agent 空闲
           </div>
         ) : (
           <div className="space-y-2.5">
@@ -59,83 +59,78 @@ export const CurrentTasks: React.FC<CurrentTasksProps> = ({
                   key={task.id}
                   className="p-3.5 rounded-md bg-zinc-950/70 border border-zinc-800 hover:border-zinc-700 transition-colors"
                 >
-                  <div className="flex items-start justify-between gap-3">
+                  {/* Top bar: ID and Heartbeat status */}
+                  <div className="flex items-center justify-between gap-2 pb-2">
+                    <TaskIdBadge taskId={task.id} variant="cyan" />
+
+                    <div className="flex items-center space-x-1.5 text-[11px] font-mono shrink-0">
+                      <span
+                        className={`w-1.5 h-1.5 rounded-full ${
+                          timeInfo.isFresh
+                            ? "bg-cyan-400 shadow-[0_0_6px_rgba(34,211,238,0.9)] animate-pulse"
+                            : "bg-amber-400/80"
+                        }`}
+                      />
+                      <span className={timeInfo.isFresh ? "text-cyan-400/90" : "text-zinc-500"}>
+                        {timeInfo.isFresh
+                          ? `心跳正常 · ${timeInfo.label}`
+                          : `暂未更新 · ${timeInfo.label}`}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Middle bar: Title and Action */}
+                  <div className="flex items-start justify-between gap-3 pt-0.5">
                     <div
-                      className="flex-1 min-w-0 cursor-pointer group"
+                      className="flex-1 min-w-0 cursor-pointer group/title"
                       onClick={() => onSelectTask(task.id)}
                     >
-                      <div className="flex items-center space-x-2 mb-2 flex-wrap gap-y-1">
-                        <span className="font-mono text-xs px-1.5 py-0.5 rounded bg-cyan-950/60 border border-cyan-800/60 text-cyan-300 flex items-center space-x-1">
-                          <span>{task.id}</span>
-                          <CopyTaskIdButton taskId={task.id} />
-                        </span>
-                        <h3 className="text-xs font-mono font-semibold text-zinc-100 group-hover:text-cyan-400 transition-colors truncate">
-                          {task.title}
-                        </h3>
-
-                        {/* Heartbeat pulse tag */}
-                        <div className="ml-auto flex items-center space-x-1.5 text-[10px] font-mono shrink-0 pl-2">
-                          <span
-                            className={`w-1.5 h-1.5 rounded-full ${
-                              timeInfo.isFresh
-                                ? "bg-cyan-400 shadow-[0_0_6px_rgba(34,211,238,0.9)] animate-pulse"
-                                : "bg-amber-400/80"
-                            }`}
-                          />
-                          <span
-                            className={
-                              timeInfo.isFresh ? "text-cyan-400/90" : "text-zinc-500"
-                            }
-                          >
-                            {timeInfo.isFresh
-                              ? `心跳正常 · ${timeInfo.label}`
-                              : `暂未更新 · ${timeInfo.label}`}
-                          </span>
-                        </div>
-                      </div>
-
-                      {(task.currentStep || task.nextStep) && (
-                        <div className="space-y-1 text-xs font-mono mt-2">
-                          {task.currentStep && (
-                            <div className="flex items-start space-x-2 text-zinc-300">
-                              <span className="text-cyan-400 shrink-0 select-none">&gt;</span>
-                              <div className="flex-1 min-w-0">
-                                <span className="text-zinc-500 mr-1.5">当前步骤:</span>
-                                <span className="text-zinc-200">{task.currentStep}</span>
-                              </div>
-                            </div>
-                          )}
-                          {task.nextStep && (
-                            <div className="flex items-start space-x-2 text-zinc-400">
-                              <span className="text-emerald-400 shrink-0 select-none">&gt;&gt;</span>
-                              <div className="flex-1 min-w-0">
-                                <span className="text-zinc-500 mr-1.5">下一步骤:</span>
-                                <span className="text-zinc-300">{task.nextStep}</span>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      )}
+                      <h3 className="text-xs font-mono font-semibold text-zinc-100 group-hover/title:text-cyan-400 transition-colors leading-relaxed">
+                        {task.title}
+                      </h3>
                     </div>
 
-                    <div className="flex items-center space-x-1.5 shrink-0 pt-0.5">
+                    <div className="flex items-center shrink-0">
                       <button
-                        onClick={() => onReleaseTask(task.id)}
-                        className="inline-flex items-center space-x-1 px-2 py-1 text-[11px] font-mono text-zinc-400 hover:text-amber-300 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded transition-colors"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onReleaseTask(task.id);
+                        }}
+                        className="inline-flex items-center space-x-1 px-2 py-0.5 text-[11px] font-mono text-zinc-400 hover:text-amber-300 bg-zinc-900 hover:bg-zinc-850 border border-zinc-800 rounded transition-colors"
                         title="手动释放任务，回退至就绪队列"
                       >
                         <LogOut className="w-3 h-3" />
                         <span>释放</span>
                       </button>
-                      <button
-                        onClick={() => onSelectTask(task.id)}
-                        className="p-1 text-zinc-500 hover:text-zinc-300 rounded transition-colors"
-                        title="查看详情"
-                      >
-                        <ArrowUpRight className="w-3.5 h-3.5" />
-                      </button>
                     </div>
                   </div>
+
+                  {/* Bottom bar: Execution Steps */}
+                  {(task.currentStep || task.nextStep) && (
+                    <div
+                      className="space-y-1.5 text-xs font-mono mt-2.5 pt-2 border-t border-zinc-850/80 cursor-pointer"
+                      onClick={() => onSelectTask(task.id)}
+                    >
+                      {task.currentStep && (
+                        <div className="flex items-start space-x-2 text-zinc-300">
+                          <span className="text-cyan-400 font-bold shrink-0 select-none">&gt;</span>
+                          <div className="flex-1 min-w-0">
+                            <span className="text-zinc-500 mr-1.5 select-none">当前步骤:</span>
+                            <span className="text-zinc-200">{task.currentStep}</span>
+                          </div>
+                        </div>
+                      )}
+                      {task.nextStep && (
+                        <div className="flex items-start space-x-2 text-zinc-400">
+                          <span className="text-emerald-400 font-bold shrink-0 select-none">&gt;&gt;</span>
+                          <div className="flex-1 min-w-0">
+                            <span className="text-zinc-500 mr-1.5 select-none">下一步骤:</span>
+                            <span className="text-zinc-300">{task.nextStep}</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })}

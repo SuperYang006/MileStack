@@ -1,6 +1,6 @@
 import React from "react";
 import {
-  ArrowUpRight,
+  ArrowRight,
   ChevronUp,
   ChevronDown,
   Copy,
@@ -9,8 +9,7 @@ import {
   Zap,
 } from "lucide-react";
 import type { TaskSummary } from "../types";
-import { CopyTaskIdButton } from "./CopyTaskIdButton";
-
+import { TaskIdBadge } from "./CopyTaskIdButton";
 interface NextTasksProps {
   tasks: TaskSummary[];
   onReorder: (taskId: string, direction: "up" | "down") => void;
@@ -44,7 +43,7 @@ export const NextTasks: React.FC<NextTasksProps> = ({
         {isParallelizable && (
           <div className="flex items-center space-x-1.5 px-2 py-0.5 rounded bg-emerald-950/60 border border-emerald-800/50 text-[11px] font-mono text-emerald-300">
             <Zap className="w-3 h-3 text-emerald-400" />
-            <span>// 可并行推进: {runnableCount} 个就绪</span>
+            <span>可并行推进: {runnableCount} 个就绪</span>
           </div>
         )}
       </div>
@@ -52,7 +51,7 @@ export const NextTasks: React.FC<NextTasksProps> = ({
       <div className="p-3">
         {tasks.length === 0 ? (
           <div className="py-6 text-center text-zinc-600 font-mono text-xs">
-            // 就绪队列为空，可在待整理收件箱中确认任务
+            就绪队列为空，可在待整理收件箱中确认任务
           </div>
         ) : (
           <div className="space-y-2">
@@ -108,10 +107,7 @@ export const NextTasks: React.FC<NextTasksProps> = ({
                         title={task.runnable ? "可执行" : "等待前置依赖"}
                       />
 
-                      <span className="font-mono text-[11px] text-zinc-500 inline-flex items-center space-x-1">
-                        <span>{task.id}</span>
-                        <CopyTaskIdButton taskId={task.id} />
-                      </span>
+                      <TaskIdBadge taskId={task.id} variant="muted" />
 
                       <h3 className="text-xs font-mono font-medium text-zinc-200 truncate group-hover:text-indigo-300 transition-colors">
                         {task.title}
@@ -119,27 +115,43 @@ export const NextTasks: React.FC<NextTasksProps> = ({
                     </div>
 
                     {/* Waiting dependencies */}
+                    {/* Waiting dependencies */}
                     {task.waitingFor.length > 0 && (
-                      <div className="mt-1.5 pl-3.5 flex items-center flex-wrap gap-1 text-[11px] font-mono text-zinc-400">
-                        <span className="text-zinc-600 select-none">┌拓扑:</span>
-                        {task.waitingFor.map((w) => (
-                          <React.Fragment key={w.id}>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onSelectTask(w.id);
-                              }}
-                              className="px-1 py-0.5 rounded bg-zinc-900 border border-amber-900/50 text-amber-300 hover:text-amber-200 hover:border-amber-700/80 transition-colors text-[10px]"
-                              title={`前置依赖: ${w.title} (${w.status}) - 点击查看`}
-                            >
-                              [{w.id}] {w.status === "completed" ? "✓完成" : "未完成"}
-                            </button>
-                            <span className="text-zinc-600 select-none">──&gt;</span>
-                          </React.Fragment>
-                        ))}
-                        <span className="px-1 py-0.5 rounded bg-zinc-900/80 border border-zinc-800 text-zinc-400 text-[10px]">
-                          [{task.id}] 等待中
+                      <div className="mt-1.5 flex items-center flex-wrap gap-1.5 text-[11px] font-mono">
+                        <span className="text-zinc-500 text-[10px] uppercase tracking-wider shrink-0 select-none">
+                          前置依赖
+                        </span>
+                        {task.waitingFor.map((w) => {
+                          const isDone = w.status === "completed";
+                          return (
+                            <React.Fragment key={w.id}>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onSelectTask(w.id);
+                                }}
+                                className={`inline-flex items-center space-x-1 px-1.5 py-0.5 rounded text-[10px] border transition-colors ${
+                                  isDone
+                                    ? "bg-emerald-950/40 border-emerald-900/60 text-emerald-300 hover:border-emerald-700"
+                                    : "bg-amber-950/40 border-amber-900/60 text-amber-300 hover:border-amber-700"
+                                }`}
+                                title={`前置依赖: ${w.title} (${w.status}) - 点击查看`}
+                              >
+                                <span
+                                  className={`w-1.5 h-1.5 rounded-full ${
+                                    isDone ? "bg-emerald-400" : "bg-amber-400"
+                                  }`}
+                                />
+                                <span>{w.id}</span>
+                              </button>
+                              <ArrowRight className="w-2.5 h-2.5 text-zinc-600 shrink-0 select-none" />
+                            </React.Fragment>
+                          );
+                        })}
+                        <span className="inline-flex items-center space-x-1 px-1.5 py-0.5 rounded text-[10px] bg-zinc-900 border border-zinc-800 text-zinc-400 select-none">
+                          <span className="w-1.5 h-1.5 rounded-full bg-zinc-500" />
+                          <span>本任务等待中</span>
                         </span>
                       </div>
                     )}
@@ -148,41 +160,41 @@ export const NextTasks: React.FC<NextTasksProps> = ({
                   {/* Action buttons */}
                   <div className="flex items-center space-x-1.5 shrink-0">
                     <button
-                      className="inline-flex items-center space-x-1 px-2 py-0.5 text-[11px] font-mono text-zinc-400 hover:text-cyan-300 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded transition-colors"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onOpenBriefing(task);
+                      }}
+                      className="inline-flex items-center space-x-1 px-2 py-0.5 text-[11px] font-mono text-zinc-400 hover:text-cyan-300 bg-zinc-900 hover:bg-zinc-850 border border-zinc-800 rounded transition-colors"
                       title="生成并复制 AI 任务简报"
                     >
                       <Copy className="w-3 h-3" />
-                      <span>复制简报</span>
+                      <span>简报</span>
                     </button>
 
                     <button
-                      onClick={() => onReturnToInbox(task.id)}
-                      className="inline-flex items-center space-x-1 px-2 py-0.5 text-[11px] font-mono text-zinc-400 hover:text-amber-300 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded transition-colors"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onReturnToInbox(task.id);
+                      }}
+                      className="inline-flex items-center space-x-1 px-2 py-0.5 text-[11px] font-mono text-zinc-400 hover:text-amber-300 bg-zinc-900 hover:bg-zinc-850 border border-zinc-800 rounded transition-colors"
                       title="退回待整理收件箱"
                     >
                       <RotateCcw className="w-3 h-3" />
-                      <span>退回 Inbox</span>
+                      <span>退回</span>
                     </button>
 
                     <button
-                      onClick={() => {
+                      onClick={(e) => {
+                        e.stopPropagation();
                         if (window.confirm(`确认删除 Ready 任务“${task.title}”？`)) {
                           onDeleteTask(task.id);
                         }
                       }}
-                      className="inline-flex items-center space-x-1 px-2 py-0.5 text-[11px] font-mono text-zinc-400 hover:text-rose-300 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded transition-colors"
+                      className="inline-flex items-center space-x-1 px-2 py-0.5 text-[11px] font-mono text-zinc-400 hover:text-rose-300 bg-zinc-900 hover:bg-zinc-850 border border-zinc-800 rounded transition-colors"
                       title="删除任务"
                     >
                       <Trash2 className="w-3 h-3" />
                       <span>删除</span>
-                    </button>
-
-                    <button
-                      onClick={() => onSelectTask(task.id)}
-                      className="p-1 text-zinc-500 hover:text-zinc-300 rounded transition-colors"
-                      title="查看详情"
-                    >
-                      <ArrowUpRight className="w-3.5 h-3.5" />
                     </button>
                   </div>
                 </div>

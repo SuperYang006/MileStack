@@ -1,7 +1,7 @@
 import React from "react";
 import { Check, MessageSquare, ArrowUpRight } from "lucide-react";
 import type { TaskSummary } from "../types";
-import { CopyTaskIdButton } from "./CopyTaskIdButton";
+import { TaskIdBadge } from "./CopyTaskIdButton";
 
 interface ReviewTasksProps {
   tasks: TaskSummary[];
@@ -45,10 +45,7 @@ export const ReviewTasks: React.FC<ReviewTasksProps> = ({
                   onClick={() => onSelectTask(task.id)}
                 >
                   <div className="flex items-center space-x-2 truncate">
-                    <span className="font-mono text-[11px] text-zinc-500 inline-flex items-center space-x-1">
-                      <span>{task.id}</span>
-                      <CopyTaskIdButton taskId={task.id} />
-                    </span>
+                    <TaskIdBadge taskId={task.id} variant="muted" />
                     <h3 className="text-xs font-mono text-zinc-200 truncate hover:text-violet-300">
                       {task.title}
                     </h3>
