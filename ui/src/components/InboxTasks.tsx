@@ -1,11 +1,16 @@
-import React from "react";
-import { Check, Trash2, Edit3, Inbox, Plus } from "lucide-react";
-import { EmptyState } from "./EmptyState";
+import React, { useState } from "react";
+import { Check, Trash2, Edit3, Inbox, Plus, Zap, CheckCircle2 } from "lucide-react";
 import type { TaskSummary } from "../types";
 import { TaskIdBadge } from "./CopyTaskIdButton";
+import { EmptyState } from "./EmptyState";
+import {
+  computeTaskDependencyDetail,
+  type DependencyItem,
+} from "../utils/dependencyGraph";
 
 interface InboxTasksProps {
   tasks: TaskSummary[];
+  allTasks?: Map<string, TaskSummary>;
   onConfirmTask: (taskId: string) => void;
   onDeleteTask: (taskId: string) => void;
   onSelectTask: (taskId: string) => void;
@@ -15,12 +20,15 @@ interface InboxTasksProps {
 
 export const InboxTasks: React.FC<InboxTasksProps> = ({
   tasks,
+  allTasks = new Map(),
   onConfirmTask,
   onDeleteTask,
   onSelectTask,
   onEditTask,
   onCreateTask,
 }) => {
+
+
   return (
     <section className="rounded-lg border border-zinc-800 bg-zinc-900/50 backdrop-blur-xs overflow-hidden">
       <div className="px-4 py-2.5 border-b border-zinc-800/80 flex items-center justify-between">
@@ -55,60 +63,116 @@ export const InboxTasks: React.FC<InboxTasksProps> = ({
           />
         ) : (
           <div className="divide-y divide-zinc-800/60">
-            {tasks.map((task) => (
-              <div
-                key={task.id}
-                className="py-2 first:pt-0 last:pb-0 flex items-center justify-between gap-3 group"
-              >
+            {tasks.map((task) => {
+              const detail = computeTaskDependencyDetail(task, allTasks);
+
+              return (
                 <div
-                  className="flex-1 min-w-0 cursor-pointer"
-                  onClick={() => onSelectTask(task.id)}
+                  key={task.id}
+                  className="py-2.5 first:pt-0 last:pb-0 flex items-start justify-between gap-3 group"
                 >
-                  <div className="flex items-center space-x-2">
-                    <TaskIdBadge taskId={task.id} variant="muted" />
-                    <h3 className="text-xs font-mono text-zinc-300 group-hover:text-amber-300 transition-colors truncate">
-                      {task.title}
-                    </h3>
-                  </div>
-                </div>
-
-                <div className="flex items-center space-x-1.5 shrink-0">
-                  <button
-                    onClick={() => onConfirmTask(task.id)}
-                    className="inline-flex items-center space-x-1 px-2 py-0.5 text-[11px] font-mono text-emerald-400 hover:text-emerald-300 bg-emerald-950/40 hover:bg-emerald-950/80 border border-emerald-900/60 rounded transition-colors"
-                    title="确认为就绪任务，排入执行队列"
+                  <div
+                    className="flex-1 min-w-0 cursor-pointer"
+                    onClick={() => onSelectTask(task.id)}
                   >
-                    <Check className="w-3 h-3" />
-                    <span>确认排队</span>
-                  </button>
+                    <div className="flex items-center space-x-2 truncate">
+                      <TaskIdBadge taskId={task.id} variant="muted" />
+                      <h3 className="text-xs font-mono text-zinc-300 group-hover:text-amber-300 transition-colors truncate">
+                        {task.title}
+                      </h3>
 
-                  {onEditTask && (
+                      {/* 只能标记为“可并行候选”，绝不误标为“当前可领取” */}
+                      {detail.isInboxParallelCandidate && (
+                        <span
+                          className="inline-flex items-center space-x-1 px-1.5 py-0.2 rounded text-[10px] font-mono bg-indigo-950/50 border border-indigo-900/60 text-indigo-300 shrink-0"
+                          title="无未完成前置依赖，排入就绪队列后可并行执行"
+                        >
+                          <Zap className="w-2.5 h-2.5 text-indigo-400" />
+                          <span>可并行候选</span>
+                        </span>
+                      )}
+                    </div>
+
+                    {/* 待整理依赖轻量摘要：纯文字与短ID链接，不占用多余高度 */}
+                    {detail.dependencies.length > 0 && (
+                      <div className="mt-1 flex items-center flex-wrap gap-x-2 gap-y-0.5 text-[11px] font-mono text-zinc-500">
+                        {detail.areAllDependenciesMet ? (
+                          <span className="inline-flex items-center space-x-1 text-emerald-400/90 text-[10px]">
+                            <CheckCircle2 className="w-2.5 h-2.5 text-emerald-400" />
+                            <span>前置已满足 ({detail.dependencies.length})</span>
+                          </span>
+                        ) : (
+                          <div className="inline-flex items-center space-x-1.5 flex-wrap text-[10px]">
+                            <span className="text-amber-400/90 inline-flex items-center space-x-1 shrink-0">
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-400/90" />
+                              <span>等待 {detail.waitingFor.length} 项前置:</span>
+                            </span>
+                            <span className="inline-flex items-center space-x-1">
+                              {detail.waitingFor.slice(0, 2).map((dep, idx) => (
+                                <button
+                                  key={dep.id}
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onSelectTask(dep.id);
+                                  }}
+                                  className="text-zinc-400 hover:text-cyan-300 underline underline-offset-2 decoration-zinc-700 hover:decoration-cyan-400 transition-colors"
+                                  title={`前置依赖: ${dep.title} (${dep.status}) - 点击查看详情`}
+                                >
+                                  #{dep.id.slice(0, 8)}
+                                  {idx < Math.min(detail.waitingFor.length, 2) - 1 ? "," : ""}
+                                </button>
+                              ))}
+                              {detail.waitingFor.length > 2 && (
+                                <span className="text-zinc-500">
+                                  等共 {detail.waitingFor.length} 项
+                                </span>
+                              )}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex items-center space-x-1.5 shrink-0 pt-0.5">
+                    <button
+                      onClick={() => onConfirmTask(task.id)}
+                      className="inline-flex items-center space-x-1 px-2 py-0.5 text-[11px] font-mono text-emerald-400 hover:text-emerald-300 bg-emerald-950/40 hover:bg-emerald-950/80 border border-emerald-900/60 rounded transition-colors"
+                      title="确认为就绪任务，排入执行队列"
+                    >
+                      <Check className="w-3 h-3" />
+                      <span>确认排队</span>
+                    </button>
+
+                    {onEditTask && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onEditTask(task);
+                        }}
+                        className="p-1 text-zinc-500 hover:text-amber-300 rounded transition-all opacity-0 group-hover:opacity-100"
+                        title="编辑任务草稿"
+                      >
+                        <Edit3 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        onEditTask(task);
+                        if (window.confirm(`确认删除 Inbox 任务“${task.title}”？`)) {
+                          onDeleteTask(task.id);
+                        }
                       }}
-                      className="p-1 text-zinc-500 hover:text-amber-300 rounded transition-all opacity-0 group-hover:opacity-100"
-                      title="编辑任务草稿"
+                      className="p-1 text-zinc-500 hover:text-rose-400 rounded transition-all opacity-0 group-hover:opacity-100"
+                      title="删除任务"
                     >
-                      <Edit3 className="w-3.5 h-3.5" />
+                      <Trash2 className="w-3.5 h-3.5" />
                     </button>
-                  )}
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (window.confirm(`确认删除 Inbox 任务“${task.title}”？`)) {
-                        onDeleteTask(task.id);
-                      }
-                    }}
-                    className="p-1 text-zinc-500 hover:text-rose-400 rounded transition-all opacity-0 group-hover:opacity-100"
-                    title="删除任务"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

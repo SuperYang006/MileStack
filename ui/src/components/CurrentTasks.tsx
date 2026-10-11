@@ -1,11 +1,13 @@
 import React from "react";
-import { LogOut, Activity, Bot } from "lucide-react";
+import { LogOut, Activity, Bot, ArrowRight, GitFork } from "lucide-react";
 import { EmptyState } from "./EmptyState";
 import type { TaskSummary } from "../types";
 import { TaskIdBadge } from "./CopyTaskIdButton";
+import { computeTaskDependencyDetail } from "../utils/dependencyGraph";
 
 interface CurrentTasksProps {
   tasks: TaskSummary[];
+  allTasks?: Map<string, TaskSummary>;
   onSelectTask: (taskId: string) => void;
   onReleaseTask: (taskId: string) => void;
 }
@@ -27,6 +29,7 @@ function formatRelativeTime(dateString: string): { label: string; isFresh: boole
 
 export const CurrentTasks: React.FC<CurrentTasksProps> = ({
   tasks,
+  allTasks = new Map(),
   onSelectTask,
   onReleaseTask,
 }) => {
@@ -136,6 +139,40 @@ export const CurrentTasks: React.FC<CurrentTasksProps> = ({
                       )}
                     </div>
                   )}
+
+                  {/* Unblocks Info */}
+                  {(() => {
+                    const detail = computeTaskDependencyDetail(task, allTasks);
+                    if (detail.unblocks.length === 0) return null;
+                    return (
+                      <div className="mt-2 pt-2 border-t border-zinc-850/60 flex items-center flex-wrap gap-1.5 text-[10px] font-mono">
+                        <span className="text-zinc-500 shrink-0 flex items-center space-x-1">
+                          <GitFork className="w-3 h-3 text-cyan-400" />
+                          <span>完成后解锁:</span>
+                        </span>
+                        {detail.unblocks.slice(0, 2).map((ub) => (
+                          <button
+                            key={ub.id}
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onSelectTask(ub.id);
+                            }}
+                            className="inline-flex items-center space-x-1 px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-zinc-300 hover:border-zinc-700 max-w-[180px] truncate transition-colors"
+                            title={`下游任务: ${ub.title} - 点击查看`}
+                          >
+                            <span className="text-zinc-400">#{ub.id.slice(0, 8)}</span>
+                            <span className="truncate">{ub.title}</span>
+                          </button>
+                        ))}
+                        {detail.unblocks.length > 2 && (
+                          <span className="text-zinc-500">
+                            +{detail.unblocks.length - 2} 更多
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
               );
             })}

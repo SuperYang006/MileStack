@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "../api/client";
 import { Header } from "../components/Header";
@@ -8,6 +8,8 @@ import { BlockedTasks } from "../components/BlockedTasks";
 import { InboxTasks } from "../components/InboxTasks";
 import { RecentTasks } from "../components/RecentTasks";
 import { ReviewTasks } from "../components/ReviewTasks";
+import { ExecutionFlowView } from "../components/ExecutionFlowView";
+import { buildTaskIndex } from "../utils/dependencyGraph";
 import { TaskDetailModal } from "../components/TaskDetailModal";
 import { CreateTaskModal } from "../components/CreateTaskModal";
 import { BriefingModal } from "../components/BriefingModal";
@@ -135,6 +137,7 @@ export const DashboardPage: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ["taskDetails", variables.taskId] });
     },
   });
+  const allTasks = useMemo(() => (status ? buildTaskIndex(status) : new Map()), [status]);
 
   if (isStatusLoading || !status) {
     return (
@@ -167,6 +170,11 @@ export const DashboardPage: React.FC = () => {
           tasks={status.blocked}
           onSelectTask={(id) => setSelectedTaskId(id)}
         />
+        {/* Execution Flow View (Compact topology for branches and dependencies) */}
+        <ExecutionFlowView
+          status={status}
+          onSelectTask={(id) => setSelectedTaskId(id)}
+        />
 
         {/* Current & Next Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
@@ -182,6 +190,7 @@ export const DashboardPage: React.FC = () => {
             />
             <CurrentTasks
               tasks={status.current}
+              allTasks={allTasks}
               onSelectTask={(id) => setSelectedTaskId(id)}
               onReleaseTask={(id) => releaseTaskMutation.mutate(id)}
             />
@@ -189,6 +198,7 @@ export const DashboardPage: React.FC = () => {
             {/* Inbox Section */}
             <InboxTasks
               tasks={status.inbox}
+              allTasks={allTasks}
               onConfirmTask={(id) => confirmInboxMutation.mutate(id)}
               onDeleteTask={(id) => deleteInboxMutation.mutate(id)}
               onSelectTask={(id) => setSelectedTaskId(id)}
@@ -201,6 +211,7 @@ export const DashboardPage: React.FC = () => {
           <div className="space-y-6">
             <NextTasks
               tasks={status.next}
+              allTasks={allTasks}
               onReorder={(id, dir) => reorderTaskMutation.mutate({ taskId: id, direction: dir })}
               onReturnToInbox={(id) => returnReadyMutation.mutate(id)}
               onDeleteTask={(id) => deleteReadyMutation.mutate(id)}
@@ -225,6 +236,8 @@ export const DashboardPage: React.FC = () => {
         onClose={() => setSelectedTaskId(null)}
         isLoading={isDetailsLoading}
         onEditInboxTask={(task) => setEditingInboxTask(task)}
+        allTasks={allTasks}
+        onSelectTask={(id) => setSelectedTaskId(id)}
       />
 
       <EditInboxModal

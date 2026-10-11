@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from "react";
-import { X, GitCommit, CheckCircle2, Clock, Timer, Edit3 } from "lucide-react";
+import { X, GitCommit, CheckCircle2, Clock, Timer, Edit3, GitFork, ArrowRight, Zap } from "lucide-react";
 import { EmptyState } from "./EmptyState";
-import type { TaskDetails, TaskEvent } from "../types";
+import type { TaskDetails, TaskEvent, TaskSummary } from "../types";
 import { TaskIdBadge } from "./CopyTaskIdButton";
+import { buildDownstreamMap } from "../utils/dependencyGraph";
 
 function formatDuration(ms: number): string {
   if (ms < 0) return "0秒";
@@ -130,6 +131,8 @@ interface TaskDetailModalProps {
   onClose: () => void;
   isLoading?: boolean;
   onEditInboxTask?: (task: TaskDetails) => void;
+  allTasks?: Map<string, TaskSummary>;
+  onSelectTask?: (taskId: string) => void;
 }
 
 export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
@@ -138,6 +141,8 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
   onClose,
   isLoading = false,
   onEditInboxTask,
+  allTasks = new Map(),
+  onSelectTask,
 }) => {
   const [now, setNow] = useState(() => Date.now());
 
@@ -268,6 +273,114 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                   </div>
                 </div>
               )}
+
+              {/* Dependencies & Flow Section */}
+              <div>
+                <h3 className="text-[11px] font-bold text-zinc-500 uppercase tracking-wider mb-2 flex items-center space-x-1.5">
+                  <GitFork className="w-3.5 h-3.5 text-zinc-400" />
+                  <span>任务依赖与拓扑关系</span>
+                </h3>
+                <div className="bg-zinc-900/40 p-3 rounded border border-zinc-850 space-y-3 font-mono text-xs">
+                  {/* Direct Dependencies */}
+                  <div>
+                    <div className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+                      <span>前置直接依赖 ({details.task.dependencyIds.length})</span>
+                      {details.task.dependencyIds.length > 0 && (() => {
+                        const waitingCount = details.task.dependencyIds.filter(
+                          (id) => allTasks.get(id)?.status !== "completed",
+                        ).length;
+                        return (
+                          <span className={waitingCount === 0 ? "text-emerald-400" : "text-amber-400"}>
+                            {waitingCount === 0 ? "全部已满足" : `等待 ${waitingCount} 个未完成`}
+                          </span>
+                        );
+                      })()}
+                    </div>
+                    {details.task.dependencyIds.length === 0 ? (
+                      <p className="text-zinc-500 text-[11px]">无前置依赖，可直接推进</p>
+                    ) : (
+                      <div className="space-y-1.5">
+                        {details.task.dependencyIds.map((depId) => {
+                          const dep = allTasks.get(depId);
+                          const isDone = dep?.status === "completed";
+                          return (
+                            <div
+                              key={depId}
+                              onClick={() => onSelectTask?.(depId)}
+                              className={`flex items-center justify-between p-2 rounded border cursor-pointer transition-colors ${
+                                isDone
+                                  ? "bg-emerald-950/20 border-emerald-900/40 hover:border-emerald-700"
+                                  : "bg-zinc-950/80 border-zinc-800 hover:border-zinc-700"
+                              }`}
+                            >
+                              <div className="flex items-center space-x-2 truncate">
+                                <span
+                                  className={`w-2 h-2 rounded-full shrink-0 ${
+                                    isDone ? "bg-emerald-400" : "bg-amber-400 animate-pulse"
+                                  }`}
+                                />
+                                <TaskIdBadge taskId={depId} variant="muted" />
+                                <span className="text-zinc-200 truncate text-xs">
+                                  {dep?.title ?? `任务 ${depId.slice(0, 8)}`}
+                                </span>
+                              </div>
+                              <div className="shrink-0 flex items-center space-x-1.5">
+                                <span
+                                  className={`px-1.5 py-0.2 rounded text-[10px] ${
+                                    isDone
+                                      ? "text-emerald-300 bg-emerald-950/60 border border-emerald-800/60"
+                                      : "text-amber-300 bg-amber-950/60 border border-amber-800/60"
+                                  }`}
+                                >
+                                  {isDone ? "已完成" : dep?.status ? `进行中: ${dep.status}` : "等待中"}
+                                </span>
+                                <ArrowRight className="w-3 h-3 text-zinc-600" />
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Downstream Unblocks */}
+                  {(() => {
+                    const dMap = buildDownstreamMap(allTasks);
+                    const downstreamIds = dMap.get(details.task.id) || [];
+                    if (downstreamIds.length === 0) return null;
+                    return (
+                      <div className="pt-2 border-t border-zinc-850/80">
+                        <div className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1.5">
+                          <span>完成后将推进/解锁的下游任务 ({downstreamIds.length})</span>
+                        </div>
+                        <div className="space-y-1.5">
+                          {downstreamIds.map((childId) => {
+                            const child = allTasks.get(childId);
+                            return (
+                              <div
+                                key={childId}
+                                onClick={() => onSelectTask?.(childId)}
+                                className="flex items-center justify-between p-2 rounded bg-zinc-950/80 border border-zinc-800 hover:border-zinc-700 cursor-pointer transition-colors"
+                              >
+                                <div className="flex items-center space-x-2 truncate">
+                                  <TaskIdBadge taskId={childId} variant="muted" />
+                                  <span className="text-zinc-200 truncate text-xs">
+                                    {child?.title ?? `任务 ${childId.slice(0, 8)}`}
+                                  </span>
+                                </div>
+                                <div className="shrink-0 flex items-center space-x-1.5 text-zinc-400 text-[10px]">
+                                  <span>状态: {child?.status ?? "未知"}</span>
+                                  <ArrowRight className="w-3 h-3 text-zinc-600" />
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              </div>
 
               {/* Execution Duration & Metadata */}
               <div className="bg-zinc-900/60 p-3 rounded border border-zinc-850 space-y-2.5">
