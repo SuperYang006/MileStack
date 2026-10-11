@@ -40,3 +40,45 @@ export class TaskDependenciesNotEditableError extends DomainError {
     );
   }
 }
+
+export class InvalidTaskStateError extends DomainError {
+  constructor(taskId: string, expected: string, actual: string) {
+    super(
+      "INVALID_TASK_STATE",
+      `Task '${taskId}' must be ${expected}, but is '${actual}'.`,
+    );
+  }
+}
+
+export class TaskRunOwnershipError extends DomainError {
+  constructor(taskId: string) {
+    super(
+      "TASK_RUN_OWNERSHIP_MISMATCH",
+      `The supplied runId does not own task '${taskId}'.`,
+    );
+  }
+}
+
+export class TaskDependenciesIncompleteError extends DomainError {
+  readonly dependencyIds: string[];
+
+  constructor(taskId: string, dependencyIds: string[]) {
+    super(
+      "TASK_DEPENDENCIES_INCOMPLETE",
+      `Task '${taskId}' cannot start until dependencies are completed: ${dependencyIds.join(", ")}.`,
+    );
+    this.dependencyIds = dependencyIds;
+  }
+}
+
+export class TaskHasDependentsError extends DomainError {
+  readonly dependentTaskIds: string[];
+
+  constructor(taskId: string, dependentTaskIds: string[]) {
+    super(
+      "TASK_HAS_DEPENDENTS",
+      `Task '${taskId}' cannot be deleted because it is required by: ${dependentTaskIds.join(", ")}.`,
+    );
+    this.dependentTaskIds = dependentTaskIds;
+  }
+}

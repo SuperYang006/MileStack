@@ -7,7 +7,9 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   InvalidTaskDependencyError,
+  TaskDependenciesIncompleteError,
   ProjectNotFoundError,
+  TaskRunOwnershipError,
   TaskDependenciesNotEditableError,
   TaskNotFoundError,
 } from "../../src/core/errors.js";
@@ -398,5 +400,96 @@ describe("TaskService", () => {
     ).toThrow(InvalidTaskDependencyError);
     expect(database.db.select().from(tasks).all()).toHaveLength(0);
     database.close();
+  });
+
+  it("runs an atomic execution lifecycle and invalidates the old runId", async () => {
+    const { database, service } = await createService(createTemporaryProject());
+    const prerequisite = service.createTask({
+      projectId: "project-1",
+      title: "Prerequisite",
+      createdBy: "developer",
+      status: "ready",
+    });
+    const task = service.createTask({
+      projectId: "project-1",
+      title: "Implementation",
+      createdBy: "developer",
+      status: "ready",
+      dependencyIds: [prerequisite.task.id],
+    });
+
+    expect(() => service.startTask({ projectId: "project-1", taskId: task.task.id }))
+      .toThrow(TaskDependenciesIncompleteError);
+
+    database.db
+      .update(tasks)
+      .set({ status: "completed", completedAt: "2026-10-11T11:00:00.000Z" })
+      .where(eq(tasks.id, prerequisite.task.id))
+      .run();
+
+    const started = service.startTask({ projectId: "project-1", taskId: task.task.id });
+    expect(started.runId).toBeTruthy();
+    expect(started.task.task.status).toBe("running");
+    expect(started.task.events.at(-1)?.type).toBe("started");
+
+    const updated = service.updateTask({
+      projectId: "project-1",
+      taskId: task.task.id,
+      runId: started.runId,
+      summary: "Reached the implementation stage.",
+      currentStep: "Implementing service",
+      nextStep: "Run tests",
+      completedWork: ["Designed the state transition"],
+    });
+    expect(updated.task.currentStep).toBe("Implementing service");
+    expect(updated.events.at(-1)).toMatchObject({ type: "progress", runId: started.runId });
+
+    const finished = service.finishTask({
+      projectId: "project-1",
+      taskId: task.task.id,
+      runId: started.runId,
+      summary: "Implementation complete.",
+      completedWork: ["Implemented and tested the lifecycle"],
+    });
+    expect(finished.task.status).toBe("completed");
+    expect(finished.task.activeRunId).toBeNull();
+    expect(finished.events.at(-1)?.type).toBe("completed");
+    expect(() =>
+      service.updateTask({
+        projectId: "project-1",
+        taskId: task.task.id,
+        runId: started.runId,
+        summary: "Late update",
+      }),
+    ).toThrow(TaskRunOwnershipError);
+    database.close();
+  });
+
+  it("allows only one repository connection to claim a ready task", async () => {
+    const projectRoot = createTemporaryProject();
+    const first = await createService(projectRoot);
+    const task = first.service.createTask({
+      projectId: "project-1",
+      title: "Concurrent task",
+      createdBy: "developer",
+      status: "ready",
+    });
+    const secondDatabase = await ensureDatabase(projectRoot);
+    const secondService = new TaskService(createSqliteRepository(secondDatabase), {
+      now: () => new Date("2026-10-11T12:00:00.000Z"),
+      generateId: (() => {
+        let counter = 0;
+        return () => `second-generated-${++counter}`;
+      })(),
+    });
+
+    const results = await Promise.allSettled([
+      Promise.resolve().then(() => first.service.startTask({ projectId: "project-1", taskId: task.task.id })),
+      Promise.resolve().then(() => secondService.startTask({ projectId: "project-1", taskId: task.task.id })),
+    ]);
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    expect(results.filter((result) => result.status === "rejected")).toHaveLength(1);
+    secondDatabase.close();
+    first.database.close();
   });
 });

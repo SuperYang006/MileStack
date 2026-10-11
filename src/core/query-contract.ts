@@ -161,6 +161,72 @@ export const createTasksInputSchema = z
   })
   .strict();
 
+export const startTaskInputSchema = z
+  .object({
+    projectId: identifierSchema,
+    taskId: identifierSchema,
+    actorLabel: z.string().trim().min(1).optional(),
+  })
+  .strict();
+
+const executionUpdateFields = {
+  projectId: identifierSchema,
+  taskId: identifierSchema,
+  runId: identifierSchema,
+  summary: z.string().trim().min(1),
+  completedWork: z.array(z.string().trim().min(1)).default([]),
+  currentStep: z.string().trim().min(1).nullable().optional(),
+  nextStep: z.string().trim().min(1).nullable().optional(),
+  blocker: z.string().trim().min(1).nullable().optional(),
+  requiredAction: z.string().trim().min(1).nullable().optional(),
+  handoffNote: z.string().trim().min(1).nullable().optional(),
+  actorLabel: z.string().trim().min(1).optional(),
+};
+
+export const updateTaskInputSchema = z.object(executionUpdateFields).strict();
+
+export const finishTaskInputSchema = z
+  .object({
+    projectId: identifierSchema,
+    taskId: identifierSchema,
+    runId: identifierSchema,
+    summary: z.string().trim().min(1),
+    completedWork: z.array(z.string().trim().min(1)).default([]),
+    actorLabel: z.string().trim().min(1).optional(),
+  })
+  .strict();
+
+export const confirmTaskInputSchema = z
+  .object({
+    projectId: identifierSchema,
+    taskId: identifierSchema,
+    actorLabel: z.string().trim().min(1).optional(),
+  })
+  .strict();
+
+export const deleteTaskInputSchema = z
+  .object({ projectId: identifierSchema, taskId: identifierSchema })
+  .strict();
+
+export const reorderTaskInputSchema = z
+  .object({
+    projectId: identifierSchema,
+    taskId: identifierSchema,
+    direction: z.enum(["up", "down"]),
+  })
+  .strict();
+
+export const releaseTaskInputSchema = z
+  .object({
+    projectId: identifierSchema,
+    taskId: identifierSchema,
+    runId: identifierSchema,
+    reason: z.string().trim().min(1).optional(),
+    handoffNote: z.string().trim().min(1).nullable().optional(),
+    actorLabel: z.string().trim().min(1).optional(),
+  })
+  .strict();
+
 export type ProjectSummary = z.infer<typeof projectSummarySchema>;
 export type TaskSummary = z.infer<typeof taskSummarySchema>;
 export type TaskDetails = z.infer<typeof taskDetailsSchema>;
@@ -174,3 +240,10 @@ export type CreateTasksInput = z.input<typeof createTasksInputSchema>;
 export type SetTaskDependenciesInput = z.input<
   typeof setTaskDependenciesInputSchema
 >;
+export type StartTaskInput = z.input<typeof startTaskInputSchema>;
+export type UpdateTaskInput = z.input<typeof updateTaskInputSchema>;
+export type FinishTaskInput = z.input<typeof finishTaskInputSchema>;
+export type ConfirmTaskInput = z.input<typeof confirmTaskInputSchema>;
+export type DeleteTaskInput = z.input<typeof deleteTaskInputSchema>;
+export type ReorderTaskInput = z.input<typeof reorderTaskInputSchema>;
+export type ReleaseTaskInput = z.input<typeof releaseTaskInputSchema>;

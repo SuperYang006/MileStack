@@ -11,8 +11,11 @@ import { DomainError } from "../core/errors.js";
 import {
   createTaskInputSchema,
   createTasksInputSchema,
+  finishTaskInputSchema,
   getProjectStatusInputSchema,
   getTaskInputSchema,
+  startTaskInputSchema,
+  updateTaskInputSchema,
 } from "../core/query-contract.js";
 import { openProjectContext, type ProjectContext } from "../project/project-context.js";
 
@@ -29,6 +32,9 @@ const projectStatusArgumentsSchema = getProjectStatusInputSchema.omit({
   projectId: true,
 });
 const taskArgumentsSchema = getTaskInputSchema.omit({ projectId: true });
+const startTaskArgumentsSchema = startTaskInputSchema.omit({ projectId: true });
+const updateTaskArgumentsSchema = updateTaskInputSchema.omit({ projectId: true });
+const finishTaskArgumentsSchema = finishTaskInputSchema.omit({ projectId: true });
 
 const toolDefinitions: Tool[] = [
   {
@@ -54,6 +60,24 @@ const toolDefinitions: Tool[] = [
     description:
       "Record several newly discovered inbox tasks atomically. If one input is invalid, the complete batch is rolled back.",
     inputSchema: toJSONSchema(agentCreateTasksSchema) as Tool["inputSchema"],
+  },
+  {
+    name: "start_task",
+    description:
+      "Atomically claim a runnable ready task. Save the returned runId and include it in every subsequent execution update.",
+    inputSchema: toJSONSchema(startTaskArgumentsSchema) as Tool["inputSchema"],
+  },
+  {
+    name: "update_task",
+    description:
+      "Record meaningful progress for a running task. The runId must belong to the current execution.",
+    inputSchema: toJSONSchema(updateTaskArgumentsSchema) as Tool["inputSchema"],
+  },
+  {
+    name: "finish_task",
+    description:
+      "Complete a running task with a completion summary. The runId becomes invalid after completion.",
+    inputSchema: toJSONSchema(finishTaskArgumentsSchema) as Tool["inputSchema"],
   },
 ];
 
@@ -141,6 +165,33 @@ export function createMcpServer(context: ProjectContext): Server {
             })),
           });
           return jsonResult(context.service.createTasks(input));
+        }
+        case "start_task": {
+          const parsed = startTaskArgumentsSchema.parse(args);
+          return jsonResult(
+            context.service.startTask({
+              ...parsed,
+              projectId: context.project.id,
+            }),
+          );
+        }
+        case "update_task": {
+          const parsed = updateTaskArgumentsSchema.parse(args);
+          return jsonResult(
+            context.service.updateTask({
+              ...parsed,
+              projectId: context.project.id,
+            }),
+          );
+        }
+        case "finish_task": {
+          const parsed = finishTaskArgumentsSchema.parse(args);
+          return jsonResult(
+            context.service.finishTask({
+              ...parsed,
+              projectId: context.project.id,
+            }),
+          );
         }
         default:
           return errorResult(new Error(`Unknown tool '${request.params.name}'.`));

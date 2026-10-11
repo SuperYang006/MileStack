@@ -78,6 +78,12 @@ export interface TaskRepositoryTransaction {
   findTaskById(id: string): TaskRecord | null;
   listByProjectId(projectId: string): TaskRecord[];
   listDependenciesByProjectId(projectId: string): TaskDependencyRecord[];
+  updateTask(
+    id: string,
+    changes: Partial<TaskRecord>,
+    expectedStatus?: TaskStatus,
+  ): TaskRecord | null;
+  deleteTask(id: string): void;
   insertTask(task: TaskRecord): TaskRecord;
   insertTaskEvent(event: TaskEventRecord): TaskEventRecord;
   replaceTaskDependencies(taskId: string, dependencyIds: string[]): void;

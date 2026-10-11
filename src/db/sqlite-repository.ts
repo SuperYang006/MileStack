@@ -1,5 +1,5 @@
 import type BetterSqlite3 from "better-sqlite3";
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 
 import type {
   MileStackRepository,
@@ -134,6 +134,22 @@ export class SqliteRepository implements MileStackRepository {
               asc(taskDependencies.dependsOnTaskId),
             )
             .all(),
+        updateTask: (id, changes, expectedStatus) => {
+          const conditions = [eq(tasks.id, id)];
+          if (expectedStatus) {
+            conditions.push(eq(tasks.status, expectedStatus));
+          }
+          const updated = this.db
+            .update(tasks)
+            .set(changes)
+            .where(and(...conditions))
+            .returning()
+            .get();
+          return updated ? mapTask(updated) : null;
+        },
+        deleteTask: (id) => {
+          this.db.delete(tasks).where(eq(tasks.id, id)).run();
+        },
         insertTask: (task) =>
           mapTask(this.db.insert(tasks).values(task).returning().get()),
         insertTaskEvent: (event) =>

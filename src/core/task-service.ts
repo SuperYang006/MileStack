@@ -3,26 +3,44 @@ import { randomUUID } from "node:crypto";
 import {
   createTaskInputSchema,
   createTasksInputSchema,
+  confirmTaskInputSchema,
+  deleteTaskInputSchema,
+  finishTaskInputSchema,
   getProjectStatusInputSchema,
   getTaskInputSchema,
   projectStatusSchema,
+  releaseTaskInputSchema,
+  reorderTaskInputSchema,
   setTaskDependenciesInputSchema,
+  startTaskInputSchema,
   taskDetailsSchema,
+  updateTaskInputSchema,
   type CreateTaskInput,
   type CreateTasksInput,
+  type ConfirmTaskInput,
+  type DeleteTaskInput,
+  type FinishTaskInput,
   type GetProjectStatusInput,
   type GetTaskInput,
   type ProjectStatus,
+  type ReleaseTaskInput,
+  type ReorderTaskInput,
   type SetTaskDependenciesInput,
+  type StartTaskInput,
   type TaskDetails,
   type TaskSummary,
+  type UpdateTaskInput,
 } from "./query-contract.js";
 import {
+  InvalidTaskStateError,
   InvalidTaskDependencyError,
   InvalidTaskError,
   ProjectNotFoundError,
+  TaskDependenciesIncompleteError,
   TaskDependenciesNotEditableError,
+  TaskHasDependentsError,
   TaskNotFoundError,
+  TaskRunOwnershipError,
 } from "./errors.js";
 import type {
   MileStackRepository,
@@ -37,6 +55,11 @@ export type TaskServiceOptions = {
   now?: () => Date;
   generateId?: () => string;
   recentlyCompletedLimit?: number;
+};
+
+export type StartedTask = {
+  runId: string;
+  task: TaskDetails;
 };
 
 const emptyTaskFields = {
@@ -381,6 +404,314 @@ export class TaskService {
     });
 
     return this.getTask({ projectId: project.id, taskId: parsed.taskId });
+  }
+
+  confirmTask(input: ConfirmTaskInput): TaskDetails {
+    const parsed = confirmTaskInputSchema.parse(input);
+    const project = this.requireProject(parsed.projectId);
+    this.repository.transaction((transaction) => {
+      const task = transaction.findTaskById(parsed.taskId);
+      if (!task || task.projectId !== project.id) {
+        throw new TaskNotFoundError(parsed.taskId);
+      }
+      if (task.status !== "inbox") {
+        throw new InvalidTaskStateError(task.id, "inbox", task.status);
+      }
+      const queuePosition = transaction
+        .listByProjectId(project.id)
+        .filter((candidate) => candidate.status === "ready").length + 1;
+      const now = this.now().toISOString();
+      transaction.updateTask(task.id, {
+        status: "ready",
+        queuePosition,
+        updatedAt: now,
+      });
+      transaction.insertTaskEvent({
+        id: this.generateId(),
+        projectId: task.projectId,
+        taskId: task.id,
+        runId: null,
+        type: "confirmed",
+        summary: `Confirmed as ready task (queue position #${queuePosition}).`,
+        completedWork: null,
+        currentStep: null,
+        nextStep: null,
+        blocker: null,
+        requiredAction: null,
+        handoffNote: null,
+        actorLabel: parsed.actorLabel ?? "developer",
+        createdAt: now,
+      });
+    });
+    return this.getTask({ projectId: project.id, taskId: parsed.taskId });
+  }
+
+  deleteTask(input: DeleteTaskInput): void {
+    const parsed = deleteTaskInputSchema.parse(input);
+    const project = this.requireProject(parsed.projectId);
+    this.repository.transaction((transaction) => {
+      const task = transaction.findTaskById(parsed.taskId);
+      if (!task || task.projectId !== project.id) {
+        throw new TaskNotFoundError(parsed.taskId);
+      }
+      if (task.status !== "inbox") {
+        throw new InvalidTaskStateError(task.id, "inbox", task.status);
+      }
+      const dependentTaskIds = transaction
+        .listDependenciesByProjectId(project.id)
+        .filter((dependency) => dependency.dependsOnTaskId === task.id)
+        .map((dependency) => dependency.taskId);
+      if (dependentTaskIds.length > 0) {
+        throw new TaskHasDependentsError(task.id, dependentTaskIds);
+      }
+      transaction.deleteTask(task.id);
+    });
+  }
+
+  reorderTask(input: ReorderTaskInput): TaskDetails {
+    const parsed = reorderTaskInputSchema.parse(input);
+    const project = this.requireProject(parsed.projectId);
+    this.repository.transaction((transaction) => {
+      const task = transaction.findTaskById(parsed.taskId);
+      if (!task || task.projectId !== project.id) {
+        throw new TaskNotFoundError(parsed.taskId);
+      }
+      if (task.status !== "ready") {
+        throw new InvalidTaskStateError(task.id, "ready", task.status);
+      }
+      const readyTasks = transaction
+        .listByProjectId(project.id)
+        .filter((candidate) => candidate.status === "ready")
+        .sort(compareQueuePosition);
+      const index = readyTasks.findIndex((candidate) => candidate.id === task.id);
+      const targetIndex = parsed.direction === "up" ? index - 1 : index + 1;
+      if (index < 0 || targetIndex < 0 || targetIndex >= readyTasks.length) {
+        return;
+      }
+      const reordered = [...readyTasks];
+      const current = reordered[index];
+      reordered[index] = reordered[targetIndex]!;
+      reordered[targetIndex] = current!;
+      const now = this.now().toISOString();
+      reordered.forEach((candidate, position) => {
+        transaction.updateTask(candidate.id, {
+          queuePosition: position + 1,
+          updatedAt: now,
+        });
+      });
+    });
+    return this.getTask({ projectId: project.id, taskId: parsed.taskId });
+  }
+
+  startTask(input: StartTaskInput): StartedTask {
+    const parsed = startTaskInputSchema.parse(input);
+    const project = this.requireProject(parsed.projectId);
+    let runId = "";
+    this.repository.transaction((transaction) => {
+      const task = transaction.findTaskById(parsed.taskId);
+      if (!task || task.projectId !== project.id) {
+        throw new TaskNotFoundError(parsed.taskId);
+      }
+      if (task.status !== "ready") {
+        throw new InvalidTaskStateError(task.id, "ready", task.status);
+      }
+      const dependencies = transaction
+        .listDependenciesByProjectId(project.id)
+        .filter((dependency) => dependency.taskId === task.id);
+      const projectTasks = new Map(
+        transaction.listByProjectId(project.id).map((candidate) => [candidate.id, candidate]),
+      );
+      const unfinished = dependencies
+        .filter((dependency) => projectTasks.get(dependency.dependsOnTaskId)?.status !== "completed")
+        .map((dependency) => dependency.dependsOnTaskId);
+      if (unfinished.length > 0) {
+        throw new TaskDependenciesIncompleteError(task.id, unfinished);
+      }
+
+      runId = this.generateId();
+      const now = this.now().toISOString();
+      const claimed = transaction.updateTask(
+        task.id,
+        {
+          status: "running",
+          activeRunId: runId,
+          updatedAt: now,
+        },
+        "ready",
+      );
+      if (!claimed) {
+        throw new InvalidTaskStateError(task.id, "ready", "changed concurrently");
+      }
+      transaction.insertTaskEvent({
+        id: this.generateId(),
+        projectId: task.projectId,
+        taskId: task.id,
+        runId,
+        type: "started",
+        summary: `Started task: ${task.title}`,
+        completedWork: null,
+        currentStep: null,
+        nextStep: null,
+        blocker: null,
+        requiredAction: null,
+        handoffNote: null,
+        actorLabel: parsed.actorLabel ?? null,
+        createdAt: now,
+      });
+    });
+    return {
+      runId,
+      task: this.getTask({ projectId: project.id, taskId: parsed.taskId }),
+    };
+  }
+
+  updateTask(input: UpdateTaskInput): TaskDetails {
+    const parsed = updateTaskInputSchema.parse(input);
+    const project = this.requireProject(parsed.projectId);
+    this.repository.transaction((transaction) => {
+      const task = transaction.findTaskById(parsed.taskId);
+      if (!task || task.projectId !== project.id) {
+        throw new TaskNotFoundError(parsed.taskId);
+      }
+      this.requireRunOwner(task, parsed.runId);
+      if (task.status !== "running") {
+        throw new InvalidTaskStateError(task.id, "running", task.status);
+      }
+      const now = this.now().toISOString();
+      const currentStep = parsed.currentStep === undefined ? task.currentStep : parsed.currentStep;
+      const nextStep = parsed.nextStep === undefined ? task.nextStep : parsed.nextStep;
+      const blocker = parsed.blocker === undefined ? task.blocker : parsed.blocker;
+      const requiredAction = parsed.requiredAction === undefined ? task.requiredAction : parsed.requiredAction;
+      const handoffNote = parsed.handoffNote === undefined ? task.handoffNote : parsed.handoffNote;
+      transaction.updateTask(task.id, {
+        currentStep,
+        nextStep,
+        blocker,
+        requiredAction,
+        handoffNote,
+        updatedAt: now,
+      });
+      transaction.insertTaskEvent({
+        id: this.generateId(),
+        projectId: task.projectId,
+        taskId: task.id,
+        runId: parsed.runId,
+        type: "progress",
+        summary: parsed.summary,
+        completedWork: parsed.completedWork,
+        currentStep,
+        nextStep,
+        blocker,
+        requiredAction,
+        handoffNote,
+        actorLabel: parsed.actorLabel ?? null,
+        createdAt: now,
+      });
+    });
+    return this.getTask({ projectId: project.id, taskId: parsed.taskId });
+  }
+
+  finishTask(input: FinishTaskInput): TaskDetails {
+    const parsed = finishTaskInputSchema.parse(input);
+    const project = this.requireProject(parsed.projectId);
+    this.repository.transaction((transaction) => {
+      const task = transaction.findTaskById(parsed.taskId);
+      if (!task || task.projectId !== project.id) {
+        throw new TaskNotFoundError(parsed.taskId);
+      }
+      this.requireRunOwner(task, parsed.runId);
+      if (task.status !== "running" && task.status !== "blocked") {
+        throw new InvalidTaskStateError(task.id, "running or blocked", task.status);
+      }
+      const now = this.now().toISOString();
+      transaction.updateTask(task.id, {
+        status: "completed",
+        queuePosition: null,
+        activeRunId: null,
+        currentStep: null,
+        nextStep: null,
+        blocker: null,
+        requiredAction: null,
+        completedAt: now,
+        updatedAt: now,
+      });
+      transaction.insertTaskEvent({
+        id: this.generateId(),
+        projectId: task.projectId,
+        taskId: task.id,
+        runId: parsed.runId,
+        type: "completed",
+        summary: parsed.summary,
+        completedWork: parsed.completedWork,
+        currentStep: null,
+        nextStep: null,
+        blocker: null,
+        requiredAction: null,
+        handoffNote: task.handoffNote,
+        actorLabel: parsed.actorLabel ?? null,
+        createdAt: now,
+      });
+    });
+    return this.getTask({ projectId: project.id, taskId: parsed.taskId });
+  }
+
+  releaseTask(input: ReleaseTaskInput): TaskDetails {
+    const parsed = releaseTaskInputSchema.parse(input);
+    const project = this.requireProject(parsed.projectId);
+    this.repository.transaction((transaction) => {
+      const task = transaction.findTaskById(parsed.taskId);
+      if (!task || task.projectId !== project.id) {
+        throw new TaskNotFoundError(parsed.taskId);
+      }
+      if (task.status !== "running" && task.status !== "blocked") {
+        throw new InvalidTaskStateError(task.id, "running or blocked", task.status);
+      }
+      this.requireRunOwner(task, parsed.runId);
+      const now = this.now().toISOString();
+      transaction
+        .listByProjectId(project.id)
+        .filter((candidate) => candidate.status === "ready")
+        .forEach((candidate) => {
+          transaction.updateTask(candidate.id, {
+            queuePosition: (candidate.queuePosition ?? 0) + 1,
+            updatedAt: now,
+          });
+        });
+      transaction.updateTask(task.id, {
+        status: "ready",
+        queuePosition: 1,
+        currentStep: null,
+        nextStep: null,
+        blocker: null,
+        requiredAction: null,
+        activeRunId: null,
+        handoffNote: parsed.handoffNote ?? task.handoffNote,
+        updatedAt: now,
+      });
+      transaction.insertTaskEvent({
+        id: this.generateId(),
+        projectId: task.projectId,
+        taskId: task.id,
+        runId: task.activeRunId,
+        type: "released",
+        summary: parsed.reason ?? "Task released back to the ready queue.",
+        completedWork: null,
+        currentStep: null,
+        nextStep: null,
+        blocker: null,
+        requiredAction: null,
+        handoffNote: parsed.handoffNote ?? task.handoffNote,
+        actorLabel: parsed.actorLabel ?? "developer",
+        createdAt: now,
+      });
+    });
+    return this.getTask({ projectId: project.id, taskId: parsed.taskId });
+  }
+
+  private requireRunOwner(task: TaskRecord, runId: string): void {
+    if (!task.activeRunId || task.activeRunId !== runId) {
+      throw new TaskRunOwnershipError(task.id);
+    }
   }
 
   getProjectStatus(input: GetProjectStatusInput): ProjectStatus {

@@ -4,7 +4,6 @@ import fastifyStatic from "@fastify/static";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { z } from "zod";
-import { randomUUID } from "node:crypto";
 
 import {
   openProjectContext,
@@ -17,6 +16,9 @@ import {
   TaskNotFoundError,
   InvalidTaskError,
   InvalidTaskDependencyError,
+  InvalidTaskStateError,
+  TaskHasDependentsError,
+  TaskRunOwnershipError,
 } from "../core/errors.js";
 
 export type HttpServerOptions = {
@@ -171,49 +173,14 @@ export async function createHttpServer(
     const projectId = body.projectId || context.project.id;
 
     try {
-      context.repository.transaction((tx) => {
-        const task = tx.findTaskById(id);
-        if (!task || task.projectId !== projectId) {
-          throw new TaskNotFoundError(id);
-        }
-        if (task.status !== "inbox") {
-          return;
-        }
-
-        const projectTasks = tx.listByProjectId(projectId);
-        const readyTasks = projectTasks.filter((t) => t.status === "ready");
-        const nextQueuePos = readyTasks.length + 1;
-        const now = new Date().toISOString();
-
-        // Update task status and queue position
-        (context.database.sqlite as any)
-          .prepare(
-            `UPDATE tasks SET status = 'ready', queue_position = ?, updated_at = ? WHERE id = ?`,
-          )
-          .run(nextQueuePos, now, id);
-
-        tx.insertTaskEvent({
-          id: randomUUID(),
-          projectId,
-          taskId: id,
-          runId: null,
-          type: "progress",
-          summary: `确认为就绪任务 (排位 #${nextQueuePos})`,
-          completedWork: null,
-          currentStep: null,
-          nextStep: null,
-          blocker: null,
-          requiredAction: null,
-          handoffNote: null,
-          actorLabel: "developer",
-          createdAt: now,
-        });
-      });
-
+      context.service.confirmTask({ projectId, taskId: id });
       return { success: true };
     } catch (err) {
       if (err instanceof TaskNotFoundError) {
         return reply.status(404).send({ error: err.message });
+      }
+      if (err instanceof InvalidTaskStateError || err instanceof z.ZodError) {
+        return reply.status(400).send({ error: err instanceof z.ZodError ? err.issues : err.message });
       }
       throw err;
     }
@@ -226,22 +193,14 @@ export async function createHttpServer(
     const projectId = body.projectId || context.project.id;
 
     try {
-      context.repository.transaction((tx) => {
-        const task = tx.findTaskById(id);
-        if (!task || task.projectId !== projectId) {
-          throw new TaskNotFoundError(id);
-        }
-
-        const sqlite = context.database.sqlite as any;
-        sqlite.prepare(`DELETE FROM task_events WHERE task_id = ?`).run(id);
-        sqlite.prepare(`DELETE FROM task_dependencies WHERE task_id = ? OR depends_on_task_id = ?`).run(id, id);
-        sqlite.prepare(`DELETE FROM tasks WHERE id = ?`).run(id);
-      });
-
+      context.service.deleteTask({ projectId, taskId: id });
       return { success: true };
     } catch (err) {
       if (err instanceof TaskNotFoundError) {
         return reply.status(404).send({ error: err.message });
+      }
+      if (err instanceof InvalidTaskStateError || err instanceof TaskHasDependentsError || err instanceof z.ZodError) {
+        return reply.status(400).send({ error: err instanceof z.ZodError ? err.issues : err.message });
       }
       throw err;
     }
@@ -254,43 +213,18 @@ export async function createHttpServer(
     const projectId = body.projectId || context.project.id;
 
     try {
-      context.repository.transaction((tx) => {
-        const task = tx.findTaskById(id);
-        if (!task || task.projectId !== projectId) {
-          throw new TaskNotFoundError(id);
-        }
-        if (task.status !== "ready") {
-          return;
-        }
-
-        const allTasks = tx.listByProjectId(projectId);
-        const readyTasks = allTasks
-          .filter((t) => t.status === "ready")
-          .sort((a, b) => (a.queuePosition ?? 0) - (b.queuePosition ?? 0));
-
-        const index = readyTasks.findIndex((t) => t.id === id);
-        if (index === -1) return;
-
-        const targetIndex = body.direction === "up" ? index - 1 : index + 1;
-        if (targetIndex < 0 || targetIndex >= readyTasks.length) return;
-
-        const currentTask = readyTasks[index]!;
-        const swapTask = readyTasks[targetIndex]!;
-
-        readyTasks[index] = swapTask;
-        readyTasks[targetIndex] = currentTask;
-
-        const sqlite = context.database.sqlite as any;
-        const stmt = sqlite.prepare(`UPDATE tasks SET queue_position = ? WHERE id = ?`);
-        readyTasks.forEach((item, pos) => {
-          stmt.run(pos + 1, item.id);
-        });
+      context.service.reorderTask({
+        projectId,
+        taskId: id,
+        direction: body.direction,
       });
-
       return { success: true };
     } catch (err) {
       if (err instanceof TaskNotFoundError) {
         return reply.status(404).send({ error: err.message });
+      }
+      if (err instanceof InvalidTaskStateError || err instanceof z.ZodError) {
+        return reply.status(400).send({ error: err instanceof z.ZodError ? err.issues : err.message });
       }
       throw err;
     }
@@ -299,49 +233,26 @@ export async function createHttpServer(
   // Release in-progress/running task back to ready queue
   app.post("/api/tasks/:id/release", async (request, reply) => {
     const { id } = request.params as { id: string };
-    const body = (request.body || {}) as { reason?: string; projectId?: string };
+    const body = (request.body || {}) as { reason?: string; handoffNote?: string; runId?: string; projectId?: string };
     const projectId = body.projectId || context.project.id;
 
     try {
-      context.repository.transaction((tx) => {
-        const task = tx.findTaskById(id);
-        if (!task || task.projectId !== projectId) {
-          throw new TaskNotFoundError(id);
-        }
-
-        const now = new Date().toISOString();
-        const sqlite = context.database.sqlite as any;
-
-        // Shift existing ready tasks down by 1
-        sqlite.prepare(`UPDATE tasks SET queue_position = queue_position + 1 WHERE project_id = ? AND status = 'ready'`).run(projectId);
-
-        // Put released task as #1 in ready queue
-        sqlite.prepare(
-          `UPDATE tasks SET status = 'ready', queue_position = 1, current_step = NULL, next_step = NULL, active_run_id = NULL, updated_at = ? WHERE id = ?`,
-        ).run(now, id);
-
-        tx.insertTaskEvent({
-          id: randomUUID(),
-          projectId,
-          taskId: id,
-          runId: task.activeRunId,
-          type: "progress",
-          summary: body.reason ? `释放任务: ${body.reason}` : "手动释放任务，回退至就绪队列",
-          completedWork: null,
-          currentStep: null,
-          nextStep: null,
-          blocker: null,
-          requiredAction: null,
-          handoffNote: null,
-          actorLabel: "developer",
-          createdAt: now,
-        });
+      const current = context.service.getTask({ projectId, taskId: id });
+      context.service.releaseTask({
+        projectId,
+        taskId: id,
+        runId: body.runId ?? current.task.activeRunId ?? "",
+        reason: body.reason,
+        handoffNote: body.handoffNote,
+        actorLabel: "developer",
       });
-
       return { success: true };
     } catch (err) {
       if (err instanceof TaskNotFoundError) {
         return reply.status(404).send({ error: err.message });
+      }
+      if (err instanceof InvalidTaskStateError || err instanceof TaskRunOwnershipError || err instanceof z.ZodError) {
+        return reply.status(400).send({ error: err instanceof z.ZodError ? err.issues : err.message });
       }
       throw err;
     }

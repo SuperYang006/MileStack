@@ -64,6 +64,9 @@ describe("MCP task tools", () => {
       "get_task",
       "create_task",
       "create_tasks",
+      "start_task",
+      "update_task",
+      "finish_task",
     ]);
 
     const initialStatus = await client.callTool({
@@ -115,6 +118,58 @@ describe("MCP task tools", () => {
     });
     expect(invalid.isError).toBe(true);
     expect(textContent(invalid)).toContain("TASK_NOT_FOUND");
+
+    await client.close();
+    await server.close();
+    context.database.close();
+  });
+
+  it("completes the start, update, and finish MCP workflow", async () => {
+    const projectRoot = createTemporaryProject();
+    const initialized = await initializeProject(projectRoot);
+    initialized.database.close();
+    const context = await openProjectContext(projectRoot);
+    const ready = context.service.createTask({
+      projectId: context.project.id,
+      title: "Run lifecycle",
+      createdBy: "developer",
+      status: "ready",
+    });
+    const server = createMcpServer(context);
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const client = new Client({ name: "test-client", version: "1.0.0" });
+
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+
+    const started = await client.callTool({
+      name: "start_task",
+      arguments: { taskId: ready.task.id },
+    });
+    const startedValue = JSON.parse(textContent(started));
+    expect(startedValue.runId).toBeTruthy();
+
+    const updated = await client.callTool({
+      name: "update_task",
+      arguments: {
+        taskId: ready.task.id,
+        runId: startedValue.runId,
+        summary: "Made progress",
+        currentStep: "Working",
+        nextStep: "Finish",
+      },
+    });
+    expect(JSON.parse(textContent(updated)).task.currentStep).toBe("Working");
+
+    const finished = await client.callTool({
+      name: "finish_task",
+      arguments: {
+        taskId: ready.task.id,
+        runId: startedValue.runId,
+        summary: "Done",
+      },
+    });
+    expect(JSON.parse(textContent(finished)).task.status).toBe("completed");
 
     await client.close();
     await server.close();
