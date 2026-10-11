@@ -64,7 +64,8 @@ describe("MCP task tools", () => {
     expect(instructions).toContain("读取任务详情后调用 start_task");
 
     const listed = await client.listTools();
-    expect(listed.tools.map((tool) => tool.name)).toEqual([
+    const toolNames = listed.tools.map((tool) => tool.name);
+    expect(toolNames).toEqual([
       "get_project_status",
       "list_tasks",
       "get_task",
@@ -72,8 +73,10 @@ describe("MCP task tools", () => {
       "create_tasks",
       "start_task",
       "update_task",
-      "finish_task",
+      "submit_for_review",
     ]);
+    expect(toolNames).toContain("submit_for_review");
+    expect(toolNames).not.toContain("finish_task");
 
     const initialStatus = await client.callTool({
       name: "get_project_status",
@@ -143,7 +146,7 @@ describe("MCP task tools", () => {
     context.database.close();
   });
 
-  it("completes the start, update, and finish MCP workflow", async () => {
+  it("completes the start, update, and submit-for-review MCP workflow", async () => {
     const projectRoot = createTemporaryProject();
     const initialized = await initializeProject(projectRoot);
     initialized.database.close();
@@ -218,19 +221,20 @@ describe("MCP task tools", () => {
     expect(updatedValue.task.currentStep).toBe("Working");
     expect(updatedValue.events.at(-1).actorLabel).toBe("gpt-5-codex");
 
-    const finished = await client.callTool({
-      name: "finish_task",
+    const submitted = await client.callTool({
+      name: "submit_for_review",
       arguments: {
         taskId: ready.task.id,
         runId: startedValue.runId,
         summary: "Done",
       },
     });
-    const finishedValue = JSON.parse(textContent(finished));
-    expect(finishedValue.task.status).toBe("in_review");
-    expect(finishedValue.task.completedAt).toBeNull();
-    expect(finishedValue.events.at(-1).type).toBe("submitted_for_review");
-    expect(finishedValue.events.at(-1).actorLabel).toBe("gpt-5-codex");
+    const submittedValue = JSON.parse(textContent(submitted));
+    expect(submittedValue.task.status).toBe("in_review");
+    expect(submittedValue.task.completedAt).toBeNull();
+    expect(submittedValue.task.activeRunId).toBeNull();
+    expect(submittedValue.events.at(-1).type).toBe("submitted_for_review");
+    expect(submittedValue.events.at(-1).actorLabel).toBe("gpt-5-codex");
 
     await client.close();
     await server.close();

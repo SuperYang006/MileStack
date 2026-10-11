@@ -356,9 +356,9 @@
 - `startTask()` 在领取事务中检查所有前置依赖均为 `completed`，否则返回包含未完成依赖的领域错误；
 - `startTask()` 在事务内原子地将 `ready` 改为 `running`、生成 `runId` 并追加 `started` 事件；
 - 实现 `TaskService.updateTask()`，更新当前步骤和下一步并追加 `progress` 事件；
-- 实现 `TaskService.finishTask()`，写入完成摘要、清除 `activeRunId`、设置完成时间并追加 `completed` 事件；
+- 实现 `TaskService.submitForReview()`，写入完成摘要、清除 `activeRunId`、保持 `completedAt` 为空并追加 `submitted_for_review` 事件；
 - 所有执行写操作校验输入 `runId` 等于任务的 `activeRunId`；
-- 在 MCP 注册 `start_task`、`update_task` 和 `finish_task`；
+- 在 MCP 注册 `start_task`、`update_task` 和 `submit_for_review`；
 - 保持领域服务与 MCP 传输分离；
 - 为后续 `block_task`、`resume_task` 和 `release_task` 留出一致的服务接口模式，但本任务不要求实现这些工具。
 
@@ -371,7 +371,7 @@
 
 **验收条件**
 
-- 可以通过 MCP 完成 `get_project_status -> start_task -> update_task -> finish_task`；
+- 可以通过 MCP 完成 `get_project_status -> start_task -> update_task -> submit_for_review`，并由开发者审核后归档；
 - 同一任务的并发领取测试只有一个成功；
 - 依赖未完成时领取失败，依赖完成后无需额外修改即可领取；
 - 错误 `runId` 和已经失效的 `runId` 被拒绝；

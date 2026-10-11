@@ -575,7 +575,7 @@ describe("TaskService", () => {
       actorLabel: "gpt-5-codex",
     });
 
-    const finished = service.finishTask({
+    const finished = service.submitForReview({
       projectId: "project-1",
       taskId: task.task.id,
       runId: started.runId,
@@ -875,7 +875,7 @@ describe("TaskService", () => {
       taskId: task.task.id,
       actorLabel: "gpt-5-codex",
     });
-    const submitted = service.finishTask({
+    const submitted = service.submitForReview({
       projectId: "project-1",
       taskId: task.task.id,
       runId: firstRun.runId,
@@ -917,7 +917,7 @@ describe("TaskService", () => {
       actorLabel: "gpt-5-codex",
     });
     expect(secondRun.runId).not.toBe(firstRun.runId);
-    service.finishTask({
+    service.submitForReview({
       projectId: "project-1",
       taskId: task.task.id,
       runId: secondRun.runId,
@@ -948,7 +948,7 @@ describe("TaskService", () => {
       projectId: "project-1",
       taskId: dependent.task.id,
     });
-    const dependentSubmitted = service.finishTask({
+    const dependentSubmitted = service.submitForReview({
       projectId: "project-1",
       taskId: dependent.task.id,
       runId: dependentSecondRun.runId,

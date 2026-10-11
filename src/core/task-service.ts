@@ -5,7 +5,7 @@ import {
   createTasksInputSchema,
   confirmTaskInputSchema,
   deleteTaskInputSchema,
-  finishTaskInputSchema,
+  submitForReviewInputSchema,
   getProjectStatusInputSchema,
   getTaskInputSchema,
   listTasksInputSchema,
@@ -28,7 +28,7 @@ import {
   type CreateTasksInput,
   type ConfirmTaskInput,
   type DeleteTaskInput,
-  type FinishTaskInput,
+  type SubmitForReviewInput,
   type GetProjectStatusInput,
   type GetTaskInput,
   type CompactProjectStatus,
@@ -762,8 +762,8 @@ export class TaskService {
     return this.getTask({ projectId: project.id, taskId: parsed.taskId });
   }
 
-  finishTask(input: FinishTaskInput): TaskDetails {
-    const parsed = finishTaskInputSchema.parse(input);
+  submitForReview(input: SubmitForReviewInput): TaskDetails {
+    const parsed = submitForReviewInputSchema.parse(input);
     const project = this.requireProject(parsed.projectId);
     this.repository.transaction((transaction) => {
       const task = transaction.findTaskById(parsed.taskId);

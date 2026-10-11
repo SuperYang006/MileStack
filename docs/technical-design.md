@@ -185,7 +185,7 @@ MCP Tool ------/
 - 校验 `runId`；
 - 更新任务当前快照；
 - 追加 `TaskEvent`；
-- Agent 的 `finish_task` 只提交 `in_review`，开发者审核操作负责批准、退回返工或重新打开；
+- Agent 的 `submit_for_review` 只提交 `in_review`，开发者审核操作负责批准、退回返工或重新打开；
 - 生成项目状态和任务简报；
 - 批量创建用于旧项目基线的 inbox 任务。
 
@@ -223,7 +223,7 @@ WHERE id = ?
 
 ### 6.2 执行权校验
 
-`update_task`、`block_task`、`resume_task`、`release_task` 和 `finish_task` 必须携带 `runId`。
+`update_task`、`block_task`、`resume_task`、`release_task` 和 `submit_for_review` 必须携带 `runId`。
 
 服务端必须验证：
 
@@ -304,7 +304,7 @@ MileStack 不等待完整 Web 页面完成后才开始自用。实现以下自�
 2. `TaskService` 与 repository；
 3. `milestack init`；
 4. MCP stdio 入口；
-5. `get_project_status`、`create_task(s)`、`start_task`、`update_task` 和 `finish_task`；
+5. `get_project_status`、`create_task(s)`、`start_task`、`update_task` 和 `submit_for_review`；
 6. `milestack status`。
 
 从此阶段开始，后续功能、缺陷和使用反馈记录到 MileStack 自身的 inbox 和 ready 队列。开发中的真实摩擦是调整 MCP 返回结构、任务简报和状态模型的主要依据。

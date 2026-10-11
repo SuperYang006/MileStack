@@ -12,7 +12,7 @@ import { formatMcpInstructions } from "../core/agent-instructions.js";
 import {
   createTaskInputSchema,
   createTasksInputSchema,
-  finishTaskInputSchema,
+  submitForReviewInputSchema,
   getProjectStatusInputSchema,
   getTaskInputSchema,
   listTasksInputSchema,
@@ -37,7 +37,7 @@ const listTasksArgumentsSchema = listTasksInputSchema.omit({ projectId: true });
 const taskArgumentsSchema = getTaskInputSchema.omit({ projectId: true });
 const startTaskArgumentsSchema = startTaskInputSchema.omit({ projectId: true });
 const updateTaskArgumentsSchema = updateTaskInputSchema.omit({ projectId: true });
-const finishTaskArgumentsSchema = finishTaskInputSchema.omit({ projectId: true });
+const submitForReviewArgumentsSchema = submitForReviewInputSchema.omit({ projectId: true });
 
 const toolDefinitions: Tool[] = [
   {
@@ -83,10 +83,10 @@ const toolDefinitions: Tool[] = [
     inputSchema: toJSONSchema(updateTaskArgumentsSchema) as Tool["inputSchema"],
   },
   {
-    name: "finish_task",
+    name: "submit_for_review",
     description:
-      "Submit a running task for developer review with a completion summary. The runId becomes invalid after submission; only developer review can approve completion.",
-    inputSchema: toJSONSchema(finishTaskArgumentsSchema) as Tool["inputSchema"],
+      "Submit a running task for developer review with a completion summary. The task changes to in_review, the runId becomes invalid after submission, and only developer approval can move it to completed.",
+    inputSchema: toJSONSchema(submitForReviewArgumentsSchema) as Tool["inputSchema"],
   },
 ];
 
@@ -203,10 +203,10 @@ export function createMcpServer(context: ProjectContext): Server {
             }),
           );
         }
-        case "finish_task": {
-          const parsed = finishTaskArgumentsSchema.parse(args);
+        case "submit_for_review": {
+          const parsed = submitForReviewArgumentsSchema.parse(args);
           return jsonResult(
-            context.service.finishTask({
+            context.service.submitForReview({
               ...parsed,
               projectId: context.project.id,
             }),

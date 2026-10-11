@@ -265,7 +265,7 @@ const executionUpdateFields = {
 
 export const updateTaskInputSchema = z.object(executionUpdateFields).strict();
 
-export const finishTaskInputSchema = z
+export const submitForReviewInputSchema = z
   .object({
     projectId: identifierSchema,
     taskId: identifierSchema,
@@ -372,7 +372,7 @@ export type SetTaskDependenciesInput = z.input<
 >;
 export type StartTaskInput = z.input<typeof startTaskInputSchema>;
 export type UpdateTaskInput = z.input<typeof updateTaskInputSchema>;
-export type FinishTaskInput = z.input<typeof finishTaskInputSchema>;
+export type SubmitForReviewInput = z.input<typeof submitForReviewInputSchema>;
 export type ConfirmTaskInput = z.input<typeof confirmTaskInputSchema>;
 export type ReturnTaskToInboxInput = z.input<
   typeof returnTaskToInboxInputSchema

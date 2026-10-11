@@ -405,7 +405,7 @@ describe("HTTP API Server", () => {
       projectId: serverInstance.context.project.id,
       taskId: created.id,
     });
-    serverInstance.context.service.finishTask({
+    serverInstance.context.service.submitForReview({
       projectId: serverInstance.context.project.id,
       taskId: created.id,
       runId: firstRun.runId,
@@ -442,7 +442,7 @@ describe("HTTP API Server", () => {
       projectId: serverInstance.context.project.id,
       taskId: created.id,
     });
-    serverInstance.context.service.finishTask({
+    serverInstance.context.service.submitForReview({
       projectId: serverInstance.context.project.id,
       taskId: created.id,
       runId: secondRun.runId,

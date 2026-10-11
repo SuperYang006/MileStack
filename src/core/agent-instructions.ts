@@ -7,7 +7,7 @@ const taskClaimRule =
 const taskClaimValidationRule =
   "服务端会校验任务状态、前置依赖和并发领取冲突。";
 const taskCompletionRule =
-  "实现完成后调用 finish_task 提交人工审核；任务进入 in_review，不代表已批准归档。";
+  "实现完成后调用 submit_for_review 提交人工审核；任务进入 in_review，只有开发者批准后才会进入 completed。提交审核后旧 runId 立即失效。";
 
 export function formatAgentIntegrationInstructions(): string {
   return `MILESTACK_START

@@ -42,7 +42,7 @@ ${
 ${formatKnownTaskBriefInstructions(task.id)}
 3. 执行过程中若有阶段进展，调用 \`update_task\` 汇报阶段产物与下一步骤；
 4. 若遭遇阻塞，调用 \`update_task\` 填写 blocker 和 requiredAction；
-5. 验收条件满足且验证完成后调用 \`finish_task\` 提交完成摘要。
+5. 验收条件满足且验证完成后调用 \`submit_for_review\` 提交审核摘要；任务进入 in_review，等待开发者批准后才会完成。
 `;
 
   const handleCopy = async () => {

@@ -15,7 +15,9 @@ project's task source:
 - call `get_project_status` to read the current work, queue, blockers, inbox, and recent completions;
 - choose a task from `next` only when `runnable` is `true`, then call `get_task`;
 - call `start_task` before implementation and keep the returned `runId`;
-- use `update_task` for meaningful progress and `finish_task` when the task is complete;
+- use `update_task` for meaningful progress;
+- when implementation is ready, submit it for developer review with `submit_for_review`. Submission moves the task to `in_review`; it does not complete or archive the task;
+- treat a task as complete only after a developer approves it and its status becomes `completed`. If review requests changes or a completed task is reopened, read the feedback, claim the returned Ready task with a new `runId`, and continue the same task history;
 - record newly discovered work with `create_task` or `create_tasks`, which places it in `inbox` for developer review.
 
 Do not create documents that duplicate dynamic task state stored in MileStack, such as standalone TODO lists, current-progress reports, next-task lists, or temporary handoff files. Durable documentation is allowed and encouraged when it has lasting value, including product requirements, technical designs, architecture decisions, protocols, migration notes, and operation or user guides. Documents explicitly requested by the user are also allowed.

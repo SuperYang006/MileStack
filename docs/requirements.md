@@ -366,7 +366,7 @@ V0 不建立稳定的 Agent 身份系统。
 `start_task` 成功时生成一个 `runId`，代表某一次任务领取和执行。后续执行类写操作必须携带该 `runId`。
 
 ```text
-start_task -> 生成 runId -> update/block/release/finish 携带 runId -> in_review -> developer approve/request-changes
+start_task -> 生成 runId -> update/block/release/submit_for_review 携带 runId -> in_review -> developer approve/request-changes
 ```
 
 服务端必须保证：
@@ -402,7 +402,7 @@ V0 暂不实现请求幂等键和通用乐观锁；出现实际重复写入或�
 - `block_task`：报告阻塞原因和所需行动；
 - `resume_task`：阻塞解除后，使用当前 `runId` 恢复执行；
 - `release_task`：释放任务、写入交接说明并返回 `ready`；
-- `finish_task`：提交完成摘要并将任务设为 `completed`。
+- `submit_for_review`：提交完成摘要并将任务设为 `in_review`；只有开发者批准后才进入 `completed`。
 
 所有更新优先表达：
 
@@ -428,7 +428,7 @@ MileStack 应提供一段可加入项目 `AGENTS.md` 或其他 AI 指令文件�
 - 阻塞解除且继续原任务时调用 resume_task。
 - 执行中发现的新工作通过 create_task 记录到 inbox，不要写入新的任务文档。
 - 无法继续或需要其他 AI 接手时调用 release_task，并写明交接信息。
-- 只有在验收条件满足且验证完成后调用 finish_task。
+- 只有在验收条件满足且验证完成后调用 `submit_for_review`；提交后等待开发者审核批准。
 ```
 
 ## 12. V0 页面
