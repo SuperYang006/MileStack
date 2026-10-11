@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+
+# Build and test output
+dist/
+ui/dist/
+coverage/
+*.tsbuildinfo
+
+# Local MileStack data
+.milestack/
+.codegraph/
+
+# Local environment and logs
+.env
+.env.*
+!.env.example
+*.log
+
+# Operating system and editor files
+.DS_Store
+.idea/
+.vscode/
