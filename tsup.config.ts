@@ -1,4 +1,5 @@
 import { defineConfig } from "tsup";
+import { cpSync } from "node:fs";
 
 export default defineConfig({
   entry: ["src/cli/index.ts"],
@@ -8,4 +9,7 @@ export default defineConfig({
   clean: true,
   sourcemap: true,
   dts: false,
+  onSuccess: async () => {
+    cpSync("src/db/migrations", "dist/migrations", { recursive: true });
+  },
 });
