@@ -87,7 +87,53 @@ describe("CLI entry point", () => {
 
     const status = outputCapture();
     expect(await runCli(["status", "--project", projectRoot], status.output)).toBe(0);
-    expect(status.stdout.join("")).toContain("[可执行] Prerequisite");
-    expect(status.stdout.join("")).toContain("[等待依赖] Waiting task");
+    expect(status.stdout.join("")).toContain("[可执行]");
+    expect(status.stdout.join("")).toContain("[等待依赖]");
+    expect(status.stdout.join("")).toContain("Prerequisite");
+    expect(status.stdout.join("")).toContain("Waiting task");
+  });
+
+  it("outputs structured JSON format when --json is provided", async () => {
+    const projectRoot = createTemporaryProject();
+    const init = outputCapture();
+    expect(await runCli(["init", "--project", projectRoot], init.output)).toBe(0);
+
+    const context = await openProjectContext(projectRoot);
+    context.service.createTask({
+      projectId: context.project.id,
+      title: "Json Task",
+      status: "inbox",
+      createdBy: "developer",
+    });
+    context.database.close();
+
+    const status = outputCapture();
+    expect(await runCli(["status", "--project", projectRoot, "--json"], status.output)).toBe(0);
+    const parsed = JSON.parse(status.stdout.join(""));
+    expect(parsed.project.id).toBeDefined();
+    expect(parsed.inbox.length).toBe(1);
+    expect(parsed.inbox[0].title).toBe("Json Task");
+  });
+
+  it("strips ANSI color escape codes when NO_COLOR environment variable is set", async () => {
+    const projectRoot = createTemporaryProject();
+    const init = outputCapture();
+    expect(await runCli(["init", "--project", projectRoot], init.output)).toBe(0);
+
+    const originalNoColor = process.env.NO_COLOR;
+    try {
+      process.env.NO_COLOR = "1";
+      const statusNoColor = outputCapture();
+      expect(await runCli(["status", "--project", projectRoot], statusNoColor.output)).toBe(0);
+      const text = statusNoColor.stdout.join("");
+      expect(text).not.toContain("\x1b[");
+      expect(text).toContain("项目：");
+    } finally {
+      if (originalNoColor === undefined) {
+        delete process.env.NO_COLOR;
+      } else {
+        process.env.NO_COLOR = originalNoColor;
+      }
+    }
   });
 });

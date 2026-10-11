@@ -18,6 +18,8 @@ Commands:
   serve                Run the HTTP web and API server
 Options:
   --project <path>     Project root (defaults to the current directory)
+  --json               Output JSON format (for status command)
+  --port <port>        Server port (for serve command)
   -h, --help           Show this help message
 `;
 
@@ -35,6 +37,7 @@ type ParsedCommand = {
   command: "init" | "status" | "mcp" | "serve";
   projectPath?: string | undefined;
   port?: number | undefined;
+  json?: boolean | undefined;
 };
 
 function parseCommand(args: readonly string[]): ParsedCommand {
@@ -45,6 +48,7 @@ function parseCommand(args: readonly string[]): ParsedCommand {
 
   let projectPath: string | undefined;
   let port: number | undefined;
+  let json: boolean | undefined;
   for (let index = 0; index < options.length; index += 1) {
     const option = options[index];
     if (option === "--project") {
@@ -78,6 +82,11 @@ function parseCommand(args: readonly string[]): ParsedCommand {
         throw new Error("--port requires a valid port number.");
       }
       port = Number(value);
+      port = Number(value);
+      continue;
+    }
+    if (option === "--json") {
+      json = true;
       continue;
     }
     if (option === "--help" || option === "-h") {
@@ -86,7 +95,7 @@ function parseCommand(args: readonly string[]): ParsedCommand {
     throw new Error(`Unknown option '${option}'.`);
   }
 
-  return { command, projectPath, port };
+  return { command, projectPath, port, json };
 }
 
 function ensureGitignoreEntry(projectRoot: string): void {
@@ -103,10 +112,43 @@ function ensureGitignoreEntry(projectRoot: string): void {
   writeFileSync(gitignorePath, `${existing}${prefix}.milestack/\n`);
 }
 
-function formatTask(task: TaskSummary): string {
+function shouldEnableColor(): boolean {
+  if (process.env.NO_COLOR && process.env.NO_COLOR !== "") {
+    return false;
+  }
+  return true;
+}
+
+function createStyler(enableColor: boolean) {
+  const wrap = (code: string) => (text: string) => (enableColor ? `\x1b[${code}m${text}\x1b[0m` : text);
+  return {
+    bold: wrap("1"),
+    cyan: wrap("36"),
+    green: wrap("32"),
+    yellow: wrap("33"),
+    red: wrap("31"),
+    dim: wrap("90"),
+    boldGreen: wrap("1;32"),
+    boldYellow: wrap("1;33"),
+    boldCyan: wrap("1;36"),
+    boldRed: wrap("1;31"),
+  };
+}
+
+function formatTask(task: TaskSummary, styler: ReturnType<typeof createStyler>): string {
   let availability: string = task.status;
   if (task.status === "ready") {
-    availability = task.runnable ? "可执行" : "等待依赖";
+    availability = task.runnable ? styler.boldGreen("[可执行]") : styler.yellow("[等待依赖]");
+  } else if (task.status === "running") {
+    availability = styler.boldCyan(`[${task.status}]`);
+  } else if (task.status === "blocked") {
+    availability = styler.boldRed(`[${task.status}]`);
+  } else if (task.status === "completed") {
+    availability = styler.green(`[${task.status}]`);
+  } else if (task.status === "inbox") {
+    availability = styler.dim(`[${task.status}]`);
+  } else {
+    availability = `[${task.status}]`;
   }
   const waiting = task.waitingFor.length > 0
     ? `；等待：${task.waitingFor.map((dependency) => `${dependency.title} (${dependency.id})`).join(", ")}`
@@ -114,31 +156,33 @@ function formatTask(task: TaskSummary): string {
   const details = [task.currentStep, task.nextStep, task.blocker]
     .filter((value): value is string => Boolean(value))
     .join("；");
-  return `  - [${availability}] ${task.title} (${task.id})${waiting}${details ? `；${details}` : ""}`;
+  return `  - ${availability} ${task.title} (${task.id})${waiting}${details ? `；${details}` : ""}`;
 }
 
 function formatTaskSection(
   title: string,
   tasks: TaskSummary[],
+  styler: ReturnType<typeof createStyler>,
 ): string[] {
   return [
-    `${title} (${tasks.length})`,
-    ...(tasks.length > 0 ? tasks.map(formatTask) : ["  - 无"]),
+    styler.bold(`${title} (${tasks.length})`),
+    ...(tasks.length > 0 ? tasks.map((t) => formatTask(t, styler)) : ["  - 无"]),
   ];
 }
 
-function formatProjectStatus(status: ProjectStatus): string {
+export function formatProjectStatus(status: ProjectStatus, enableColor = shouldEnableColor()): string {
+  const styler = createStyler(enableColor);
   const sections = [
-    `项目：${status.project.name} (${status.project.id})`,
-    ...formatTaskSection("当前", status.current),
-    ...formatTaskSection("下一步", status.next),
-    ...formatTaskSection("阻塞", status.blocked),
-    ...formatTaskSection("Inbox", status.inbox),
-    ...formatTaskSection("最近完成", status.recentlyCompleted),
+    styler.bold(`项目：${status.project.name} (${status.project.id})`),
+    ...formatTaskSection("当前", status.current, styler),
+    ...formatTaskSection("下一步", status.next, styler),
+    ...formatTaskSection("阻塞", status.blocked, styler),
+    ...formatTaskSection("Inbox", status.inbox, styler),
+    ...formatTaskSection("最近完成", status.recentlyCompleted, styler),
   ];
   const runnableCount = status.next.filter((task) => task.runnable).length;
   if (runnableCount > 1) {
-    sections.push(`可并行任务：${runnableCount}`);
+    sections.push(styler.cyan(`可并行任务：${runnableCount}`));
   }
   return `${sections.join("\n")}\n`;
 }
@@ -177,11 +221,20 @@ async function runInit(projectPath: string | undefined, output: CliOutput): Prom
   }
 }
 
-async function runStatus(projectPath: string | undefined, output: CliOutput): Promise<void> {
+async function runStatus(
+  projectPath: string | undefined,
+  json: boolean | undefined,
+  output: CliOutput,
+): Promise<void> {
   const projectRoot = resolveProjectRoot(projectPath);
   const context = await openProjectContext(projectRoot);
   try {
-    output.writeStdout(formatProjectStatus(context.service.getProjectStatus({ projectId: context.project.id })));
+    const status = context.service.getProjectStatus({ projectId: context.project.id });
+    if (json) {
+      output.writeStdout(`${JSON.stringify(status, null, 2)}\n`);
+    } else {
+      output.writeStdout(formatProjectStatus(status));
+    }
   } finally {
     context.database.close();
   }
@@ -203,7 +256,7 @@ export async function runCli(
       return 0;
     }
     if (parsed.command === "status") {
-      await runStatus(parsed.projectPath, output);
+      await runStatus(parsed.projectPath, parsed.json, output);
       return 0;
     }
     if (parsed.command === "serve") {
