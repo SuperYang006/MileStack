@@ -43,7 +43,7 @@ export const RecentTasks: React.FC<RecentTasksProps> = ({ tasks, onSelectTask })
                 onClick={() => onSelectTask(task.id)}
               >
                 <span className="text-zinc-600 text-[11px]">{task.id}</span>
-                <span className="text-zinc-500 line-through decoration-zinc-700 truncate group-hover:text-zinc-300 transition-colors">
+                <span className="text-zinc-400 truncate group-hover:text-zinc-200 transition-colors">
                   {task.title}
                 </span>
               </div>
