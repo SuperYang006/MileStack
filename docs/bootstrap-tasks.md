@@ -45,12 +45,13 @@
 | `BOOT-001` | 初始化 TypeScript 工程骨架 | 无 | 首个任务 | 可构建、可测试的工程 |
 | `BOOT-002` | 建立 SQLite Schema、迁移与连接层 | `BOOT-001` | 独立 | 可持久化的数据库基础 |
 | `BOOT-003` | 实现任务核心模型与查询服务 | `BOOT-002` | 独立 | `TaskService` 查询和创建能力 |
-| `BOOT-004` | 实现 `init` 与 `status` CLI | `BOOT-003` | 可与 `BOOT-005` 并行 | 旧项目初始化和终端状态查看 |
-| `BOOT-005` | 实现 MCP 查询与任务记录工具 | `BOOT-003` | 可与 `BOOT-004` 并行 | AI 可读项目状态并写入 inbox |
-| `BOOT-006` | 实现任务执行生命周期 | `BOOT-003`、`BOOT-005` | 独立 | 领取、更新、完成闭环 |
+| `BOOT-003A` | 增加任务依赖与可执行性计算 | `BOOT-003` | 紧接 003 | 依赖关系、等待原因和并行判断 |
+| `BOOT-004` | 实现 `init` 与 `status` CLI | `BOOT-003A` | 可与 `BOOT-005` 并行 | 旧项目初始化和终端状态查看 |
+| `BOOT-005` | 实现 MCP 查询与任务记录工具 | `BOOT-003A` | 可与 `BOOT-004` 并行 | AI 可读项目状态并写入 inbox |
+| `BOOT-006` | 实现任务执行生命周期 | `BOOT-003A`、`BOOT-005` | 独立 | 领取、更新、完成闭环 |
 | `BOOT-007` | 集成验证并让 MileStack 自举 | `BOOT-004`、`BOOT-006` | 最后执行 | MileStack 开始管理自身 |
 
-`BOOT-004` 与 `BOOT-005` 可以并行，但必须通过 `TaskService` 调用核心逻辑。它们不得直接访问或修改任务表。
+`BOOT-004` 与 `BOOT-005` 可以并行，但必须通过 `TaskService` 调用核心逻辑。它们不得直接访问或修改任务表。共同修改的 CLI 入口、依赖配置和锁文件须协调合并；任务依赖允许并行不等于不会产生文件冲突。
 
 ## 5. 详细任务
 
@@ -142,6 +143,8 @@
 
 ### BOOT-003：实现任务核心模型与查询服务
 
+范围说明：本任务继续按原定范围完成。最新需求中的依赖关系及派生可执行性由后续 `BOOT-003A` 负责，不要求当前执行者提前实现。
+
 **目标**
 
 实现 MileStack 的唯一业务入口，使 CLI、MCP 和未来 HTTP API 共享同一套任务规则。
@@ -167,6 +170,7 @@
 
 **不包含**
 
+- 任务依赖与可执行性计算；
 - 任务领取和 `runId`；
 - 阻塞、释放或完成；
 - MCP 协议层；
@@ -188,6 +192,62 @@
 
 ---
 
+### BOOT-003A：增加任务依赖与可执行性计算
+
+**目标**
+
+在不改变 `BOOT-003` 原定交付范围的前提下，通过前向迁移增加任务依赖，并让开发者和 AI 直接看出哪些任务可以立即执行、并行推进或仍在等待前置任务。
+
+**依赖**
+
+- `BOOT-003`
+
+**实现范围**
+
+- 新增 `task_dependencies` 表，使用 `(task_id, depends_on_task_id)` 复合主键或唯一约束；
+- 删除依赖方任务时清理其关系；删除仍被引用的前置任务时使用 `RESTRICT`，不静默解除依赖；
+- 通过新的 Drizzle migration 增加关系表，不修改 `BOOT-002` 已经应用的初始迁移；
+- 扩展 repository 接口和 SQLite 实现，支持读取和原子替换任务依赖；
+- 实现 `TaskService.setTaskDependencies()`，只允许修改 inbox/ready 任务，校验、替换和 progress 历史事件在同一写事务完成；
+- 扩展创建任务与批量创建任务输入，接受 `dependencyIds`；
+- 创建输入省略 `dependencyIds` 时使用空数组；批量创建只引用请求开始前已存在的同项目任务，不增加批次内临时 ID；
+- 创建或修改依赖时拒绝任务依赖自身；
+- 创建或修改依赖时检测并拒绝直接或间接循环依赖；
+- 扩展任务详情，返回 `dependencyIds`；
+- 扩展 `TaskSummary`，返回 `dependencyIds`、`waitingFor` 和 `runnable`；
+- `waitingFor` 只包含未完成依赖的 ID、标题和状态；
+- `runnable` 仅在任务状态为 `ready` 且全部依赖为 `completed` 时为 `true`；
+- `getProjectStatus()` 保持 `next` 的人工队列顺序，同时返回每项任务的动态可执行性；
+- 当多个 ready 任务的 `runnable` 同时为 `true` 时，由调用方将其解释为当前可并行任务，不持久化 `parallelizable` 字段。
+
+**不包含**
+
+- 可视化依赖图；
+- 自动任务排序或调度；
+- 文件冲突分析；
+- `exclusive` 独占执行模式；
+- `start_task` 的依赖校验，该校验在 `BOOT-006` 与领取事务一起实现。
+
+**验收条件**
+
+- 已有 `BOOT-002/003` 数据库可以通过新迁移升级且原数据保持不变；
+- 可以创建无依赖、单依赖和多依赖任务；
+- 不存在的依赖任务、跨项目依赖、自身依赖和循环依赖均被拒绝；
+- 任一依赖未完成时，任务返回 `runnable = false` 并列出正确的 `waitingFor`；
+- 所有依赖完成后，无需修改任务即可返回 `runnable = true`；
+- `next` 仍按 `queuePosition` 排序，不因依赖自动重排；
+- 等待依赖的任务仍在 ready/next 中，非 ready 任务即使依赖完成也返回 `runnable = false`；
+- 并发依赖修改不能绕过环检测，校验失败不改变原关系和事件；
+- `createTasks()` 中的批量任务依赖失败时，整个批次回滚；
+- 不增加散落在源码目录中的测试，相关测试集中放入 `tests/core` 和 `tests/db`；
+- `pnpm typecheck`、相关测试和 `pnpm build` 通过。
+
+**交付说明**
+
+完成后提供迁移文件、依赖环检测策略、扩展后的查询示例，以及对 `BOOT-006` 的领取校验要求。
+
+---
+
 ### BOOT-004：实现 `init` 与 `status` CLI
 
 **目标**
@@ -196,7 +256,7 @@
 
 **依赖**
 
-- `BOOT-003`
+- `BOOT-003A`
 
 **实现范围**
 
@@ -210,6 +270,7 @@
 - 输出带 `MILESTACK_START`/`MILESTACK_END` 标记的 AI 接入规则；
 - 实现 `milestack status --project <path>`；
 - `status` 通过 `TaskService.getProjectStatus()` 输出人类可读摘要。
+- 摘要区分可执行和等待依赖的待办，多个可执行任务时提示可并行（仅按已声明依赖判断）。
 
 **关键约束**
 
@@ -224,6 +285,7 @@
 - 初始化不会修改任何业务源码；
 - 重复初始化结果稳定；
 - `status` 能展示当前、下一任务、阻塞、inbox 和最近完成；
+- 等待依赖的待办显示未完成依赖，不能被展示为可立即领取；
 - 空项目状态有清晰提示而非异常；
 - 路径或数据库错误具有可执行的错误信息；
 - CLI 集成测试通过。
@@ -242,7 +304,7 @@
 
 **依赖**
 
-- `BOOT-003`
+- `BOOT-003A`
 
 **实现范围**
 
@@ -253,6 +315,7 @@
 - 注册 `create_task`；
 - 注册 `create_tasks`；
 - MCP 输入复用核心 Zod Schema；
+- 创建工具传递 `dependencyIds`；查询工具保留 `dependencyIds`、`waitingFor` 和 `runnable`，描述中说明只领取可执行任务；
 - 所有工具通过 `TaskService` 执行，不直接访问数据库表；
 - 为工具提供简洁、明确的描述，告诉 AI 何时调用及关键约束；
 - 将领域错误转换为稳定、可理解的 MCP 错误结果；
@@ -265,6 +328,7 @@
 - `create_task` 创建的 Agent 任务进入 inbox；
 - `create_tasks` 可以一次写入多条 inbox 任务；
 - `get_task` 返回任务当前状态和事件历史；
+- 查询结果能区分可执行任务和等待依赖的任务；
 - 无效项目路径、任务 ID 和输入返回清晰错误；
 - 使用内存内或临时目录客户端完成 MCP 集成测试；
 - stdout 中没有破坏协议的日志。
@@ -283,12 +347,13 @@
 
 **依赖**
 
-- `BOOT-003`
+- `BOOT-003A`
 - `BOOT-005`
 
 **实现范围**
 
 - 实现 `TaskService.startTask()`；
+- `startTask()` 在领取事务中检查所有前置依赖均为 `completed`，否则返回包含未完成依赖的领域错误；
 - `startTask()` 在事务内原子地将 `ready` 改为 `running`、生成 `runId` 并追加 `started` 事件；
 - 实现 `TaskService.updateTask()`，更新当前步骤和下一步并追加 `progress` 事件；
 - 实现 `TaskService.finishTask()`，写入完成摘要、清除 `activeRunId`、设置完成时间并追加 `completed` 事件；
@@ -300,6 +365,7 @@
 **并发要求**
 
 - 两个调用并发领取同一个 ready 任务时只能有一个成功；
+- 存在未完成依赖的 ready 任务不能被领取；
 - 任务完成后旧 `runId` 不能继续更新；
 - 不在 SQLite 写事务中执行网络、文件扫描或其他长操作。
 
@@ -307,6 +373,7 @@
 
 - 可以通过 MCP 完成 `get_project_status -> start_task -> update_task -> finish_task`；
 - 同一任务的并发领取测试只有一个成功；
+- 依赖未完成时领取失败，依赖完成后无需额外修改即可领取；
 - 错误 `runId` 和已经失效的 `runId` 被拒绝；
 - 每次当前状态修改和事件追加保持事务一致；
 - 完成任务后它从 `current` 移到 `recentlyCompleted`；
@@ -375,12 +442,13 @@
 BOOT-001
   -> BOOT-002
   -> BOOT-003
+  -> BOOT-003A
   -> BOOT-004 与 BOOT-005
   -> BOOT-006
   -> BOOT-007
 ```
 
-如果多个 Agent 并行工作，只有 `BOOT-004` 和 `BOOT-005` 建议在同一时段并行。其他任务处于同一核心依赖链，提前并行会增加 Schema、类型和服务接口反复合并的成本。
+如果多个 Agent 并行工作，只有 `BOOT-004` 和 `BOOT-005` 建议在同一时段并行。`BOOT-003A` 必须等待正在执行的 `BOOT-003` 完成，不应中途扩大 `BOOT-003` 的范围。其他任务处于同一核心依赖链，提前并行会增加 Schema、类型和服务接口反复合并的成本。
 
 ## 7. Agent 交付模板
 
