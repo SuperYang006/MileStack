@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { X, Copy, Check, Terminal } from "lucide-react";
+import { formatKnownTaskBriefInstructions } from "../../../src/core/agent-instructions.js";
 import type { TaskSummary, ProjectSummary } from "../types";
 
 interface BriefingModalProps {
@@ -38,13 +39,10 @@ ${
     : ""
 }
 ## 3. AI 协作执行协议
-在执行本任务前，AI 必须遵循以下流程：
-1. 先调用 MCP 工具 \`get_project_status\`，了解项目全局上下文与当前状态；
-2. 调用 \`get_task\` 获取该任务（\`${task.id}\`）的完整字段与历史事件；
-3. 确认可执行后，调用 \`start_task\` 领取该任务并获取本次执行的 \`runId\`；
-4. 执行过程中若有阶段进展，调用 \`update_task\` 汇报阶段产物与下一步骤；
-5. 若遭遇不可解的外部阻塞，调用 \`block_task\` 并注明 blocker 及所需行动；
-6. 任务完成后调用 \`complete_task\` 提交验收结果。
+${formatKnownTaskBriefInstructions(task.id)}
+3. 执行过程中若有阶段进展，调用 \`update_task\` 汇报阶段产物与下一步骤；
+4. 若遭遇阻塞，调用 \`update_task\` 填写 blocker 和 requiredAction；
+5. 验收条件满足且验证完成后调用 \`finish_task\` 提交完成摘要。
 `;
 
   const handleCopy = async () => {

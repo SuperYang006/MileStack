@@ -213,7 +213,7 @@ AI 可以通过 MCP：
 - 验收条件；
 - 前置依赖及尚未完成的依赖；
 - 已有进展和最近交接信息；
-- 明确要求 AI 先调用 `get_project_status` 和 `get_task`；
+- 明确区分任务发现和已知任务流程：没有已知 `taskId` 时先调用 `get_project_status` 选择任务，已知 `taskId` 时直接调用 `get_task`；
 - 领取、更新、阻塞、释放和完成任务时应调用的 MCP 工具。
 
 简报不预先绑定 Agent 身份。AI 调用 `start_task` 成功后获得本次执行的 `runId`。
@@ -410,8 +410,8 @@ MileStack 应提供一段可加入项目 `AGENTS.md` 或其他 AI 指令文件�
 
 ```md
 - MileStack 是本项目任务和进度的事实源。不要新建或维护独立的 TODO、进度、计划或交接任务文档。
-- 开始工作前调用 get_project_status，确认项目当前状态和下一任务。
-- 处理具体任务前调用 get_task，读取目标、验收条件和历史进度。
+- 没有已知 `taskId` 时调用 `get_project_status`，确认项目当前状态和下一任务；已有 `taskId` 时直接调用 `get_task`，不必先加载完整项目状态。
+- 处理具体任务前调用 `get_task`，读取目标、验收条件和历史进度。
 - 按 next 的队列顺序选择 runnable 为 true 的任务；等待依赖的任务暂不领取。
 - 领取任务时调用 start_task，并保存返回的 runId。
 - 完成一个对项目有意义的阶段后调用 update_task。

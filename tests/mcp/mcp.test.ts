@@ -58,6 +58,11 @@ describe("MCP task tools", () => {
     await server.connect(serverTransport);
     await client.connect(clientTransport);
 
+    const instructions = client.getInstructions();
+    expect(instructions).toContain("没有已知 taskId 时，调用 get_project_status");
+    expect(instructions).toContain("已经提供 taskId 时，直接调用 get_task");
+    expect(instructions).toContain("读取任务详情后调用 start_task");
+
     const listed = await client.listTools();
     expect(listed.tools.map((tool) => tool.name)).toEqual([
       "get_project_status",
@@ -154,9 +159,17 @@ describe("MCP task tools", () => {
     await server.connect(serverTransport);
     await client.connect(clientTransport);
 
+    const details = await client.callTool({
+      name: "get_task",
+      arguments: { taskId: ready.task.id },
+    });
+    expect(JSON.parse(textContent(details))).toMatchObject({
+      task: { id: ready.task.id, status: "ready" },
+    });
+
     const started = await client.callTool({
       name: "start_task",
-        arguments: { taskId: ready.task.id, actorLabel: "gpt-5-codex" },
+      arguments: { taskId: ready.task.id, actorLabel: "gpt-5-codex" },
     });
     const startedValue = JSON.parse(textContent(started));
     expect(startedValue.runId).toBeTruthy();

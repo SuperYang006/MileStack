@@ -8,6 +8,7 @@ import {
 import { toJSONSchema, z, ZodError } from "zod";
 
 import { DomainError } from "../core/errors.js";
+import { formatMcpInstructions } from "../core/agent-instructions.js";
 import {
   createTaskInputSchema,
   createTasksInputSchema,
@@ -40,13 +41,13 @@ const toolDefinitions: Tool[] = [
   {
     name: "get_project_status",
     description:
-      "Read the current project work, ordered ready queue, blocked tasks, inbox, and recently completed tasks. Choose only ready tasks with runnable=true; waiting tasks include their unfinished dependencies.",
+      "Use this when no taskId is known to read the current project work and ordered ready queue. Choose only ready tasks with runnable=true; waiting tasks include their unfinished dependencies.",
     inputSchema: toJSONSchema(projectStatusArgumentsSchema) as Tool["inputSchema"],
   },
   {
     name: "get_task",
     description:
-      "Read one task's objective, acceptance criteria, dependency state, current snapshot, and immutable event history before working on it.",
+      "Read a known taskId's objective, acceptance criteria, dependency state, current snapshot, and immutable event history before claiming it. This does not require get_project_status first.",
     inputSchema: toJSONSchema(taskArgumentsSchema) as Tool["inputSchema"],
   },
   {
@@ -64,7 +65,7 @@ const toolDefinitions: Tool[] = [
   {
     name: "start_task",
     description:
-      "Atomically claim a runnable ready task. Optionally include the model label. Save the returned runId and include it in every subsequent execution update.",
+      "After get_task, atomically claim a runnable ready task. Optionally include the model label. Save the returned runId and include it in every subsequent execution update.",
     inputSchema: toJSONSchema(startTaskArgumentsSchema) as Tool["inputSchema"],
   },
   {
@@ -118,8 +119,7 @@ export function createMcpServer(context: ProjectContext): Server {
     { name: "milestack", version: "0.1.0" },
     {
       capabilities: { tools: {} },
-      instructions:
-        "Use get_project_status before selecting work and get_task before working on a specific task. Agent-created tasks go to inbox.",
+      instructions: formatMcpInstructions(),
     },
   );
 

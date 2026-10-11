@@ -2,6 +2,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 
 import { runMcp } from "../mcp/server.js";
 import { startHttpServer } from "../server/server.js";
+import { formatAgentIntegrationInstructions } from "../core/agent-instructions.js";
 import type { ProjectStatus, TaskSummary } from "../core/query-contract.js";
 import {
   initializeProject,
@@ -187,16 +188,6 @@ export function formatProjectStatus(status: ProjectStatus, enableColor = shouldE
   return `${sections.join("\n")}\n`;
 }
 
-function integrationInstructions(): string {
-  return `MILESTACK_START
-- MileStack 是本项目任务和进度的事实源。不要新建或维护独立的 TODO、进度、计划或交接任务文档。
-- 开始工作前调用 get_project_status，确认项目当前状态和下一任务。
-- 处理具体任务前调用 get_task，读取目标、验收条件和历史进度。
-- 按 next 的队列顺序选择 runnable 为 true 的任务；等待依赖的任务暂不领取。
-- 执行中发现的新工作通过 create_task 记录到 inbox，不要写入新的任务文档。
-MILESTACK_END`;
-}
-
 function shellQuote(value: string): string {
   if (/^[A-Za-z0-9_./:@%+=,-]+$/.test(value)) {
     return value;
@@ -243,7 +234,7 @@ async function runInit(projectPath: string | undefined, output: CliOutput): Prom
         `Database: ${context.database.databasePath}\n\n` +
         `MCP configuration:\n${JSON.stringify(configuration, null, 2)}\n\n` +
         `${codexMcpInstructions(projectRoot)}\n\n` +
-        `AI integration instructions:\n${integrationInstructions()}\n`,
+        `AI integration instructions:\n${formatAgentIntegrationInstructions()}\n`,
     );
   } finally {
     context.database.close();

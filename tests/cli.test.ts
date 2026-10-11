@@ -66,6 +66,9 @@ describe("CLI entry point", () => {
     expect(firstOutput).toContain("新的 Codex CLI 会话");
     expect(firstOutput).toContain("~/.codex/config.toml");
     expect(firstOutput).toContain("pnpm link --global");
+    expect(firstOutput).toContain("没有已知 taskId 时，调用 get_project_status");
+    expect(firstOutput).toContain("已经提供 taskId 时，直接调用 get_task");
+    expect(firstOutput).toContain("读取任务详情后调用 start_task");
 
     const second = outputCapture();
     expect(await runCli(["init", "--project", projectRoot], second.output)).toBe(0);
