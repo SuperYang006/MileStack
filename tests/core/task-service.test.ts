@@ -2,10 +2,13 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  InvalidTaskDependencyError,
   ProjectNotFoundError,
+  TaskDependenciesNotEditableError,
   TaskNotFoundError,
 } from "../../src/core/errors.js";
 import { TaskService } from "../../src/core/task-service.js";
@@ -233,6 +236,167 @@ describe("TaskService", () => {
     expect(() =>
       service.getTask({ projectId: "project-1", taskId: "missing-task" }),
     ).toThrow(TaskNotFoundError);
+    database.close();
+  });
+
+  it("stores dependencies and computes waitingFor and runnable dynamically", async () => {
+    const { database, service } = await createService(createTemporaryProject());
+    const prerequisite = service.createTask({
+      projectId: "project-1",
+      title: "Prepare prerequisite",
+      queuePosition: 1,
+      createdBy: "developer",
+    });
+    const dependent = service.createTask({
+      projectId: "project-1",
+      title: "Use prerequisite",
+      dependencyIds: [prerequisite.task.id],
+      queuePosition: 2,
+      createdBy: "developer",
+    });
+
+    expect(dependent.task.dependencyIds).toEqual([prerequisite.task.id]);
+    let status = service.getProjectStatus({ projectId: "project-1" });
+    expect(status.next.map((task) => task.id)).toEqual([
+      prerequisite.task.id,
+      dependent.task.id,
+    ]);
+    expect(status.next[1]).toMatchObject({
+      dependencyIds: [prerequisite.task.id],
+      waitingFor: [
+        {
+          id: prerequisite.task.id,
+          title: "Prepare prerequisite",
+          status: "ready",
+        },
+      ],
+      runnable: false,
+    });
+
+    database.db
+      .update(tasks)
+      .set({
+        status: "completed",
+        completedAt: "2026-10-11T13:00:00.000Z",
+        updatedAt: "2026-10-11T13:00:00.000Z",
+      })
+      .where(eq(tasks.id, prerequisite.task.id))
+      .run();
+
+    status = service.getProjectStatus({ projectId: "project-1" });
+    expect(status.next[0]).toMatchObject({
+      id: dependent.task.id,
+      waitingFor: [],
+      runnable: true,
+    });
+    database.close();
+  });
+
+  it("rejects invalid dependency changes and records valid changes as progress", async () => {
+    const projectRoot = createTemporaryProject();
+    const { database, service } = await createService(projectRoot);
+    database.db
+      .insert(projects)
+      .values({
+        id: "project-2",
+        name: "Other project",
+        rootPath: `${projectRoot}-other`,
+        goal: null,
+        createdAt: "2026-10-11T00:00:00.000Z",
+        updatedAt: "2026-10-11T00:00:00.000Z",
+      })
+      .run();
+    database.db
+      .insert(tasks)
+      .values(taskRecord({ id: "foreign-task", projectId: "project-2" }))
+      .run();
+
+    const first = service.createTask({
+      projectId: "project-1",
+      title: "First",
+      createdBy: "developer",
+    });
+    const second = service.createTask({
+      projectId: "project-1",
+      title: "Second",
+      createdBy: "developer",
+    });
+
+    expect(() =>
+      service.setTaskDependencies({
+        projectId: "project-1",
+        taskId: first.task.id,
+        dependencyIds: [first.task.id],
+      }),
+    ).toThrow(InvalidTaskDependencyError);
+    expect(() =>
+      service.setTaskDependencies({
+        projectId: "project-1",
+        taskId: first.task.id,
+        dependencyIds: ["missing-task"],
+      }),
+    ).toThrow(InvalidTaskDependencyError);
+    expect(() =>
+      service.setTaskDependencies({
+        projectId: "project-1",
+        taskId: first.task.id,
+        dependencyIds: ["foreign-task"],
+      }),
+    ).toThrow(InvalidTaskDependencyError);
+
+    const updated = service.setTaskDependencies({
+      projectId: "project-1",
+      taskId: second.task.id,
+      dependencyIds: [first.task.id],
+      summary: "Second now waits for first.",
+    });
+    expect(updated.task.dependencyIds).toEqual([first.task.id]);
+    expect(updated.events.at(-1)).toMatchObject({
+      type: "progress",
+      summary: "Second now waits for first.",
+    });
+
+    expect(() =>
+      service.setTaskDependencies({
+        projectId: "project-1",
+        taskId: first.task.id,
+        dependencyIds: [second.task.id],
+      }),
+    ).toThrow(InvalidTaskDependencyError);
+    expect(service.getTask({ projectId: "project-1", taskId: first.task.id }).task.dependencyIds).toEqual([]);
+
+    database.db
+      .update(tasks)
+      .set({ status: "completed", completedAt: "2026-10-11T13:00:00.000Z" })
+      .where(eq(tasks.id, second.task.id))
+      .run();
+    expect(() =>
+      service.setTaskDependencies({
+        projectId: "project-1",
+        taskId: second.task.id,
+        dependencyIds: [],
+      }),
+    ).toThrow(TaskDependenciesNotEditableError);
+    database.close();
+  });
+
+  it("rolls back a batch when a dependency is invalid", async () => {
+    const { database, service } = await createService(createTemporaryProject());
+
+    expect(() =>
+      service.createTasks({
+        projectId: "project-1",
+        tasks: [
+          { title: "Valid first", createdBy: "developer" },
+          {
+            title: "Invalid second",
+            dependencyIds: ["missing-task"],
+            createdBy: "developer",
+          },
+        ],
+      }),
+    ).toThrow(InvalidTaskDependencyError);
+    expect(database.db.select().from(tasks).all()).toHaveLength(0);
     database.close();
   });
 });

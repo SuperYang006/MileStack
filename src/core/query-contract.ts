@@ -7,6 +7,17 @@ import {
 
 const identifierSchema = z.string().min(1);
 const nullableTextSchema = z.string().nullable();
+const dependencyIdsSchema = z
+  .array(identifierSchema)
+  .default([])
+  .superRefine((dependencyIds, context) => {
+    if (new Set(dependencyIds).size !== dependencyIds.length) {
+      context.addIssue({
+        code: "custom",
+        message: "dependencyIds must not contain duplicates.",
+      });
+    }
+  });
 
 export const taskStatusSchema = z.enum(taskStatuses);
 export const taskEventTypeSchema = z.enum(taskEventTypes);
@@ -26,6 +37,17 @@ export const taskSummarySchema = z
     title: z.string().min(1),
     status: taskStatusSchema,
     queuePosition: z.number().int().nullable(),
+    dependencyIds: z.array(identifierSchema),
+    waitingFor: z.array(
+      z
+        .object({
+          id: identifierSchema,
+          title: z.string().min(1),
+          status: taskStatusSchema,
+        })
+        .strict(),
+    ),
+    runnable: z.boolean(),
     currentStep: nullableTextSchema,
     nextStep: nullableTextSchema,
     blocker: nullableTextSchema,
@@ -44,6 +66,7 @@ export const taskSchema = z
     acceptanceCriteria: z.array(z.string()).nullable(),
     status: taskStatusSchema,
     queuePosition: z.number().int().nullable(),
+    dependencyIds: z.array(identifierSchema),
     currentStep: nullableTextSchema,
     nextStep: nullableTextSchema,
     blocker: nullableTextSchema,
@@ -112,10 +135,20 @@ export const createTaskInputSchema = z
     title: z.string().trim().min(1),
     objective: z.string().trim().min(1).optional(),
     acceptanceCriteria: z.array(z.string().trim().min(1)).default([]),
+    dependencyIds: dependencyIdsSchema,
     status: z.enum(["inbox", "ready"]).optional(),
     queuePosition: z.number().int().nonnegative().optional(),
     sourceTaskId: identifierSchema.optional(),
     createdBy: z.enum(["developer", "agent"]),
+  })
+  .strict();
+
+export const setTaskDependenciesInputSchema = z
+  .object({
+    projectId: identifierSchema,
+    taskId: identifierSchema,
+    dependencyIds: dependencyIdsSchema,
+    summary: z.string().trim().min(1).default("Task dependencies updated."),
   })
   .strict();
 
@@ -138,3 +171,6 @@ export type GetProjectStatusInput = z.infer<
 export type GetTaskInput = z.infer<typeof getTaskInputSchema>;
 export type CreateTaskInput = z.input<typeof createTaskInputSchema>;
 export type CreateTasksInput = z.input<typeof createTasksInputSchema>;
+export type SetTaskDependenciesInput = z.input<
+  typeof setTaskDependenciesInputSchema
+>;

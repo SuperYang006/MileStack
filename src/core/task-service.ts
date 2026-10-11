@@ -6,25 +6,31 @@ import {
   getProjectStatusInputSchema,
   getTaskInputSchema,
   projectStatusSchema,
+  setTaskDependenciesInputSchema,
   taskDetailsSchema,
   type CreateTaskInput,
   type CreateTasksInput,
   type GetProjectStatusInput,
   type GetTaskInput,
   type ProjectStatus,
+  type SetTaskDependenciesInput,
   type TaskDetails,
   type TaskSummary,
 } from "./query-contract.js";
 import {
+  InvalidTaskDependencyError,
   InvalidTaskError,
   ProjectNotFoundError,
+  TaskDependenciesNotEditableError,
   TaskNotFoundError,
 } from "./errors.js";
 import type {
   MileStackRepository,
   ProjectRecord,
+  TaskDependencyRecord,
   TaskEventRecord,
   TaskRecord,
+  TaskRepositoryTransaction,
 } from "./repositories.js";
 
 export type TaskServiceOptions = {
@@ -51,13 +57,20 @@ function projectToSummary(project: ProjectRecord) {
   };
 }
 
-function taskToSummary(task: TaskRecord): TaskSummary {
+function taskToSummary(
+  task: TaskRecord,
+  dependencyIds: string[],
+  waitingFor: TaskSummary["waitingFor"],
+): TaskSummary {
   return {
     id: task.id,
     projectId: task.projectId,
     title: task.title,
     status: task.status,
     queuePosition: task.queuePosition,
+    dependencyIds,
+    waitingFor,
+    runnable: task.status === "ready" && waitingFor.length === 0,
     currentStep: task.currentStep,
     nextStep: task.nextStep,
     blocker: task.blocker,
@@ -70,8 +83,126 @@ function taskToSummary(task: TaskRecord): TaskSummary {
 function taskToDetails(
   task: TaskRecord,
   events: TaskEventRecord[],
+  dependencyIds: string[],
 ): TaskDetails {
-  return taskDetailsSchema.parse({ task, events });
+  return taskDetailsSchema.parse({
+    task: { ...task, dependencyIds },
+    events,
+  });
+}
+
+function dependencyIdsForTask(
+  taskId: string,
+  dependencies: TaskDependencyRecord[],
+): string[] {
+  return dependencies
+    .filter((dependency) => dependency.taskId === taskId)
+    .map((dependency) => dependency.dependsOnTaskId);
+}
+
+function taskToSummaryWithDependencies(
+  task: TaskRecord,
+  tasks: TaskRecord[],
+  dependencies: TaskDependencyRecord[],
+): TaskSummary {
+  const tasksById = new Map(tasks.map((candidate) => [candidate.id, candidate]));
+  const dependencyIds = dependencyIdsForTask(task.id, dependencies);
+  const waitingFor = dependencyIds
+    .map((dependencyId) => {
+      const dependency = tasksById.get(dependencyId);
+      if (!dependency) {
+        throw new InvalidTaskDependencyError(
+          `Task '${task.id}' references missing dependency '${dependencyId}'.`,
+        );
+      }
+      return dependency;
+    })
+    .filter((dependency) => dependency.status !== "completed")
+    .map((dependency) => ({
+      id: dependency.id,
+      title: dependency.title,
+      status: dependency.status,
+    }));
+
+  return taskToSummary(task, dependencyIds, waitingFor);
+}
+
+function summaryForTask(summaries: TaskSummary[], taskId: string): TaskSummary {
+  const summary = summaries.find((candidate) => candidate.id === taskId);
+  if (!summary) {
+    throw new Error(`Task summary '${taskId}' was not computed.`);
+  }
+  return summary;
+}
+
+function hasDependencyCycle(graph: Map<string, string[]>): boolean {
+  const visiting = new Set<string>();
+  const visited = new Set<string>();
+
+  const visit = (taskId: string): boolean => {
+    if (visiting.has(taskId)) {
+      return true;
+    }
+    if (visited.has(taskId)) {
+      return false;
+    }
+
+    visiting.add(taskId);
+    for (const dependencyId of graph.get(taskId) ?? []) {
+      if (visit(dependencyId)) {
+        return true;
+      }
+    }
+    visiting.delete(taskId);
+    visited.add(taskId);
+    return false;
+  };
+
+  return [...graph.keys()].some((taskId) => visit(taskId));
+}
+
+function validateTaskDependencies(
+  task: TaskRecord,
+  dependencyIds: string[],
+  projectId: string,
+  graphTasks: TaskRecord[],
+  existingDependencies: TaskDependencyRecord[],
+  transaction: TaskRepositoryTransaction,
+): void {
+  for (const dependencyId of dependencyIds) {
+    if (dependencyId === task.id) {
+      throw new InvalidTaskDependencyError(
+        `Task '${task.id}' cannot depend on itself.`,
+      );
+    }
+
+    const dependency = transaction.findTaskById(dependencyId);
+    if (!dependency) {
+      throw new InvalidTaskDependencyError(
+        `Dependency task '${dependencyId}' was not found.`,
+      );
+    }
+    if (dependency.projectId !== projectId) {
+      throw new InvalidTaskDependencyError(
+        `Dependency task '${dependencyId}' belongs to another project.`,
+      );
+    }
+  }
+
+  const graph = new Map<string, string[]>();
+  for (const graphTask of graphTasks) {
+    graph.set(graphTask.id, []);
+  }
+  for (const dependency of existingDependencies) {
+    graph.get(dependency.taskId)?.push(dependency.dependsOnTaskId);
+  }
+  graph.set(task.id, [...dependencyIds]);
+
+  if (hasDependencyCycle(graph)) {
+    throw new InvalidTaskDependencyError(
+      `Adding dependencies to task '${task.id}' would create a cycle.`,
+    );
+  }
 }
 
 export class TaskService {
@@ -104,6 +235,7 @@ export class TaskService {
           title: parsed.title,
           objective: parsed.objective,
           acceptanceCriteria: parsed.acceptanceCriteria,
+          dependencyIds: parsed.dependencyIds,
           status: parsed.status,
           queuePosition: parsed.queuePosition,
           sourceTaskId: parsed.sourceTaskId,
@@ -129,24 +261,61 @@ export class TaskService {
       this.buildTaskRecord(project, task, now),
     );
 
-    for (const task of records) {
-      if (task.sourceTaskId) {
-        const sourceTask = this.repository.findTaskById(task.sourceTaskId);
-        if (!sourceTask || sourceTask.projectId !== project.id) {
-          throw new TaskNotFoundError(task.sourceTaskId);
+    this.repository.transaction((transaction) => {
+      const existingTasks = transaction.listByProjectId(project.id);
+      const existingDependencies = transaction.listDependenciesByProjectId(
+        project.id,
+      );
+      const graphTasks = [...existingTasks, ...records];
+      const graphDependencies = [...existingDependencies];
+      for (let index = 0; index < records.length; index += 1) {
+        for (const dependencyId of taskInputs[index]?.dependencyIds ?? []) {
+          graphDependencies.push({
+            taskId: records[index]!.id,
+            dependsOnTaskId: dependencyId,
+          });
         }
       }
-    }
 
-    this.repository.transaction((transaction) => {
-      for (const task of records) {
+      for (let index = 0; index < records.length; index += 1) {
+        const task = records[index]!;
+        const taskInput = taskInputs[index]!;
+        if (task.sourceTaskId) {
+          const sourceTask = transaction.findTaskById(task.sourceTaskId);
+          if (!sourceTask || sourceTask.projectId !== project.id) {
+            throw new TaskNotFoundError(task.sourceTaskId);
+          }
+        }
+        validateTaskDependencies(
+          task,
+          taskInput.dependencyIds ?? [],
+          project.id,
+          graphTasks,
+          graphDependencies,
+          transaction,
+        );
+      }
+
+      for (let index = 0; index < records.length; index += 1) {
+        const task = records[index]!;
+        const taskInput = taskInputs[index]!;
         transaction.insertTask(task);
+        transaction.replaceTaskDependencies(
+          task.id,
+          taskInput.dependencyIds ?? [],
+        );
         transaction.insertTaskEvent(this.createdEventFor(task));
       }
     });
 
     return records.map((task) =>
-      taskToDetails(task, this.repository.listByTaskId(task.id)),
+      taskToDetails(
+        task,
+        this.repository.listByTaskId(task.id),
+        this.repository
+          .listDependenciesByTaskId(task.id)
+          .map((dependency) => dependency.dependsOnTaskId),
+      ),
     );
   }
 
@@ -158,31 +327,88 @@ export class TaskService {
       throw new TaskNotFoundError(parsed.taskId);
     }
 
-    return taskToDetails(task, this.repository.listByTaskId(task.id));
+    return taskToDetails(
+      task,
+      this.repository.listByTaskId(task.id),
+      this.repository
+        .listDependenciesByTaskId(task.id)
+        .map((dependency) => dependency.dependsOnTaskId),
+    );
+  }
+
+  setTaskDependencies(input: SetTaskDependenciesInput): TaskDetails {
+    const parsed = setTaskDependenciesInputSchema.parse(input);
+    const project = this.requireProject(parsed.projectId);
+
+    this.repository.transaction((transaction) => {
+      const task = transaction.findTaskById(parsed.taskId);
+      if (!task || task.projectId !== project.id) {
+        throw new TaskNotFoundError(parsed.taskId);
+      }
+      if (task.status !== "inbox" && task.status !== "ready") {
+        throw new TaskDependenciesNotEditableError(task.id);
+      }
+
+      const projectTasks = transaction.listByProjectId(project.id);
+      const projectDependencies = transaction.listDependenciesByProjectId(
+        project.id,
+      );
+      validateTaskDependencies(
+        task,
+        parsed.dependencyIds,
+        project.id,
+        projectTasks,
+        projectDependencies,
+        transaction,
+      );
+      transaction.replaceTaskDependencies(task.id, parsed.dependencyIds);
+      transaction.insertTaskEvent({
+        id: this.generateId(),
+        projectId: task.projectId,
+        taskId: task.id,
+        runId: null,
+        type: "progress",
+        summary: parsed.summary,
+        completedWork: null,
+        currentStep: task.currentStep,
+        nextStep: task.nextStep,
+        blocker: task.blocker,
+        requiredAction: task.requiredAction,
+        handoffNote: task.handoffNote,
+        actorLabel: null,
+        createdAt: this.now().toISOString(),
+      });
+    });
+
+    return this.getTask({ projectId: project.id, taskId: parsed.taskId });
   }
 
   getProjectStatus(input: GetProjectStatusInput): ProjectStatus {
     const parsed = getProjectStatusInputSchema.parse(input);
     const project = this.requireProject(parsed.projectId);
     const tasks = this.repository.listByProjectId(project.id);
+    const dependencies = this.repository.listDependenciesByProjectId(project.id);
+    const summaries = tasks.map((task) =>
+      taskToSummaryWithDependencies(task, tasks, dependencies),
+    );
     const current = tasks
       .filter((task) => task.status === "running")
-      .map(taskToSummary);
+      .map((task) => summaryForTask(summaries, task.id));
     const next = tasks
       .filter((task) => task.status === "ready")
       .sort(compareQueuePosition)
-      .map(taskToSummary);
+      .map((task) => summaryForTask(summaries, task.id));
     const blocked = tasks
       .filter((task) => task.status === "blocked")
-      .map(taskToSummary);
+      .map((task) => summaryForTask(summaries, task.id));
     const inbox = tasks
       .filter((task) => task.status === "inbox")
-      .map(taskToSummary);
+      .map((task) => summaryForTask(summaries, task.id));
     const recentlyCompleted = tasks
       .filter((task) => task.status === "completed")
       .sort(compareCompletedAt)
       .slice(0, this.recentlyCompletedLimit)
-      .map(taskToSummary);
+      .map((task) => summaryForTask(summaries, task.id));
 
     return projectStatusSchema.parse({
       project: projectToSummary(project),

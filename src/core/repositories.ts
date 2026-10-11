@@ -49,6 +49,11 @@ export type TaskEventRecord = {
   createdAt: string;
 };
 
+export type TaskDependencyRecord = {
+  taskId: string;
+  dependsOnTaskId: string;
+};
+
 export interface ProjectRepository {
   findProjectById(id: string): ProjectRecord | null;
   findByRootPath(rootPath: string): ProjectRecord | null;
@@ -60,18 +65,28 @@ export interface TaskRepository {
   listByProjectId(projectId: string): TaskRecord[];
 }
 
+export interface TaskDependencyRepository {
+  listDependenciesByProjectId(projectId: string): TaskDependencyRecord[];
+  listDependenciesByTaskId(taskId: string): TaskDependencyRecord[];
+}
+
 export interface TaskEventRepository {
   listByTaskId(taskId: string): TaskEventRecord[];
 }
 
 export interface TaskRepositoryTransaction {
+  findTaskById(id: string): TaskRecord | null;
+  listByProjectId(projectId: string): TaskRecord[];
+  listDependenciesByProjectId(projectId: string): TaskDependencyRecord[];
   insertTask(task: TaskRecord): TaskRecord;
   insertTaskEvent(event: TaskEventRecord): TaskEventRecord;
+  replaceTaskDependencies(taskId: string, dependencyIds: string[]): void;
 }
 
 export interface MileStackRepository
   extends ProjectRepository,
     TaskRepository,
-    TaskEventRepository {
+    TaskEventRepository,
+    TaskDependencyRepository {
   transaction<T>(work: (transaction: TaskRepositoryTransaction) => T): T;
 }

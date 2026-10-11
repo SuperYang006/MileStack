@@ -1,4 +1,5 @@
 import BetterSqlite3 from "better-sqlite3";
+import { eq } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import {
   cpSync,
@@ -14,7 +15,12 @@ import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { ensureDatabase } from "../../src/db/ensure-database.js";
-import { projects, taskEvents, tasks } from "../../src/db/schema.js";
+import {
+  projects,
+  taskDependencies,
+  taskEvents,
+  tasks,
+} from "../../src/db/schema.js";
 import {
   resolveBackupDirectory,
   resolveDatabasePath,
@@ -87,12 +93,13 @@ describe("SQLite database foundation", () => {
 
     const tableRows = database.sqlite
       .prepare(
-        "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('projects', 'tasks', 'task_events') ORDER BY name",
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('projects', 'tasks', 'task_events', 'task_dependencies') ORDER BY name",
       )
       .all() as Array<{ name: string }>;
 
     expect(tableRows.map((row) => row.name)).toEqual([
       "projects",
+      "task_dependencies",
       "task_events",
       "tasks",
     ]);
@@ -138,6 +145,54 @@ describe("SQLite database foundation", () => {
     database.close();
   });
 
+  it("cascades dependency-owner deletion and restricts prerequisite deletion", async () => {
+    const projectRoot = createTemporaryProject();
+    const database = await ensureDatabase(projectRoot);
+    insertProjectData(database);
+    database.db
+      .insert(tasks)
+      .values({
+        id: "task-2",
+        projectId: "project-1",
+        title: "Use persisted data",
+        status: "ready",
+        queuePosition: 2,
+        createdBy: "developer",
+        createdAt: "2026-10-11T00:01:00.000Z",
+        updatedAt: "2026-10-11T00:01:00.000Z",
+      })
+      .run();
+    database.db
+      .insert(taskDependencies)
+      .values({ taskId: "task-2", dependsOnTaskId: "task-1" })
+      .run();
+
+    database.db.delete(tasks).where(eq(tasks.id, "task-2")).run();
+    expect(database.db.select().from(taskDependencies).all()).toEqual([]);
+
+    database.db
+      .insert(tasks)
+      .values({
+        id: "task-2",
+        projectId: "project-1",
+        title: "Use persisted data again",
+        status: "ready",
+        queuePosition: 2,
+        createdBy: "developer",
+        createdAt: "2026-10-11T00:01:00.000Z",
+        updatedAt: "2026-10-11T00:01:00.000Z",
+      })
+      .run();
+    database.db
+      .insert(taskDependencies)
+      .values({ taskId: "task-2", dependsOnTaskId: "task-1" })
+      .run();
+
+    expect(() => database.db.delete(tasks).where(eq(tasks.id, "task-1")).run()).toThrow();
+    expect(database.db.select().from(tasks).all()).toHaveLength(2);
+    database.close();
+  });
+
   it("backs up an existing database before applying a new migration", async () => {
     const projectRoot = createTemporaryProject();
     const database = await ensureDatabase(projectRoot);
@@ -151,15 +206,15 @@ describe("SQLite database foundation", () => {
       entries: Array<Record<string, boolean | number | string>>;
     };
     journal.entries.push({
-      idx: 1,
+      idx: journal.entries.length,
       version: "7",
-      when: Number(journal.entries[0]?.when ?? 0) + 1,
-      tag: "0001_test_marker",
+      when: Number(journal.entries.at(-1)?.when ?? 0) + 1,
+      tag: "0002_test_marker",
       breakpoints: false,
     });
     writeFileSync(journalPath, `${JSON.stringify(journal, null, 2)}\n`);
     writeFileSync(
-      path.join(customMigrationsFolder, "0001_test_marker.sql"),
+      path.join(customMigrationsFolder, "0002_test_marker.sql"),
       "CREATE TABLE migration_marker (id text PRIMARY KEY NOT NULL);\n",
     );
 

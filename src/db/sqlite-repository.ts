@@ -4,11 +4,12 @@ import { asc, eq } from "drizzle-orm";
 import type {
   MileStackRepository,
   ProjectRecord,
+  TaskDependencyRecord,
   TaskEventRecord,
   TaskRecord,
   TaskRepositoryTransaction,
 } from "../core/repositories.js";
-import { taskEvents, projects, tasks } from "./schema.js";
+import { taskDependencies, taskEvents, projects, tasks } from "./schema.js";
 import type { MileStackDatabase } from "./open-database.js";
 
 function mapProject(project: typeof projects.$inferSelect): ProjectRecord {
@@ -21,6 +22,15 @@ function mapTask(task: typeof tasks.$inferSelect): TaskRecord {
 
 function mapTaskEvent(event: typeof taskEvents.$inferSelect): TaskEventRecord {
   return event;
+}
+
+function mapTaskDependency(
+  dependency: typeof taskDependencies.$inferSelect,
+): TaskDependencyRecord {
+  return {
+    taskId: dependency.taskId,
+    dependsOnTaskId: dependency.dependsOnTaskId,
+  };
 }
 
 export class SqliteRepository implements MileStackRepository {
@@ -72,16 +82,82 @@ export class SqliteRepository implements MileStackRepository {
       .map(mapTaskEvent);
   }
 
+  listDependenciesByProjectId(projectId: string): TaskDependencyRecord[] {
+    return this.db
+      .select({
+        taskId: taskDependencies.taskId,
+        dependsOnTaskId: taskDependencies.dependsOnTaskId,
+      })
+      .from(taskDependencies)
+      .innerJoin(tasks, eq(taskDependencies.taskId, tasks.id))
+      .where(eq(tasks.projectId, projectId))
+      .orderBy(asc(taskDependencies.taskId), asc(taskDependencies.dependsOnTaskId))
+      .all();
+  }
+
+  listDependenciesByTaskId(taskId: string): TaskDependencyRecord[] {
+    return this.db
+      .select()
+      .from(taskDependencies)
+      .where(eq(taskDependencies.taskId, taskId))
+      .orderBy(asc(taskDependencies.dependsOnTaskId))
+      .all()
+      .map(mapTaskDependency);
+  }
+
   transaction<T>(work: (transaction: TaskRepositoryTransaction) => T): T {
     return this.sqlite.transaction(() => {
       const transaction: TaskRepositoryTransaction = {
+        findTaskById: (id) => {
+          const task = this.db.select().from(tasks).where(eq(tasks.id, id)).get();
+          return task ? mapTask(task) : null;
+        },
+        listByProjectId: (projectId) =>
+          this.db
+            .select()
+            .from(tasks)
+            .where(eq(tasks.projectId, projectId))
+            .orderBy(asc(tasks.createdAt))
+            .all()
+            .map(mapTask),
+        listDependenciesByProjectId: (projectId) =>
+          this.db
+            .select({
+              taskId: taskDependencies.taskId,
+              dependsOnTaskId: taskDependencies.dependsOnTaskId,
+            })
+            .from(taskDependencies)
+            .innerJoin(tasks, eq(taskDependencies.taskId, tasks.id))
+            .where(eq(tasks.projectId, projectId))
+            .orderBy(
+              asc(taskDependencies.taskId),
+              asc(taskDependencies.dependsOnTaskId),
+            )
+            .all(),
         insertTask: (task) =>
           mapTask(this.db.insert(tasks).values(task).returning().get()),
         insertTaskEvent: (event) =>
           mapTaskEvent(this.db.insert(taskEvents).values(event).returning().get()),
+        replaceTaskDependencies: (taskId, dependencyIds) => {
+          this.db
+            .delete(taskDependencies)
+            .where(eq(taskDependencies.taskId, taskId))
+            .run();
+          if (dependencyIds.length > 0) {
+            this.db
+              .insert(taskDependencies)
+              .values(
+                dependencyIds.map((dependsOnTaskId) => ({
+                  taskId,
+                  dependsOnTaskId,
+                })),
+              )
+              .run();
+          }
+        },
       };
       return work(transaction);
-    })();
+    }).immediate();
   }
 }
 
