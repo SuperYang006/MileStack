@@ -20,6 +20,10 @@ import {
   TaskHasDependentsError,
   TaskRunOwnershipError,
 } from "../core/errors.js";
+import {
+  getProjectStatusInputSchema,
+  listTasksInputSchema,
+} from "../core/query-contract.js";
 
 export type HttpServerOptions = {
   projectRoot?: string | undefined;
@@ -81,15 +85,51 @@ export async function createHttpServer(
 
   // Project Status
   app.get("/api/status", async (request, reply) => {
-    const query = request.query as { projectId?: string };
-    const projectId = query.projectId || context.project.id;
+    const query = request.query as { projectId?: string; view?: string };
 
     try {
-      const status = context.service.getProjectStatus({ projectId });
+      const status = context.service.getProjectStatus(
+        getProjectStatusInputSchema.parse({
+          projectId: query.projectId || context.project.id,
+          view: query.view || "full",
+        }),
+      );
       return status;
     } catch (err) {
       if (err instanceof ProjectNotFoundError) {
         return reply.status(404).send({ error: err.message });
+      }
+      if (err instanceof z.ZodError) {
+        return reply.status(400).send({ error: err.issues });
+      }
+      throw err;
+    }
+  });
+
+  // Paginated Task List
+  app.get("/api/tasks", async (request, reply) => {
+    const query = request.query as {
+      projectId?: string;
+      status?: string;
+      limit?: string;
+      cursor?: string;
+    };
+
+    try {
+      return context.service.listTasks(
+        listTasksInputSchema.parse({
+          projectId: query.projectId || context.project.id,
+          status: query.status,
+          limit: query.limit === undefined ? undefined : Number(query.limit),
+          cursor: query.cursor,
+        }),
+      );
+    } catch (err) {
+      if (err instanceof ProjectNotFoundError) {
+        return reply.status(404).send({ error: err.message });
+      }
+      if (err instanceof InvalidTaskError || err instanceof z.ZodError) {
+        return reply.status(400).send({ error: err instanceof z.ZodError ? err.issues : err.message });
       }
       throw err;
     }

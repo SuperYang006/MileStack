@@ -62,7 +62,9 @@ export const apiClient = {
 
   async getProjectStatus(projectId?: string): Promise<ProjectStatus> {
     try {
-      const url = projectId ? `/api/status?projectId=${encodeURIComponent(projectId)}` : "/api/status";
+      const params = new URLSearchParams({ view: "full" });
+      if (projectId) params.set("projectId", projectId);
+      const url = `/api/status?${params.toString()}`;
       const res = await fetch(url, { signal: AbortSignal.timeout(2000) });
       if (res.ok) {
         backendAvailable = true;

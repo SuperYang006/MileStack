@@ -66,6 +66,7 @@ describe("MCP task tools", () => {
     const listed = await client.listTools();
     expect(listed.tools.map((tool) => tool.name)).toEqual([
       "get_project_status",
+      "list_tasks",
       "get_task",
       "create_task",
       "create_tasks",
@@ -79,6 +80,7 @@ describe("MCP task tools", () => {
       arguments: {},
     });
     expect(JSON.parse(textContent(initialStatus))).toMatchObject({
+      view: "compact",
       project: { name: path.basename(projectRoot) },
       current: [],
       next: [],
@@ -158,6 +160,30 @@ describe("MCP task tools", () => {
 
     await server.connect(serverTransport);
     await client.connect(clientTransport);
+
+    const compactStatus = await client.callTool({
+      name: "get_project_status",
+      arguments: {},
+    });
+    expect(JSON.parse(textContent(compactStatus))).toMatchObject({
+      view: "compact",
+      counts: { ready: 1 },
+    });
+
+    const fullStatus = await client.callTool({
+      name: "get_project_status",
+      arguments: { view: "full" },
+    });
+    expect(JSON.parse(textContent(fullStatus))).not.toHaveProperty("view");
+
+    const firstPage = await client.callTool({
+      name: "list_tasks",
+      arguments: { status: "ready", limit: 1 },
+    });
+    const firstPageValue = JSON.parse(textContent(firstPage));
+    expect(firstPageValue.tasks).toHaveLength(1);
+    expect(firstPageValue.tasks[0].id).toBe(ready.task.id);
+    expect(firstPageValue.hasMore).toBe(false);
 
     const details = await client.callTool({
       name: "get_task",

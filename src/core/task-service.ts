@@ -8,7 +8,11 @@ import {
   finishTaskInputSchema,
   getProjectStatusInputSchema,
   getTaskInputSchema,
+  listTasksInputSchema,
   projectStatusSchema,
+  compactProjectStatusSchema,
+  taskCursorSchema,
+  taskPageSchema,
   releaseTaskInputSchema,
   reorderTaskInputSchema,
   setTaskDependenciesInputSchema,
@@ -22,12 +26,17 @@ import {
   type FinishTaskInput,
   type GetProjectStatusInput,
   type GetTaskInput,
+  type CompactProjectStatus,
+  type ListTasksInput,
   type ProjectStatus,
+  type ProjectStatusResult,
   type ReleaseTaskInput,
   type ReorderTaskInput,
   type SetTaskDependenciesInput,
   type StartTaskInput,
   type TaskDetails,
+  type TaskCursor,
+  type TaskPage,
   type TaskSummary,
   type UpdateTaskInput,
 } from "./query-contract.js";
@@ -56,6 +65,14 @@ export type TaskServiceOptions = {
   generateId?: () => string;
   recentlyCompletedLimit?: number;
 };
+
+const compactProjectStatusLimits = {
+  current: 3,
+  next: 5,
+  blocked: 3,
+  inbox: 3,
+  recentlyCompleted: 3,
+} as const;
 
 export type StartedTask = {
   runId: string;
@@ -739,7 +756,10 @@ export class TaskService {
     return "agent";
   }
 
-  getProjectStatus(input: GetProjectStatusInput): ProjectStatus {
+  getProjectStatus(input: GetProjectStatusInput & { view: "compact" }): CompactProjectStatus;
+  getProjectStatus(input: { projectId: string; view?: "full" }): ProjectStatus;
+  getProjectStatus(input: GetProjectStatusInput): ProjectStatusResult;
+  getProjectStatus(input: GetProjectStatusInput): ProjectStatusResult {
     const parsed = getProjectStatusInputSchema.parse(input);
     const project = this.requireProject(parsed.projectId);
     const tasks = this.repository.listByProjectId(project.id);
@@ -747,24 +767,65 @@ export class TaskService {
     const summaries = tasks.map((task) =>
       taskToSummaryWithDependencies(task, tasks, dependencies),
     );
-    const current = tasks
+    const currentTasks = tasks
       .filter((task) => task.status === "running")
-      .map((task) => summaryForTask(summaries, task.id));
-    const next = tasks
+      .sort(compareCreatedAt);
+    const nextTasks = tasks
       .filter((task) => task.status === "ready")
-      .sort(compareQueuePosition)
-      .map((task) => summaryForTask(summaries, task.id));
-    const blocked = tasks
+      .sort(compareQueuePosition);
+    const blockedTasks = tasks
       .filter((task) => task.status === "blocked")
-      .map((task) => summaryForTask(summaries, task.id));
-    const inbox = tasks
+      .sort(compareCreatedAt);
+    const inboxTasks = tasks
       .filter((task) => task.status === "inbox")
-      .map((task) => summaryForTask(summaries, task.id));
-    const recentlyCompleted = tasks
+      .sort(compareCreatedAt);
+    const completedTasks = tasks
       .filter((task) => task.status === "completed")
-      .sort(compareCompletedAt)
-      .slice(0, this.recentlyCompletedLimit)
-      .map((task) => summaryForTask(summaries, task.id));
+      .sort(compareCompletedAt);
+
+    const current = currentTasks.map((task) => summaryForTask(summaries, task.id));
+    const next = nextTasks.map((task) => summaryForTask(summaries, task.id));
+    const blocked = blockedTasks.map((task) => summaryForTask(summaries, task.id));
+    const inbox = inboxTasks.map((task) => summaryForTask(summaries, task.id));
+    const completedSummaries = completedTasks.map((task) =>
+      summaryForTask(summaries, task.id),
+    );
+    const recentlyCompleted = completedSummaries
+      .slice(0, this.recentlyCompletedLimit);
+
+    if (parsed.view === "compact") {
+      const compact = {
+        view: "compact" as const,
+        project: projectToSummary(project),
+        counts: {
+          inbox: inboxTasks.length,
+          ready: nextTasks.length,
+          running: currentTasks.length,
+          blocked: blockedTasks.length,
+          completed: completedTasks.length,
+          total: tasks.length,
+        },
+        current: current.slice(0, compactProjectStatusLimits.current),
+        next: next.slice(0, compactProjectStatusLimits.next),
+        nextRunnable:
+          next.find((task) => task.runnable) ?? null,
+        blocked: blocked.slice(0, compactProjectStatusLimits.blocked),
+        inbox: inbox.slice(0, compactProjectStatusLimits.inbox),
+        recentlyCompleted: completedSummaries.slice(
+          0,
+          compactProjectStatusLimits.recentlyCompleted,
+        ),
+        truncated: {
+          current: current.length > compactProjectStatusLimits.current,
+          next: next.length > compactProjectStatusLimits.next,
+          blocked: blocked.length > compactProjectStatusLimits.blocked,
+          inbox: inbox.length > compactProjectStatusLimits.inbox,
+          recentlyCompleted:
+            completedTasks.length > compactProjectStatusLimits.recentlyCompleted,
+        },
+      };
+      return compactProjectStatusSchema.parse(compact);
+    }
 
     return projectStatusSchema.parse({
       project: projectToSummary(project),
@@ -773,6 +834,38 @@ export class TaskService {
       blocked,
       inbox,
       recentlyCompleted,
+    });
+  }
+
+  listTasks(input: ListTasksInput): TaskPage {
+    const parsed = listTasksInputSchema.parse(input);
+    const project = this.requireProject(parsed.projectId);
+    const allTasks = this.repository.listByProjectId(project.id);
+    const tasks = allTasks
+      .filter((task) => task.status === parsed.status)
+      .sort((left, right) => compareTasksByStatus(left, right, parsed.status));
+    const dependencies = this.repository.listDependenciesByProjectId(project.id);
+    const allSummaries = allTasks.map((task) =>
+      taskToSummaryWithDependencies(task, allTasks, dependencies),
+    );
+
+    let startIndex = 0;
+    if (parsed.cursor) {
+      const cursor = decodeTaskCursor(parsed.cursor, parsed.status);
+      const cursorIndex = tasks.findIndex(
+        (task) => compareTaskCursors(taskCursorForTask(task), cursor) > 0,
+      );
+      startIndex = cursorIndex === -1 ? tasks.length : cursorIndex;
+    }
+
+    const pageTasks = tasks.slice(startIndex, startIndex + parsed.limit);
+    const hasMore = startIndex + pageTasks.length < tasks.length;
+    const lastTask = pageTasks.at(-1);
+    return taskPageSchema.parse({
+      status: parsed.status,
+      tasks: pageTasks.map((task) => summaryForTask(allSummaries, task.id)),
+      nextCursor: hasMore && lastTask ? encodeTaskCursor(taskCursorForTask(lastTask)) : null,
+      hasMore,
     });
   }
 
@@ -843,6 +936,27 @@ function compareQueuePosition(left: TaskRecord, right: TaskRecord): number {
   );
 }
 
+function compareCreatedAt(left: TaskRecord, right: TaskRecord): number {
+  return (
+    left.createdAt.localeCompare(right.createdAt) ||
+    left.id.localeCompare(right.id)
+  );
+}
+
+function compareTasksByStatus(
+  left: TaskRecord,
+  right: TaskRecord,
+  status: TaskRecord["status"],
+): number {
+  if (status === "ready") {
+    return compareQueuePosition(left, right);
+  }
+  if (status === "completed") {
+    return compareCompletedAt(left, right);
+  }
+  return compareCreatedAt(left, right);
+}
+
 function compareCompletedAt(left: TaskRecord, right: TaskRecord): number {
   const leftCompletedAt = left.completedAt ?? "";
   const rightCompletedAt = right.completedAt ?? "";
@@ -851,4 +965,84 @@ function compareCompletedAt(left: TaskRecord, right: TaskRecord): number {
     right.updatedAt.localeCompare(left.updatedAt) ||
     right.id.localeCompare(left.id)
   );
+}
+
+function taskCursorForTask(task: TaskRecord): TaskCursor {
+  if (task.status === "ready") {
+    return {
+      status: task.status,
+      id: task.id,
+      queuePosition: task.queuePosition,
+      createdAt: task.createdAt,
+    };
+  }
+  if (task.status === "completed") {
+    return {
+      status: task.status,
+      id: task.id,
+      completedAt: task.completedAt,
+      updatedAt: task.updatedAt,
+    };
+  }
+  return {
+    status: task.status,
+    id: task.id,
+    createdAt: task.createdAt,
+  };
+}
+
+function compareTaskCursors(left: TaskCursor, right: TaskCursor): number {
+  if (left.status !== right.status) {
+    return left.status.localeCompare(right.status);
+  }
+  if (left.status === "ready" && right.status === "ready") {
+    const leftPosition = left.queuePosition ?? Number.POSITIVE_INFINITY;
+    const rightPosition = right.queuePosition ?? Number.POSITIVE_INFINITY;
+    return (
+      leftPosition - rightPosition ||
+      (left.createdAt ?? "").localeCompare(right.createdAt ?? "") ||
+      left.id.localeCompare(right.id)
+    );
+  }
+  if (left.status === "completed" && right.status === "completed") {
+    return (
+      (right.completedAt ?? "").localeCompare(left.completedAt ?? "") ||
+      (right.updatedAt ?? "").localeCompare(left.updatedAt ?? "") ||
+      right.id.localeCompare(left.id)
+    );
+  }
+  return (
+    (left.createdAt ?? "").localeCompare(right.createdAt ?? "") ||
+    left.id.localeCompare(right.id)
+  );
+}
+
+function encodeTaskCursor(cursor: TaskCursor): string {
+  return Buffer.from(JSON.stringify(cursor), "utf8").toString("base64url");
+}
+
+function decodeTaskCursor(encoded: string, status: TaskRecord["status"]): TaskCursor {
+  try {
+    const candidate: unknown = JSON.parse(
+      Buffer.from(encoded, "base64url").toString("utf8"),
+    );
+    const parsed = taskCursorSchema.safeParse(candidate);
+    if (!parsed.success || parsed.data.status !== status) {
+      throw new Error("Cursor does not match the requested task status.");
+    }
+    if (status === "ready" &&
+      (parsed.data.queuePosition === undefined || parsed.data.createdAt === undefined)) {
+      throw new Error("Ready cursor is incomplete.");
+    }
+    if (status === "completed" &&
+      (parsed.data.completedAt === undefined || parsed.data.updatedAt === undefined)) {
+      throw new Error("Completed cursor is incomplete.");
+    }
+    if (status !== "ready" && status !== "completed" && parsed.data.createdAt === undefined) {
+      throw new Error("Task cursor is incomplete.");
+    }
+    return parsed.data;
+  } catch {
+    throw new InvalidTaskError(`Invalid cursor for '${status}' tasks.`);
+  }
 }

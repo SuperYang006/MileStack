@@ -15,6 +15,7 @@ import {
   finishTaskInputSchema,
   getProjectStatusInputSchema,
   getTaskInputSchema,
+  listTasksInputSchema,
   startTaskInputSchema,
   updateTaskInputSchema,
 } from "../core/query-contract.js";
@@ -32,6 +33,7 @@ const agentCreateTasksSchema = z
 const projectStatusArgumentsSchema = getProjectStatusInputSchema.omit({
   projectId: true,
 });
+const listTasksArgumentsSchema = listTasksInputSchema.omit({ projectId: true });
 const taskArgumentsSchema = getTaskInputSchema.omit({ projectId: true });
 const startTaskArgumentsSchema = startTaskInputSchema.omit({ projectId: true });
 const updateTaskArgumentsSchema = updateTaskInputSchema.omit({ projectId: true });
@@ -43,6 +45,12 @@ const toolDefinitions: Tool[] = [
     description:
       "Use this when no taskId is known to read the current project work and ordered ready queue. Choose only ready tasks with runnable=true; waiting tasks include their unfinished dependencies.",
     inputSchema: toJSONSchema(projectStatusArgumentsSchema) as Tool["inputSchema"],
+  },
+  {
+    name: "list_tasks",
+    description:
+      "Read one task status section with a bounded limit and opaque cursor. Results use the existing ready-queue or recent-completion ordering.",
+    inputSchema: toJSONSchema(listTasksArgumentsSchema) as Tool["inputSchema"],
   },
   {
     name: "get_task",
@@ -132,11 +140,22 @@ export function createMcpServer(context: ProjectContext): Server {
       const args = request.params.arguments ?? {};
       switch (request.params.name) {
         case "get_project_status": {
-          projectStatusArgumentsSchema.parse(args);
+          const parsed = projectStatusArgumentsSchema.parse(args);
           const input = getProjectStatusInputSchema.parse({
+            ...parsed,
             projectId: context.project.id,
+            view: parsed.view ?? "compact",
           });
           return jsonResult(context.service.getProjectStatus(input));
+        }
+        case "list_tasks": {
+          const parsed = listTasksArgumentsSchema.parse(args);
+          return jsonResult(
+            context.service.listTasks({
+              ...parsed,
+              projectId: context.project.id,
+            }),
+          );
         }
         case "get_task": {
           const parsed = taskArgumentsSchema.parse(args);

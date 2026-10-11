@@ -249,7 +249,10 @@ async function runStatus(
   const projectRoot = resolveProjectRoot(projectPath);
   const context = await openProjectContext(projectRoot);
   try {
-    const status = context.service.getProjectStatus({ projectId: context.project.id });
+    const status = context.service.getProjectStatus({
+      projectId: context.project.id,
+      view: "full",
+    });
     if (json) {
       output.writeStdout(`${JSON.stringify(status, null, 2)}\n`);
     } else {

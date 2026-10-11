@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   getProjectStatusInputSchema,
   getTaskInputSchema,
+  listTasksInputSchema,
   createTaskInputSchema,
   projectStatusSchema,
   taskDetailsSchema,
@@ -100,5 +101,20 @@ describe("core query contract", () => {
         actorLabel: "gpt-5-codex",
       }),
     ).toMatchObject({ actorLabel: "gpt-5-codex" });
+  });
+
+  it("accepts explicit status views and applies the page size default", () => {
+    expect(
+      getProjectStatusInputSchema.parse({
+        projectId: "project-1",
+        view: "compact",
+      }),
+    ).toEqual({ projectId: "project-1", view: "compact" });
+    expect(
+      listTasksInputSchema.parse({
+        projectId: "project-1",
+        status: "ready",
+      }),
+    ).toMatchObject({ projectId: "project-1", status: "ready", limit: 20 });
   });
 });

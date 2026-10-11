@@ -111,6 +111,47 @@ export const projectStatusSchema = z
   })
   .strict();
 
+const taskStatusCountSchema = z
+  .object({
+    inbox: z.number().int().nonnegative(),
+    ready: z.number().int().nonnegative(),
+    running: z.number().int().nonnegative(),
+    blocked: z.number().int().nonnegative(),
+    completed: z.number().int().nonnegative(),
+    total: z.number().int().nonnegative(),
+  })
+  .strict();
+
+const statusTruncationSchema = z
+  .object({
+    current: z.boolean(),
+    next: z.boolean(),
+    blocked: z.boolean(),
+    inbox: z.boolean(),
+    recentlyCompleted: z.boolean(),
+  })
+  .strict();
+
+export const compactProjectStatusSchema = z
+  .object({
+    view: z.literal("compact"),
+    project: projectSummarySchema,
+    counts: taskStatusCountSchema,
+    current: z.array(taskSummarySchema),
+    next: z.array(taskSummarySchema),
+    nextRunnable: taskSummarySchema.nullable(),
+    blocked: z.array(taskSummarySchema),
+    inbox: z.array(taskSummarySchema),
+    recentlyCompleted: z.array(taskSummarySchema),
+    truncated: statusTruncationSchema,
+  })
+  .strict();
+
+export const projectStatusResultSchema = z.union([
+  projectStatusSchema,
+  compactProjectStatusSchema,
+]);
+
 export const taskDetailsSchema = z
   .object({
     task: taskSchema,
@@ -118,8 +159,42 @@ export const taskDetailsSchema = z
   })
   .strict();
 
+export const projectStatusViewSchema = z.enum(["compact", "full"]);
+
 export const getProjectStatusInputSchema = z
-  .object({ projectId: identifierSchema })
+  .object({
+    projectId: identifierSchema,
+    view: projectStatusViewSchema.optional(),
+  })
+  .strict();
+
+export const listTasksInputSchema = z
+  .object({
+    projectId: identifierSchema,
+    status: taskStatusSchema,
+    limit: z.number().int().min(1).max(100).default(20),
+    cursor: identifierSchema.optional(),
+  })
+  .strict();
+
+export const taskCursorSchema = z
+  .object({
+    status: taskStatusSchema,
+    id: identifierSchema,
+    queuePosition: z.number().int().nullable().optional(),
+    createdAt: z.string().min(1).optional(),
+    completedAt: z.string().min(1).nullable().optional(),
+    updatedAt: z.string().min(1).optional(),
+  })
+  .strict();
+
+export const taskPageSchema = z
+  .object({
+    status: taskStatusSchema,
+    tasks: z.array(taskSummarySchema),
+    nextCursor: z.string().nullable(),
+    hasMore: z.boolean(),
+  })
   .strict();
 
 export const getTaskInputSchema = z
@@ -232,9 +307,14 @@ export type ProjectSummary = z.infer<typeof projectSummarySchema>;
 export type TaskSummary = z.infer<typeof taskSummarySchema>;
 export type TaskDetails = z.infer<typeof taskDetailsSchema>;
 export type ProjectStatus = z.infer<typeof projectStatusSchema>;
+export type CompactProjectStatus = z.infer<typeof compactProjectStatusSchema>;
+export type ProjectStatusResult = z.infer<typeof projectStatusResultSchema>;
 export type GetProjectStatusInput = z.infer<
   typeof getProjectStatusInputSchema
 >;
+export type ListTasksInput = z.input<typeof listTasksInputSchema>;
+export type TaskCursor = z.infer<typeof taskCursorSchema>;
+export type TaskPage = z.infer<typeof taskPageSchema>;
 export type GetTaskInput = z.infer<typeof getTaskInputSchema>;
 export type CreateTaskInput = z.input<typeof createTaskInputSchema>;
 export type CreateTasksInput = z.input<typeof createTasksInputSchema>;

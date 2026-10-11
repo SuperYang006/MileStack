@@ -250,6 +250,115 @@ describe("TaskService", () => {
     database.close();
   });
 
+  it("returns a bounded compact status and stable status cursors", async () => {
+    const projectRoot = createTemporaryProject();
+    const { database, service } = await createService(projectRoot);
+    database.db
+      .insert(tasks)
+      .values([
+        ...Array.from({ length: 7 }, (_, index) =>
+          taskRecord({
+            id: `ready-${index + 1}`,
+            title: `Ready ${index + 1}`,
+            status: "ready",
+            queuePosition: index + 1,
+            createdAt: `2026-10-11T00:0${index}:00.000Z`,
+          }),
+        ),
+        ...Array.from({ length: 4 }, (_, index) =>
+          taskRecord({
+            id: `blocked-${index + 1}`,
+            title: `Blocked ${index + 1}`,
+            status: "blocked",
+            blocker: "Needs review",
+            createdAt: `2026-10-11T01:0${index}:00.000Z`,
+          }),
+        ),
+        ...Array.from({ length: 4 }, (_, index) =>
+          taskRecord({
+            id: `completed-${index + 1}`,
+            title: `Completed ${index + 1}`,
+            status: "completed",
+            completedAt: `2026-10-11T02:0${index}:00.000Z`,
+            updatedAt: `2026-10-11T02:0${index}:00.000Z`,
+          }),
+        ),
+      ])
+      .run();
+
+    const compact = service.getProjectStatus({
+      projectId: "project-1",
+      view: "compact",
+    });
+    expect(compact.counts).toMatchObject({
+      ready: 7,
+      blocked: 4,
+      completed: 4,
+      total: 15,
+    });
+    expect(compact.next.map((task) => task.id)).toEqual([
+      "ready-1",
+      "ready-2",
+      "ready-3",
+      "ready-4",
+      "ready-5",
+    ]);
+    expect(compact.nextRunnable?.id).toBe("ready-1");
+    expect(compact.truncated).toMatchObject({
+      next: true,
+      blocked: true,
+      recentlyCompleted: true,
+    });
+
+    const firstPage = service.listTasks({
+      projectId: "project-1",
+      status: "ready",
+      limit: 2,
+    });
+    expect(firstPage.tasks.map((task) => task.id)).toEqual(["ready-1", "ready-2"]);
+    expect(firstPage.hasMore).toBe(true);
+    expect(firstPage.nextCursor).toBeTruthy();
+
+    const secondPage = service.listTasks({
+      projectId: "project-1",
+      status: "ready",
+      limit: 2,
+      cursor: firstPage.nextCursor ?? undefined,
+    });
+    expect(secondPage.tasks.map((task) => task.id)).toEqual(["ready-3", "ready-4"]);
+
+    const repeatedSecondPage = service.listTasks({
+      projectId: "project-1",
+      status: "ready",
+      limit: 2,
+      cursor: firstPage.nextCursor ?? undefined,
+    });
+    expect(repeatedSecondPage.tasks.map((task) => task.id)).toEqual(
+      secondPage.tasks.map((task) => task.id),
+    );
+
+    const completedPage = service.listTasks({
+      projectId: "project-1",
+      status: "completed",
+      limit: 2,
+    });
+    expect(completedPage.tasks.map((task) => task.id)).toEqual([
+      "completed-4",
+      "completed-3",
+    ]);
+    const completedNextPage = service.listTasks({
+      projectId: "project-1",
+      status: "completed",
+      limit: 2,
+      cursor: completedPage.nextCursor ?? undefined,
+    });
+    expect(completedNextPage.tasks.map((task) => task.id)).toEqual([
+      "completed-2",
+      "completed-1",
+    ]);
+    database.close();
+  });
+
   it("stores dependencies and computes waitingFor and runnable dynamically", async () => {
     const { database, service } = await createService(createTemporaryProject());
     const prerequisite = service.createTask({

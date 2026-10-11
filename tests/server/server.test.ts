@@ -125,6 +125,59 @@ describe("HTTP API Server", () => {
     expect(createdList.length).toBe(2);
   });
 
+  it("supports compact status and stable paginated task queries", async () => {
+    for (let index = 0; index < 7; index += 1) {
+      serverInstance.context.service.createTask({
+        projectId: serverInstance.context.project.id,
+        title: `Ready ${index + 1}`,
+        status: "ready",
+        queuePosition: index + 1,
+        createdBy: "developer",
+      });
+    }
+
+    const compact = await serverInstance.app.inject({
+      method: "GET",
+      url: "/api/status?view=compact",
+    });
+    expect(compact.statusCode).toBe(200);
+    const compactBody = JSON.parse(compact.payload);
+    expect(compactBody.view).toBe("compact");
+    expect(compactBody.counts.ready).toBe(7);
+    expect(compactBody.next).toHaveLength(5);
+    expect(compactBody.nextRunnable.title).toBe("Ready 1");
+    expect(compactBody.truncated.next).toBe(true);
+
+    const full = await serverInstance.app.inject({
+      method: "GET",
+      url: "/api/status?view=full",
+    });
+    expect(full.statusCode).toBe(200);
+    expect(JSON.parse(full.payload).next).toHaveLength(7);
+
+    const firstPage = await serverInstance.app.inject({
+      method: "GET",
+      url: "/api/tasks?status=ready&limit=2",
+    });
+    expect(firstPage.statusCode).toBe(200);
+    const firstPageBody = JSON.parse(firstPage.payload);
+    expect(firstPageBody.tasks.map((task: { title: string }) => task.title)).toEqual([
+      "Ready 1",
+      "Ready 2",
+    ]);
+    expect(firstPageBody.nextCursor).toBeTruthy();
+
+    const secondPage = await serverInstance.app.inject({
+      method: "GET",
+      url: `/api/tasks?status=ready&limit=2&cursor=${encodeURIComponent(firstPageBody.nextCursor)}`,
+    });
+    expect(secondPage.statusCode).toBe(200);
+    expect(JSON.parse(secondPage.payload).tasks.map((task: { title: string }) => task.title)).toEqual([
+      "Ready 3",
+      "Ready 4",
+    ]);
+  });
+
   it("routes confirmation, deletion, reordering, and release through service state checks", async () => {
     const inbox = await serverInstance.app.inject({
       method: "POST",
