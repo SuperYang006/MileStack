@@ -8,11 +8,21 @@ Before changing code, read the relevant parts of:
 
 - `docs/requirements.md` for product scope;
 - `docs/technical-design.md` for architecture and technology decisions;
-- `docs/bootstrap-tasks.md` for the current bootstrap task, until MileStack can manage itself.
+
+Before selecting or changing a task, use the configured MileStack MCP server as the
+project's task source:
+
+- call `get_project_status` to read the current work, queue, blockers, inbox, and recent completions;
+- choose a task from `next` only when `runnable` is `true`, then call `get_task`;
+- call `start_task` before implementation and keep the returned `runId`;
+- use `update_task` for meaningful progress and `finish_task` when the task is complete;
+- record newly discovered work with `create_task` or `create_tasks`, which places it in `inbox` for developer review.
 
 Do not create documents that duplicate dynamic task state stored in MileStack, such as standalone TODO lists, current-progress reports, next-task lists, or temporary handoff files. Durable documentation is allowed and encouraged when it has lasting value, including product requirements, technical designs, architecture decisions, protocols, migration notes, and operation or user guides. Documents explicitly requested by the user are also allowed.
 
-During bootstrap, `docs/bootstrap-tasks.md` is the temporary task list because MileStack cannot yet manage itself. After self-bootstrap, keep it only as implementation history; all current tasks, progress, blockers, next steps, and handoffs belong in MileStack.
+`docs/bootstrap-tasks.md` is retained as implementation history for the self-bootstrap
+period. Do not use it as a current task list or maintain dynamic progress there; all
+current tasks, progress, blockers, next steps, and handoffs belong in MileStack.
 
 ## Working rules
 
