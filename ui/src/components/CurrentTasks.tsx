@@ -34,7 +34,7 @@ export const CurrentTasks: React.FC<CurrentTasksProps> = ({
   onReleaseTask,
 }) => {
   return (
-    <section className="rounded-lg border border-zinc-800 bg-zinc-900/50 backdrop-blur-xs overflow-hidden lg:grow lg:shrink-0 lg:basis-auto lg:min-h-0 lg:flex lg:flex-col">
+    <section className="rounded-lg border border-zinc-800 bg-zinc-900/50 backdrop-blur-xs overflow-hidden lg:flex-1 lg:min-h-0 lg:flex lg:flex-col">
       <div className="px-4 py-2.5 border-b border-zinc-800/80 flex items-center justify-between shrink-0">
         <div className="flex items-center space-x-2">
           <span className="w-2 h-2 rounded-full bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.8)] animate-pulse" />
@@ -48,7 +48,7 @@ export const CurrentTasks: React.FC<CurrentTasksProps> = ({
         </div>
       </div>
 
-      <div className="p-3 lg:flex-1 lg:min-h-0">
+      <div className="p-3 lg:flex-1 lg:min-h-0 lg:overflow-y-auto">
         {tasks.length === 0 ? (
           <EmptyState
             icon={Bot}

@@ -212,8 +212,8 @@ export const DashboardPage: React.FC = () => {
 
         {/* Four queue regions: wide screens use a fixed 2x2 viewport grid; narrow screens flow normally. */}
         <div className="grid grid-cols-1 gap-6 lg:flex-1 lg:min-h-0 lg:grid-cols-2 lg:grid-rows-2 lg:items-stretch lg:gap-3">
-          {/* Top-left: review status and currently running tasks share one scroll region. */}
-          <div className="space-y-3 lg:h-full lg:min-h-0 lg:flex lg:flex-col lg:space-y-0 lg:gap-3 lg:overflow-y-auto">
+          {/* Top-left: review status and currently running tasks are two independent cards. */}
+          <div className="space-y-3 lg:h-full lg:min-h-0 lg:flex lg:flex-col lg:space-y-0 lg:gap-3">
             <ReviewTasks
               tasks={status.inReview}
               onApprove={(id) => approveTaskMutation.mutate(id)}

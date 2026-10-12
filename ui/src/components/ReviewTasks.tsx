@@ -351,20 +351,20 @@ export const ReviewTasks: React.FC<ReviewTasksProps> = ({
   }
 
   return (
-    <section className="rounded-lg border border-violet-900/50 bg-violet-950/15 backdrop-blur-xs overflow-hidden shrink-0">
-      <div className="px-4 py-2.5 border-b border-violet-900/40 flex items-center justify-between">
+    <section className="rounded-lg border border-violet-900/50 bg-violet-950/15 backdrop-blur-xs overflow-hidden lg:flex-1 lg:min-h-0 lg:flex lg:flex-col">
+      <div className="px-4 py-2.5 border-b border-violet-900/40 flex items-center justify-between shrink-0">
         <div className="flex items-center space-x-2">
           <span className="w-2 h-2 rounded-full bg-violet-400" />
           <h2 className="text-xs font-mono font-bold tracking-wider text-violet-200 uppercase">
             待审核队列 ({tasks.length})
           </h2>
         </div>
-        <span className="text-[11px] font-mono text-violet-300/70">
+        <span className="text-[11px] font-mono text-violet-300/70 hidden sm:inline">
           任务定义验证、AI 审核证据与开发者终审
         </span>
       </div>
 
-      <div className="p-3 space-y-2.5">
+      <div className="p-3 space-y-2.5 lg:flex-1 lg:min-h-0 lg:overflow-y-auto">
         {tasks.map((task) => (
           <ReviewTaskItem
             key={task.id}
