@@ -132,6 +132,8 @@ Client support matrix:
 
 A newly created `opencode.json` also carries `$schema` `https://opencode.ai/config.json`. If only `opencode.jsonc` exists, `init` prints the `mcp.milestack` entry to add by hand and leaves that file untouched.
 
+`opencode.json` binds the absolute path of the checkout it was generated in, so it is a per-checkout local file. Add it to your ignore list; `milestack init` only maintains the `.milestack/` entry for you, and this repository ignores `opencode.json` in its own `.gitignore`.
+
 Before running or submitting the command, verify that `--project` is the absolute
 path of the current checkout. MileStack strictly enforces safety boundaries and **never modifies**
 global client configuration such as `~/.claude.json`, `~/.cursor`, `~/.grok`, `~/.codex`, `~/.config/opencode`, or `~/.gemini`,

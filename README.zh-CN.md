@@ -132,6 +132,8 @@ milestack init --client claude --client cursor --client grok --client codex --cl
 
 新建的 `opencode.json` 会带上 `$schema` `https://opencode.ai/config.json`。若项目中只存在 `opencode.jsonc`，`init` 会打印需要手写的 `mcp.milestack` 条目，并不修改该文件。
 
+`opencode.json` 绑定生成它的那个 checkout 的绝对路径，属于每个 checkout 各自的本地配置，应加入忽略列表。`milestack init` 只自动维护 `.milestack/` 的忽略条目；本仓库在自身 `.gitignore` 中显式忽略 `opencode.json`。
+
 执行或提交前请确认 `--project` 是当前 checkout 的绝对路径。MileStack 严格遵守安全边界，**绝不自动修改**
 `~/.claude.json`、`~/.cursor`、`~/.grok`、`~/.codex`、`~/.config/opencode` 或 `~/.gemini` 等全局客户端配置，
 也不会执行 `opencode mcp add`。OpenCode 会把项目级 `opencode.json` 与 `~/.config/opencode/opencode.json`

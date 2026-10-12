@@ -12,6 +12,7 @@ coverage/
 .codegraph/
 .codex/
 .grok/
+opencode.json
 # Local environment and logs
 .env
 .env.*

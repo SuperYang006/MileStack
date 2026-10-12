@@ -161,6 +161,7 @@ milestack init --project /absolute/path/to/current/checkout
 - 已有不同的 `mcp.milestack`、JSON 无法解析、配置根值不是对象或 `mcp` 不是对象时，跳过并保留原文件；
 - 只有 `opencode.jsonc` 时不另建 `opencode.json`，改为在终端给出应手写的 `mcp.milestack` 条目；两个文件都存在时只更新 `opencode.json`，并说明 `opencode.jsonc` 未被修改；
 - OpenCode 会把项目级 `opencode.json` 与全局 `~/.config/opencode/opencode.json` 合并，同名 MCP 服务以项目条目为准，因此 `init` 只补项目内缺失的 `milestack`，既不修改全局文件，也不执行 `opencode mcp add`。
+- `opencode.json` 绑定的是当前 checkout 的绝对路径，属于每个 checkout 各自生成的本地配置，应加入版本控制忽略列表。`init` 只自动维护 `.milestack/` 的忽略条目，不会替项目写入 `opencode.json` 的忽略规则；MileStack 自身的仓库在 `.gitignore` 中显式忽略 `opencode.json`。
 
 **为什么 AGY 不能写入固定项目路径**：若在用户级全局配置中写入固定路径 `--project /path/to/projectA`，在其他项目目录启动 AGY 时仍会错误读写项目 A 的数据库，造成跨项目数据污染。因此 AGY 必须采用 `--discover` 动态寻根模式。
 
