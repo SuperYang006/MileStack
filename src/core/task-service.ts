@@ -494,6 +494,7 @@ export class TaskService {
         title: parsed.title,
         objective,
         acceptanceCriteria: parsed.acceptanceCriteria,
+        riskLevel: parsed.riskLevel ?? task.riskLevel,
         updatedAt: now,
       });
       transaction.replaceTaskDependencies(task.id, parsed.dependencyIds);

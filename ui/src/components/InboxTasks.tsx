@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Check, Trash2, Edit3, Inbox, Plus, Zap, CheckCircle2 } from "lucide-react";
-import type { TaskSummary } from "../types";
+import type { TaskSummary, RiskLevel } from "../types";
 import { TaskIdBadge } from "./CopyTaskIdButton";
 import { EmptyState } from "./EmptyState";
 import {
@@ -11,7 +11,7 @@ import {
 interface InboxTasksProps {
   tasks: TaskSummary[];
   allTasks?: Map<string, TaskSummary>;
-  onConfirmTask: (taskId: string) => void;
+  onConfirmTask: (taskId: string, riskLevel?: RiskLevel) => void;
   onDeleteTask: (taskId: string) => void;
   onSelectTask: (taskId: string) => void;
   onEditTask?: (task: TaskSummary) => void;
@@ -27,7 +27,8 @@ export const InboxTasks: React.FC<InboxTasksProps> = ({
   onEditTask,
   onCreateTask,
 }) => {
-
+  const [confirmingTaskId, setConfirmingTaskId] = useState<string | null>(null);
+  const [confirmRiskLevel, setConfirmRiskLevel] = useState<RiskLevel>("medium");
 
   return (
     <section className="rounded-lg border border-zinc-800 bg-zinc-900/50 backdrop-blur-xs overflow-hidden">
@@ -80,7 +81,18 @@ export const InboxTasks: React.FC<InboxTasksProps> = ({
                       <h3 className="text-xs font-mono text-zinc-300 group-hover:text-amber-300 transition-colors truncate">
                         {task.title}
                       </h3>
-
+                      <span
+                        className={`inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-mono shrink-0 ${
+                          task.riskLevel === "low"
+                            ? "bg-emerald-950/60 border border-emerald-800/60 text-emerald-300"
+                            : task.riskLevel === "high"
+                            ? "bg-rose-950/60 border border-rose-850 text-rose-300"
+                            : "bg-amber-950/60 border border-amber-800/60 text-amber-300"
+                        }`}
+                        title={`当前风险设定: ${task.riskLevel || "medium"}`}
+                      >
+                        {task.riskLevel === "low" ? "低风险" : task.riskLevel === "high" ? "高风险" : "中风险"}
+                      </span>
                       {/* 只能标记为“可并行候选”，绝不误标为“当前可领取” */}
                       {detail.isInboxParallelCandidate && (
                         <span
@@ -136,15 +148,47 @@ export const InboxTasks: React.FC<InboxTasksProps> = ({
                   </div>
 
                   <div className="flex items-center space-x-1.5 shrink-0 pt-0.5">
-                    <button
-                      onClick={() => onConfirmTask(task.id)}
-                      className="inline-flex items-center space-x-1 px-2 py-0.5 text-[11px] font-mono text-emerald-400 hover:text-emerald-300 bg-emerald-950/40 hover:bg-emerald-950/80 border border-emerald-900/60 rounded transition-colors"
-                      title="确认为就绪任务，排入执行队列"
-                    >
-                      <Check className="w-3 h-3" />
-                      <span>确认排队</span>
-                    </button>
-
+                    {confirmingTaskId === task.id ? (
+                      <div className="flex items-center space-x-1 bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-[11px] font-mono">
+                        <span className="text-zinc-400 mr-1 text-[10px]">确认风险:</span>
+                        <select
+                          value={confirmRiskLevel}
+                          onChange={(e) => setConfirmRiskLevel(e.target.value as RiskLevel)}
+                          className="bg-zinc-950 text-zinc-200 border border-zinc-700 rounded px-1 py-0.5 text-[10px]"
+                        >
+                          <option value="low">低风险 (Low - AI通过后自动完成)</option>
+                          <option value="medium">中风险 (Medium - 需人工终审)</option>
+                          <option value="high">高风险 (High - 核心变更)</option>
+                        </select>
+                        <button
+                          onClick={() => {
+                            onConfirmTask(task.id, confirmRiskLevel);
+                            setConfirmingTaskId(null);
+                          }}
+                          className="px-1.5 py-0.5 bg-emerald-600 hover:bg-emerald-500 text-zinc-950 rounded text-[10px] font-bold"
+                        >
+                          确认排队
+                        </button>
+                        <button
+                          onClick={() => setConfirmingTaskId(null)}
+                          className="px-1 py-0.5 text-zinc-400 hover:text-zinc-200 text-[10px]"
+                        >
+                          取消
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          setConfirmRiskLevel(task.riskLevel || "medium");
+                          setConfirmingTaskId(task.id);
+                        }}
+                        className="inline-flex items-center space-x-1 px-2 py-0.5 text-[11px] font-mono text-emerald-400 hover:text-emerald-300 bg-emerald-950/40 hover:bg-emerald-950/80 border border-emerald-900/60 rounded transition-colors"
+                        title="确认风险等级并排入执行队列"
+                      >
+                        <Check className="w-3 h-3" />
+                        <span>确认排队</span>
+                      </button>
+                    )}
                     {onEditTask && (
                       <button
                         onClick={(e) => {

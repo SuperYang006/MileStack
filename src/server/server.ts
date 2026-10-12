@@ -232,6 +232,7 @@ export async function createHttpServer(
         objective: body.objective,
         acceptanceCriteria: body.acceptanceCriteria,
         dependencyIds: body.dependencyIds,
+        riskLevel: body.riskLevel,
         actorLabel: "developer",
       });
       return updated;

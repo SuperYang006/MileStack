@@ -293,6 +293,7 @@ export const apiClient = {
     if (task) {
       task.title = payload.title;
       task.dependencyIds = payload.dependencyIds || [];
+      if (payload.riskLevel) task.riskLevel = payload.riskLevel;
       task.updatedAt = new Date().toISOString();
       saveStoredStatus(status);
     }
@@ -302,6 +303,7 @@ export const apiClient = {
       detailsMap[taskId].task.objective = payload.objective ?? null;
       detailsMap[taskId].task.acceptanceCriteria = payload.acceptanceCriteria || null;
       detailsMap[taskId].task.dependencyIds = payload.dependencyIds || [];
+      if (payload.riskLevel) detailsMap[taskId].task.riskLevel = payload.riskLevel;
       detailsMap[taskId].task.updatedAt = new Date().toISOString();
       detailsMap[taskId].events.push({
         id: `evt-${Date.now()}`,
@@ -325,12 +327,15 @@ export const apiClient = {
     return this.getTaskDetails(taskId, projectId);
   },
 
-  async confirmInboxTask(taskId: string, projectId?: string): Promise<void> {
+  async confirmInboxTask(taskId: string, riskLevel?: import("../types").RiskLevel, projectId?: string): Promise<void> {
     try {
       const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/confirm`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(projectId ? { projectId } : {}),
+        body: JSON.stringify({
+          ...(projectId ? { projectId } : {}),
+          ...(riskLevel ? { riskLevel } : {}),
+        }),
       });
       if (res.ok) return;
     } catch {
@@ -343,6 +348,8 @@ export const apiClient = {
       const [task] = status.inbox.splice(taskIdx, 1);
       if (task) {
         task.status = "ready";
+        if (riskLevel) task.riskLevel = riskLevel;
+        task.riskConfirmed = true;
         task.queuePosition = status.next.length + 1;
         task.runnable = task.waitingFor.length === 0;
         status.next.push(task);

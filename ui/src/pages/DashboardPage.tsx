@@ -14,7 +14,7 @@ import { TaskDetailModal } from "../components/TaskDetailModal";
 import { CreateTaskModal } from "../components/CreateTaskModal";
 import { BriefingModal } from "../components/BriefingModal";
 import { EditInboxModal } from "../components/EditInboxModal";
-import type { TaskSummary, CreateTaskPayload, EditInboxTaskPayload, TaskDetails } from "../types";
+import type { TaskSummary, CreateTaskPayload, EditInboxTaskPayload, TaskDetails, RiskLevel } from "../types";
 
 export const DashboardPage: React.FC = () => {
   const queryClient = useQueryClient();
@@ -61,7 +61,8 @@ export const DashboardPage: React.FC = () => {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["projectStatus"] }),
   });
   const confirmInboxMutation = useMutation({
-    mutationFn: (taskId: string) => apiClient.confirmInboxTask(taskId),
+    mutationFn: ({ taskId, riskLevel }: { taskId: string; riskLevel?: RiskLevel }) =>
+      apiClient.confirmInboxTask(taskId, riskLevel),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["projectStatus"] }),
   });
 
@@ -199,7 +200,7 @@ export const DashboardPage: React.FC = () => {
             <InboxTasks
               tasks={status.inbox}
               allTasks={allTasks}
-              onConfirmTask={(id) => confirmInboxMutation.mutate(id)}
+              onConfirmTask={(id, riskLevel) => confirmInboxMutation.mutate({ taskId: id, riskLevel })}
               onDeleteTask={(id) => deleteInboxMutation.mutate(id)}
               onSelectTask={(id) => setSelectedTaskId(id)}
               onEditTask={(task) => setEditingInboxTask(task)}
@@ -238,8 +239,11 @@ export const DashboardPage: React.FC = () => {
         onEditInboxTask={(task) => setEditingInboxTask(task)}
         allTasks={allTasks}
         onSelectTask={(id) => setSelectedTaskId(id)}
+        onApprove={(id) => approveTaskMutation.mutate(id)}
+        onRequestChanges={(taskId, feedback) =>
+          requestChangesMutation.mutate({ taskId, feedback })
+        }
       />
-
       <EditInboxModal
         task={editingInboxTask}
         isOpen={!!editingInboxTask}

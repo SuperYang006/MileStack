@@ -414,6 +414,7 @@ export const editInboxTaskInputSchema = z
     objective: z.string().trim().min(1).nullable().optional(),
     acceptanceCriteria: z.array(z.string().trim().min(1)).default([]),
     dependencyIds: dependencyIdsSchema.default([]),
+    riskLevel: riskLevelSchema.optional(),
     actorLabel: z.string().trim().min(1).optional(),
   })
   .strict();

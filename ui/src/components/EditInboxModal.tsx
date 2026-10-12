@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { X, Edit3, Terminal, CheckCircle2, Link2, AlertCircle } from "lucide-react";
-import type { TaskSummary, EditInboxTaskPayload, TaskDetails } from "../types";
+import type { TaskSummary, EditInboxTaskPayload, TaskDetails, RiskLevel } from "../types";
 import { CopyTaskIdButton } from "./CopyTaskIdButton";
 import { apiClient } from "../api/client";
 
@@ -23,6 +23,7 @@ export const EditInboxModal: React.FC<EditInboxModalProps> = ({
   const [objective, setObjective] = useState("");
   const [criteriaText, setCriteriaText] = useState("");
   const [dependencyIdsText, setDependencyIdsText] = useState("");
+  const [riskLevel, setRiskLevel] = useState<RiskLevel>("medium");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -37,8 +38,10 @@ export const EditInboxModal: React.FC<EditInboxModalProps> = ({
       setObjective(task.task.objective || "");
       setCriteriaText(task.task.acceptanceCriteria?.join("\n") || "");
       setDependencyIdsText(task.task.dependencyIds?.join(", ") || "");
+      setRiskLevel(task.task.riskLevel || "medium");
     } else {
       setTitle(task.title || "");
+      setRiskLevel(task.riskLevel || "medium");
       setDependencyIdsText(task.dependencyIds?.join(", ") || "");
       let cancelled = false;
       apiClient
@@ -49,6 +52,7 @@ export const EditInboxModal: React.FC<EditInboxModalProps> = ({
             setObjective(details.task.objective || "");
             setCriteriaText(details.task.acceptanceCriteria?.join("\n") || "");
             setDependencyIdsText(details.task.dependencyIds?.join(", ") || "");
+            setRiskLevel(details.task.riskLevel || "medium");
           }
         })
         .catch(() => {});
@@ -85,6 +89,7 @@ export const EditInboxModal: React.FC<EditInboxModalProps> = ({
         objective: objective.trim() || null,
         acceptanceCriteria,
         dependencyIds,
+        riskLevel,
       });
       onClose();
     } catch (err: any) {
@@ -191,6 +196,83 @@ export const EditInboxModal: React.FC<EditInboxModalProps> = ({
               placeholder="task-001, task-002..."
               className="w-full px-3 py-2 bg-zinc-900 border border-zinc-750 rounded text-zinc-100 placeholder-zinc-600 focus:outline-hidden focus:border-cyan-500 transition-colors"
             />
+          </div>
+
+          {/* Risk Level */}
+          <div>
+            <label className="block text-[11px] font-semibold text-zinc-400 mb-1">
+              风险等级 (当前：{riskLevel.toUpperCase()})
+            </label>
+            <div className="grid grid-cols-3 gap-2">
+              <label
+                className={`flex flex-col p-2 rounded border cursor-pointer transition-colors ${
+                  riskLevel === "low"
+                    ? "border-emerald-600/70 bg-emerald-950/30 text-emerald-300"
+                    : "border-zinc-850 bg-zinc-900/50 text-zinc-500 hover:text-zinc-300"
+                }`}
+              >
+                <div className="flex items-center space-x-1.5 mb-1">
+                  <input
+                    type="radio"
+                    name="inboxRiskLevel"
+                    value="low"
+                    checked={riskLevel === "low"}
+                    onChange={() => setRiskLevel("low")}
+                    className="accent-emerald-500"
+                  />
+                  <span className="font-bold text-[11px]">低风险 (Low)</span>
+                </div>
+                <span className="text-[10px] text-zinc-400 leading-tight">
+                  AI 审核通过后自动完成
+                </span>
+              </label>
+
+              <label
+                className={`flex flex-col p-2 rounded border cursor-pointer transition-colors ${
+                  riskLevel === "medium"
+                    ? "border-amber-600/70 bg-amber-950/30 text-amber-300"
+                    : "border-zinc-850 bg-zinc-900/50 text-zinc-500 hover:text-zinc-300"
+                }`}
+              >
+                <div className="flex items-center space-x-1.5 mb-1">
+                  <input
+                    type="radio"
+                    name="inboxRiskLevel"
+                    value="medium"
+                    checked={riskLevel === "medium"}
+                    onChange={() => setRiskLevel("medium")}
+                    className="accent-amber-500"
+                  />
+                  <span className="font-bold text-[11px]">中风险 (Medium)</span>
+                </div>
+                <span className="text-[10px] text-zinc-400 leading-tight">
+                  默认等级，需开发者终审
+                </span>
+              </label>
+
+              <label
+                className={`flex flex-col p-2 rounded border cursor-pointer transition-colors ${
+                  riskLevel === "high"
+                    ? "border-rose-600/70 bg-rose-950/30 text-rose-300"
+                    : "border-zinc-850 bg-zinc-900/50 text-zinc-500 hover:text-zinc-300"
+                }`}
+              >
+                <div className="flex items-center space-x-1.5 mb-1">
+                  <input
+                    type="radio"
+                    name="inboxRiskLevel"
+                    value="high"
+                    checked={riskLevel === "high"}
+                    onChange={() => setRiskLevel("high")}
+                    className="accent-rose-500"
+                  />
+                  <span className="font-bold text-[11px]">高风险 (High)</span>
+                </div>
+                <span className="text-[10px] text-zinc-400 leading-tight">
+                  破坏性/敏感变更，需人工终审
+                </span>
+              </label>
+            </div>
           </div>
 
           {/* Footer Controls */}

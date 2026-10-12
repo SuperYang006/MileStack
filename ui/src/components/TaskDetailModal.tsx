@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { X, GitCommit, CheckCircle2, Clock, Timer, Edit3, GitFork, ArrowRight, Zap } from "lucide-react";
+import { X, GitCommit, CheckCircle2, Clock, Timer, Edit3, GitFork, ArrowRight, Zap, ShieldAlert, ShieldCheck, Terminal, Bot, Check, MessageSquare } from "lucide-react";
 import { EmptyState } from "./EmptyState";
 import type { TaskDetails, TaskEvent, TaskSummary } from "../types";
 import { TaskIdBadge } from "./CopyTaskIdButton";
@@ -133,6 +133,8 @@ interface TaskDetailModalProps {
   onEditInboxTask?: (task: TaskDetails) => void;
   allTasks?: Map<string, TaskSummary>;
   onSelectTask?: (taskId: string) => void;
+  onApprove?: (taskId: string) => void;
+  onRequestChanges?: (taskId: string, feedback: string) => void;
 }
 
 export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
@@ -143,6 +145,8 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
   onEditInboxTask,
   allTasks = new Map(),
   onSelectTask,
+  onApprove,
+  onRequestChanges,
 }) => {
   const [now, setNow] = useState(() => Date.now());
 
@@ -220,6 +224,22 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
               {details?.task.status}
             </span>
 
+            {details?.task.riskLevel && (
+              <span
+                className={`font-mono text-[11px] px-2 py-0.5 rounded uppercase font-medium ${
+                  details.task.riskLevel === "low"
+                    ? "text-emerald-400 bg-emerald-950/60 border border-emerald-900/60"
+                    : details.task.riskLevel === "high"
+                    ? "text-rose-400 bg-rose-950/60 border border-rose-900/60 font-bold"
+                    : "text-amber-400 bg-amber-950/60 border border-amber-900/60"
+                }`}
+                title={`风险等级: ${details.task.riskLevel} (${details.task.riskConfirmed ? "已确认" : "未确认"})`}
+              >
+                {details.task.riskLevel === "low" ? "低风险 (LOW)" : details.task.riskLevel === "high" ? "高风险 (HIGH)" : "中风险 (MED)"}
+                {details.task.riskConfirmed ? " ✓" : " (待确认)"}
+              </span>
+            )}
+
             {details?.task.status === "inbox" && onEditInboxTask && (
               <button
                 onClick={() => onEditInboxTask(details)}
@@ -255,6 +275,75 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                   </p>
                 )}
               </div>
+
+              {/* Low-risk auto-completion Callout */}
+              {details.task.status === "completed" && details.task.riskLevel === "low" && (
+                <div className="p-3 rounded bg-emerald-950/40 border border-emerald-800/80 text-emerald-200 text-xs flex items-start space-x-2.5">
+                  <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <div className="font-bold text-emerald-300">
+                      低风险自动完成（系统免检签发）
+                    </div>
+                    <div className="text-[11px] text-emerald-400/90 leading-relaxed">
+                      依据系统风险策略，该任务经确认为低风险，且提交后由 AI 审核代理完整执行验证并通过，系统已自动批准完成并归档。
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* In-Review Decision Controls */}
+              {details.task.status === "in_review" && (() => {
+                const latestRev = details.reviews?.at(-1);
+                const isPassed = latestRev?.status === "passed";
+                return (
+                  <div className="p-3 rounded bg-violet-950/40 border border-violet-800/60 text-xs space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-2">
+                        <span className="w-2 h-2 rounded-full bg-violet-400 animate-pulse" />
+                        <span className="font-bold text-violet-200">
+                          待开发者审核与终审决策
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-violet-400 font-mono">
+                        {latestRev ? `当前状态: ${latestRev.status}` : "等待领取"}
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-zinc-400 leading-relaxed">
+                      {isPassed
+                        ? "AI 审核已通过并提供完整验证证据。请核对提交产物与验证结果后执行最终批准或填写反馈退回。"
+                        : "AI 审核尚未出具通过结论。中高风险任务必须在 AI 审核通过后方可执行最终批准。"}
+                    </div>
+                    <div className="flex items-center space-x-2 pt-1">
+                      {onApprove && (
+                        <button
+                          onClick={() => onApprove(details.task.id)}
+                          disabled={!isPassed}
+                          className={`inline-flex items-center space-x-1.5 px-3 py-1 rounded text-xs font-semibold transition-colors ${
+                            isPassed
+                              ? "bg-emerald-600 hover:bg-emerald-500 text-zinc-950 cursor-pointer shadow-xs"
+                              : "bg-zinc-800 text-zinc-500 cursor-not-allowed opacity-50"
+                          }`}
+                        >
+                          <Check className="w-3.5 h-3.5" />
+                          <span>批准并通过任务</span>
+                        </button>
+                      )}
+                      {onRequestChanges && (
+                        <button
+                          onClick={() => {
+                            const fb = window.prompt("请输入退回返工的修改意见：", "");
+                            if (fb?.trim()) onRequestChanges(details.task.id, fb.trim());
+                          }}
+                          className="inline-flex items-center space-x-1.5 px-3 py-1 rounded text-xs font-semibold bg-amber-950/60 hover:bg-amber-900/80 border border-amber-800 text-amber-200 transition-colors"
+                        >
+                          <MessageSquare className="w-3.5 h-3.5" />
+                          <span>退回返工</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Acceptance Criteria */}
               {details.task.acceptanceCriteria && details.task.acceptanceCriteria.length > 0 && (
@@ -450,6 +539,18 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                       {new Date(details.task.updatedAt).toLocaleString()}
                     </span>
                   </div>
+                  <div>
+                    <span className="text-zinc-500">风险等级:</span>{" "}
+                    <span className="text-zinc-300 uppercase font-semibold">
+                      {details.task.riskLevel || "medium"}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-zinc-500">风险确认状态:</span>{" "}
+                    <span className="text-zinc-300">
+                      {details.task.riskConfirmed ? `已确认 (${details.task.riskConfirmedBy || "开发者"})` : "待确认"}
+                    </span>
+                  </div>
                 </div>
 
                 {runs.length > 1 && (
@@ -502,6 +603,151 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                         </div>
                       ))}
                     </div>
+                  </div>
+                )}
+              </div>
+
+              {/* AI Reviews & Verification Evidence */}
+              <div>
+                <h3 className="text-[11px] font-bold text-zinc-500 uppercase tracking-wider mb-2 flex items-center space-x-1.5">
+                  <Bot className="w-3.5 h-3.5 text-violet-400" />
+                  <span>AI 审核记录与证据 ({details.reviews?.length || 0})</span>
+                </h3>
+
+                {!details.reviews || details.reviews.length === 0 ? (
+                  <div className="bg-zinc-900/30 p-3 rounded border border-zinc-850 text-zinc-500 text-[11px]">
+                    该任务尚未产生 AI 审核会话记录
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {details.reviews.map((rev) => (
+                      <div
+                        key={rev.id}
+                        className="bg-zinc-900/70 border border-zinc-800 rounded p-3 space-y-2.5 font-mono text-xs"
+                      >
+                        {/* Review Header */}
+                        <div className="flex items-center justify-between border-b border-zinc-800/80 pb-2">
+                          <div className="flex items-center space-x-2">
+                            <span className="font-bold text-zinc-200">
+                              第 {rev.reviewRound} 轮审核
+                            </span>
+                            <span
+                              className={`px-1.5 py-0.2 rounded text-[10px] ${
+                                rev.status === "passed"
+                                  ? "bg-emerald-950/80 border border-emerald-800 text-emerald-300 font-bold"
+                                  : rev.status === "in_progress"
+                                  ? "bg-cyan-950/80 border border-cyan-800 text-cyan-300"
+                                  : rev.status === "changes_requested"
+                                  ? "bg-rose-950/80 border border-rose-800 text-rose-300"
+                                  : "bg-zinc-800 border border-zinc-700 text-zinc-400"
+                              }`}
+                            >
+                              {rev.status === "passed"
+                                ? "审核通过 (PASSED)"
+                                : rev.status === "in_progress"
+                                ? "审核中 (IN_PROGRESS)"
+                                : rev.status === "changes_requested"
+                                ? "要求修改 (CHANGES_REQUESTED)"
+                                : "未领取 (PENDING)"}
+                            </span>
+                            {rev.reviewerActorLabel && (
+                              <span className="text-[10px] text-violet-300 bg-violet-950/40 px-1.5 py-0.2 rounded border border-violet-900/50">
+                                审核代理: {rev.reviewerActorLabel}
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-[10px] text-zinc-500">
+                            {new Date(rev.createdAt).toLocaleString()}
+                          </span>
+                        </div>
+
+                        {/* Git Commit & Worktree Artifact */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-[11px] bg-zinc-950/50 p-2 rounded border border-zinc-850">
+                          <div className="flex items-center space-x-1.5 truncate">
+                            <GitCommit className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+                            <span className="text-zinc-500">Commit SHA:</span>
+                            <span className="text-cyan-400 select-all font-mono truncate" title={rev.commitSha}>
+                              {rev.commitSha}
+                            </span>
+                          </div>
+                          {(rev.branch || rev.worktree) && (
+                            <div className="flex items-center space-x-1.5 truncate">
+                              <span className="text-zinc-500">Branch/Worktree:</span>
+                              <span className="text-zinc-300 truncate">
+                                {rev.branch || rev.worktree}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Summary */}
+                        {rev.summary && (
+                          <div className="text-[11px] bg-zinc-950/30 p-2 rounded border border-zinc-850 leading-relaxed text-zinc-300">
+                            <span className="text-zinc-500 font-semibold block mb-0.5">审核摘要：</span>
+                            {rev.summary}
+                          </div>
+                        )}
+
+                        {/* Verification Evidence */}
+                        {rev.verificationEvidence && rev.verificationEvidence.length > 0 && (
+                          <div className="space-y-1.5">
+                            <div className="text-[10px] font-semibold text-zinc-400 flex items-center space-x-1">
+                              <Terminal className="w-3 h-3 text-emerald-400" />
+                              <span>验证命令与执行结果 ({rev.verificationEvidence.length})：</span>
+                            </div>
+                            <div className="space-y-1 bg-zinc-950/80 p-2 rounded border border-zinc-850 font-mono text-[11px]">
+                              {rev.verificationEvidence.map((ev, i) => (
+                                <div key={i} className="space-y-0.5 border-b border-zinc-900 last:border-b-0 pb-1 last:pb-0">
+                                  <div className="text-cyan-300 flex items-center space-x-1">
+                                    <span className="text-zinc-600 select-none">$</span>
+                                    <span>{ev.command}</span>
+                                  </div>
+                                  <div className="text-zinc-400 text-[10px] pl-3 whitespace-pre-wrap">
+                                    {ev.result}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Findings */}
+                        {rev.findings && rev.findings.length > 0 && (
+                          <div className="space-y-1.5">
+                            <div className="text-[10px] font-semibold text-amber-400 flex items-center space-x-1">
+                              <ShieldAlert className="w-3 h-3 text-amber-400" />
+                              <span>发现的问题与改进建议 ({rev.findings.length})：</span>
+                            </div>
+                            <div className="space-y-1">
+                              {rev.findings.map((f, i) => (
+                                <div
+                                  key={i}
+                                  className="p-2 rounded bg-amber-950/20 border border-amber-900/40 text-[11px] space-y-1"
+                                >
+                                  <div className="flex items-center space-x-1.5">
+                                    <span
+                                      className={`px-1 py-0.2 rounded text-[9px] uppercase font-bold ${
+                                        f.severity === "high"
+                                          ? "bg-rose-950 border border-rose-800 text-rose-300"
+                                          : f.severity === "low"
+                                          ? "bg-emerald-950 border border-emerald-800 text-emerald-300"
+                                          : "bg-amber-950 border border-amber-800 text-amber-300"
+                                      }`}
+                                    >
+                                      {f.severity}
+                                    </span>
+                                    <span className="text-zinc-200 font-medium">{f.issue}</span>
+                                  </div>
+                                  <div className="text-zinc-400 text-[10px] pl-2">
+                                    建议：{f.suggestion}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>

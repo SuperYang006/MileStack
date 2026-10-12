@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { X, Plus, Terminal, ListPlus } from "lucide-react";
-import type { CreateTaskPayload } from "../types";
+import type { CreateTaskPayload, RiskLevel } from "../types";
 
 interface CreateTaskModalProps {
   isOpen: boolean;
@@ -20,6 +20,7 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
   const [objective, setObjective] = useState("");
   const [criteriaText, setCriteriaText] = useState("");
   const [status, setStatus] = useState<"inbox" | "ready">("inbox");
+  const [riskLevel, setRiskLevel] = useState<RiskLevel>("medium");
   const [batchText, setBatchText] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -52,11 +53,13 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
         objective: objective.trim() || undefined,
         acceptanceCriteria: acceptanceCriteria.length > 0 ? acceptanceCriteria : undefined,
         status,
+        riskLevel,
       });
       setTitle("");
       setObjective("");
       setCriteriaText("");
       setStatus("inbox");
+      setRiskLevel("medium");
       onClose();
     } finally {
       setIsSubmitting(false);
@@ -176,6 +179,82 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
                 placeholder="- 命令执行退出码为 0&#10;- 新增状态流转回归测试并通过"
                 className="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded text-zinc-100 placeholder:text-zinc-600 focus:outline-hidden focus:border-cyan-500/80 transition-colors"
               />
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-semibold text-zinc-400 mb-1">
+                风险等级 (默认 Medium)
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                <label
+                  className={`flex flex-col p-2 rounded border cursor-pointer transition-colors ${
+                    riskLevel === "low"
+                      ? "border-emerald-600/70 bg-emerald-950/30 text-emerald-300"
+                      : "border-zinc-850 bg-zinc-900/50 text-zinc-500 hover:text-zinc-300"
+                  }`}
+                >
+                  <div className="flex items-center space-x-1.5 mb-1">
+                    <input
+                      type="radio"
+                      name="riskLevel"
+                      value="low"
+                      checked={riskLevel === "low"}
+                      onChange={() => setRiskLevel("low")}
+                      className="accent-emerald-500"
+                    />
+                    <span className="font-bold text-[11px]">低风险 (Low)</span>
+                  </div>
+                  <span className="text-[10px] text-zinc-400 leading-tight">
+                    AI 审核通过后自动完成
+                  </span>
+                </label>
+
+                <label
+                  className={`flex flex-col p-2 rounded border cursor-pointer transition-colors ${
+                    riskLevel === "medium"
+                      ? "border-amber-600/70 bg-amber-950/30 text-amber-300"
+                      : "border-zinc-850 bg-zinc-900/50 text-zinc-500 hover:text-zinc-300"
+                  }`}
+                >
+                  <div className="flex items-center space-x-1.5 mb-1">
+                    <input
+                      type="radio"
+                      name="riskLevel"
+                      value="medium"
+                      checked={riskLevel === "medium"}
+                      onChange={() => setRiskLevel("medium")}
+                      className="accent-amber-500"
+                    />
+                    <span className="font-bold text-[11px]">中风险 (Medium)</span>
+                  </div>
+                  <span className="text-[10px] text-zinc-400 leading-tight">
+                    默认等级，通过后需开发者批准
+                  </span>
+                </label>
+
+                <label
+                  className={`flex flex-col p-2 rounded border cursor-pointer transition-colors ${
+                    riskLevel === "high"
+                      ? "border-rose-600/70 bg-rose-950/30 text-rose-300"
+                      : "border-zinc-850 bg-zinc-900/50 text-zinc-500 hover:text-zinc-300"
+                  }`}
+                >
+                  <div className="flex items-center space-x-1.5 mb-1">
+                    <input
+                      type="radio"
+                      name="riskLevel"
+                      value="high"
+                      checked={riskLevel === "high"}
+                      onChange={() => setRiskLevel("high")}
+                      className="accent-rose-500"
+                    />
+                    <span className="font-bold text-[11px]">高风险 (High)</span>
+                  </div>
+                  <span className="text-[10px] text-zinc-400 leading-tight">
+                    破坏性/敏感变更，需人工终审
+                  </span>
+                </label>
+              </div>
             </div>
 
             <div>

@@ -500,4 +500,91 @@ describe("HTTP API Server", () => {
       summary: "Need a performance note before final sign-off.",
     });
   });
+
+  it("handles risk level setting in creation/edit and enforces risk-based review workflow", async () => {
+    // 1. Create inbox task with default riskLevel (medium)
+    const createRes = await serverInstance.app.inject({
+      method: "POST",
+      url: "/api/tasks",
+      payload: {
+        title: "Task with Risk",
+        status: "inbox",
+      },
+    });
+    expect(createRes.statusCode).toBe(201);
+    const created = JSON.parse(createRes.payload).task;
+    expect(created.riskLevel).toBe("medium");
+    expect(created.riskConfirmed).toBe(false);
+
+    // 2. Edit inbox task to low riskLevel
+    const editRes = await serverInstance.app.inject({
+      method: "PUT",
+      url: `/api/tasks/${created.id}`,
+      payload: {
+        title: "Task with Updated Risk",
+        riskLevel: "low",
+      },
+    });
+    expect(editRes.statusCode).toBe(200);
+    const edited = JSON.parse(editRes.payload).task;
+    expect(edited.riskLevel).toBe("low");
+
+    // 3. Confirm task and verify risk level is confirmed
+    const confirmRes = await serverInstance.app.inject({
+      method: "POST",
+      url: `/api/tasks/${created.id}/confirm`,
+      payload: {
+        riskLevel: "low",
+      },
+    });
+    expect(confirmRes.statusCode).toBe(200);
+    const confirmed = serverInstance.context.service.getTask({
+      projectId: serverInstance.context.project.id,
+      taskId: created.id,
+    });
+    expect(confirmed.task.riskLevel).toBe("low");
+    expect(confirmed.task.riskConfirmed).toBe(true);
+
+    // 4. Start task, submit for review, start AI review, and complete review with pass
+    const run = serverInstance.context.service.startTask({
+      projectId: serverInstance.context.project.id,
+      taskId: created.id,
+    });
+    serverInstance.context.service.submitForReview({
+      projectId: serverInstance.context.project.id,
+      taskId: created.id,
+      runId: run.runId,
+      commitSha: "1111111111111111111111111111111111111111",
+      summary: "Low risk implementation ready",
+    });
+
+    const startRevRes = await serverInstance.app.inject({
+      method: "POST",
+      url: `/api/tasks/${created.id}/start-review`,
+      payload: { actorLabel: "agent/ai-reviewer" },
+    });
+    expect(startRevRes.statusCode).toBe(200);
+    const revRunId = JSON.parse(startRevRes.payload).reviewRunId;
+
+    // Complete review: for low risk, this should automatically complete the task
+    const completeRevRes = await serverInstance.app.inject({
+      method: "POST",
+      url: `/api/tasks/${created.id}/complete-review`,
+      payload: {
+        reviewRunId: revRunId,
+        decision: "passed",
+        summary: "All verification checks pass",
+        verificationEvidence: [{ command: "pnpm test", result: "all 12 tests passed" }],
+      },
+    });
+    expect(completeRevRes.statusCode).toBe(200);
+    const autoCompleted = serverInstance.context.service.getTask({
+      projectId: serverInstance.context.project.id,
+      taskId: created.id,
+    });
+    expect(autoCompleted.task.status).toBe("completed");
+    expect(autoCompleted.events.some((e: any) => e.summary.includes("automatically completed"))).toBe(true);
+    expect(autoCompleted.reviews[0]?.verificationEvidence[0]?.command).toBe("pnpm test");
+    expect(autoCompleted.reviews[0]?.reviewerActorLabel).toBe("agent/ai-reviewer");
+  });
 });

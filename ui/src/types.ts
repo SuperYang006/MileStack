@@ -159,4 +159,5 @@ export interface EditInboxTaskPayload {
   objective?: string | null;
   acceptanceCriteria?: string[];
   dependencyIds?: string[];
+  riskLevel?: RiskLevel;
 }
