@@ -34,8 +34,8 @@ export const CurrentTasks: React.FC<CurrentTasksProps> = ({
   onReleaseTask,
 }) => {
   return (
-    <section className="rounded-lg border border-zinc-800 bg-zinc-900/50 backdrop-blur-xs overflow-hidden">
-      <div className="px-4 py-2.5 border-b border-zinc-800/80 flex items-center justify-between">
+    <section className="rounded-lg border border-zinc-800 bg-zinc-900/50 backdrop-blur-xs overflow-hidden lg:grow lg:shrink-0 lg:basis-auto lg:min-h-0 lg:flex lg:flex-col">
+      <div className="px-4 py-2.5 border-b border-zinc-800/80 flex items-center justify-between shrink-0">
         <div className="flex items-center space-x-2">
           <span className="w-2 h-2 rounded-full bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.8)] animate-pulse" />
           <h2 className="text-xs font-mono font-bold tracking-wider text-zinc-200 uppercase">
@@ -48,7 +48,7 @@ export const CurrentTasks: React.FC<CurrentTasksProps> = ({
         </div>
       </div>
 
-      <div className="p-3">
+      <div className="p-3 lg:flex-1 lg:min-h-0">
         {tasks.length === 0 ? (
           <EmptyState
             icon={Bot}
@@ -65,13 +65,13 @@ export const CurrentTasks: React.FC<CurrentTasksProps> = ({
               return (
                 <div
                   key={task.id}
-                  className="p-3.5 rounded-md bg-zinc-950/70 border border-zinc-800 hover:border-zinc-700 transition-colors"
+                  className="p-3.5 rounded-md bg-zinc-950/70 border border-zinc-800 hover:border-zinc-700 transition-colors lg:grid lg:grid-cols-[minmax(0,7rem)_minmax(0,1fr)_minmax(0,9rem)_auto] lg:items-start lg:gap-x-3"
                 >
                   {/* Top bar: ID and Heartbeat status */}
-                  <div className="flex items-center justify-between gap-2 pb-2">
-                    <TaskIdBadge taskId={task.id} variant="cyan" />
+                  <div className="flex items-center justify-between gap-2 pb-2 lg:contents">
+                    <TaskIdBadge taskId={task.id} variant="cyan" className="lg:w-full" />
 
-                    <div className="flex items-center space-x-1.5 text-[11px] font-mono shrink-0">
+                    <div className="flex items-center space-x-1.5 text-[11px] font-mono shrink-0 lg:col-start-3 lg:row-start-1 lg:justify-self-end">
                       <span
                         className={`w-1.5 h-1.5 rounded-full ${
                           timeInfo.isFresh
@@ -88,9 +88,9 @@ export const CurrentTasks: React.FC<CurrentTasksProps> = ({
                   </div>
 
                   {/* Middle bar: Title and Action */}
-                  <div className="flex items-start justify-between gap-3 pt-0.5">
+                  <div className="flex items-start justify-between gap-3 pt-0.5 lg:contents">
                     <div
-                      className="flex-1 min-w-0 cursor-pointer group/title"
+                      className="flex-1 min-w-0 cursor-pointer group/title lg:col-start-2 lg:row-start-1"
                       onClick={() => onSelectTask(task.id)}
                     >
                       <h3 className="text-xs font-mono font-semibold text-zinc-100 line-clamp-2 break-words group-hover/title:text-cyan-400 transition-colors leading-relaxed">
@@ -98,7 +98,7 @@ export const CurrentTasks: React.FC<CurrentTasksProps> = ({
                       </h3>
                     </div>
 
-                    <div className="flex items-center shrink-0">
+                    <div className="flex items-center shrink-0 lg:col-start-4 lg:row-start-1">
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -116,7 +116,7 @@ export const CurrentTasks: React.FC<CurrentTasksProps> = ({
                   {/* Bottom bar: Execution Steps */}
                   {(task.currentStep || task.nextStep) && (
                     <div
-                      className="space-y-1.5 text-xs font-mono mt-2.5 pt-2 border-t border-zinc-850/80 cursor-pointer"
+                      className="space-y-1.5 text-xs font-mono mt-2.5 pt-2 border-t border-zinc-850/80 cursor-pointer lg:col-span-4"
                       onClick={() => onSelectTask(task.id)}
                     >
                       {task.currentStep && (
@@ -145,7 +145,7 @@ export const CurrentTasks: React.FC<CurrentTasksProps> = ({
                     const detail = computeTaskDependencyDetail(task, allTasks);
                     if (detail.unblocks.length === 0) return null;
                     return (
-                      <div className="mt-2 pt-2 border-t border-zinc-850/60 flex items-center flex-wrap gap-1.5 text-[10px] font-mono">
+                      <div className="mt-2 pt-2 border-t border-zinc-850/60 flex items-center flex-wrap gap-1.5 text-[10px] font-mono lg:col-span-4">
                         <span className="text-zinc-500 shrink-0 flex items-center space-x-1">
                           <GitFork className="w-3 h-3 text-cyan-400" />
                           <span>完成后解锁:</span>

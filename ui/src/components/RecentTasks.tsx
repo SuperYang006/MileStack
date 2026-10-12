@@ -105,21 +105,21 @@ export const RecentTasks: React.FC<RecentTasksProps> = ({
                 {tasks.map((task) => (
                   <div
                     key={task.id}
-                    className="py-1.5 first:pt-0 last:pb-0 flex items-center justify-between gap-3 text-xs font-mono"
+                    className="py-1.5 first:pt-0 last:pb-0 flex items-center justify-between gap-3 text-xs font-mono lg:grid lg:grid-cols-[minmax(0,7rem)_minmax(0,1fr)_minmax(0,8.5rem)_auto] lg:items-center lg:gap-x-3"
                   >
                     <div
-                      className="flex items-center space-x-2 flex-1 min-w-0 cursor-pointer group"
+                      className="flex items-center space-x-2 flex-1 min-w-0 cursor-pointer group lg:contents"
                       onClick={() => onSelectTask(task.id)}
                     >
-                      <TaskIdBadge taskId={task.id} variant="muted" />
+                      <TaskIdBadge taskId={task.id} variant="muted" className="lg:w-full" />
                       <span className="flex-1 min-w-0 text-zinc-400 line-clamp-2 break-words group-hover:text-zinc-200 transition-colors">
                         {task.title}
                       </span>
                     </div>
 
-                    <div className="flex items-center space-x-1.5 shrink-0">
+                    <div className="flex items-center space-x-1.5 shrink-0 lg:contents">
                       {task.completedAt && (
-                        <span className="text-zinc-600 text-[10px]">
+                        <span className="text-zinc-600 text-[10px] lg:col-start-3 lg:truncate lg:whitespace-nowrap lg:text-right">
                           {new Date(task.completedAt).toLocaleString([], {
                             year: "numeric",
                             month: "2-digit",
@@ -129,26 +129,28 @@ export const RecentTasks: React.FC<RecentTasksProps> = ({
                           })}
                         </span>
                       )}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const reason = window.prompt("请输入重新打开的返工原因：", "");
-                          if (reason?.trim()) onReopenTask(task.id, reason.trim());
-                        }}
-                        className="inline-flex items-center space-x-1 px-1.5 py-0.5 text-[10px] font-mono text-amber-400 hover:text-amber-300 border border-amber-900/50 rounded"
-                        title="重新打开为 Ready 任务"
-                      >
-                        <RotateCcw className="w-3 h-3" />
-                        <span>返工</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => onSelectTask(task.id)}
-                        className="p-0.5 text-zinc-600 hover:text-zinc-400 rounded transition-colors"
-                        title="查看详情"
-                      >
-                        <ArrowUpRight className="w-3 h-3" />
-                      </button>
+                      <div className="flex items-center space-x-1.5 shrink-0 lg:col-start-4 lg:justify-self-end">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const reason = window.prompt("请输入重新打开的返工原因：", "");
+                            if (reason?.trim()) onReopenTask(task.id, reason.trim());
+                          }}
+                          className="inline-flex items-center space-x-1 px-1.5 py-0.5 text-[10px] font-mono text-amber-400 hover:text-amber-300 border border-amber-900/50 rounded"
+                          title="重新打开为 Ready 任务"
+                        >
+                          <RotateCcw className="w-3 h-3" />
+                          <span>返工</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onSelectTask(task.id)}
+                          className="p-0.5 text-zinc-600 hover:text-zinc-400 rounded transition-colors"
+                          title="查看详情"
+                        >
+                          <ArrowUpRight className="w-3 h-3" />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}

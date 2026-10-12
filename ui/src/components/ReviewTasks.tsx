@@ -104,46 +104,46 @@ const ReviewTaskItem: React.FC<{
   return (
     <div className="p-3.5 rounded-lg bg-zinc-950/80 border border-zinc-800 hover:border-violet-900/60 transition-colors space-y-3 font-mono">
       {/* Top Header Bar */}
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex-1 min-w-0 cursor-pointer" onClick={() => onSelectTask(task.id)}>
-          <div className="flex items-start space-x-2 min-w-0">
-            <TaskIdBadge taskId={task.id} variant="muted" />
-            <h3 className="flex-1 min-w-0 text-xs font-medium text-zinc-100 line-clamp-2 break-words hover:text-violet-300 transition-colors">
+      <div className="flex items-start justify-between gap-3 lg:grid lg:grid-cols-[minmax(0,7rem)_minmax(0,1fr)_auto] lg:items-start lg:gap-x-3">
+        <div className="flex flex-1 min-w-0 items-start gap-2 cursor-pointer lg:contents" onClick={() => onSelectTask(task.id)}>
+          <TaskIdBadge taskId={task.id} variant="muted" className="lg:w-full" />
+          <div className="min-w-0 flex-1">
+            <h3 className="min-w-0 text-xs font-medium text-zinc-100 line-clamp-2 break-words hover:text-violet-300 transition-colors">
               {task.title}
             </h3>
-            {riskBadge}
-          </div>
 
-          <div className="mt-1.5 flex items-center flex-wrap gap-2 text-[11px]">
-            {getStatusBadge()}
+            <div className="mt-1.5 flex items-center flex-wrap gap-2 text-[11px]">
+              {riskBadge}
+              {getStatusBadge()}
 
-            {reviewerLabel && (
-              <span className="inline-flex items-center space-x-1 px-1.5 py-0.5 rounded text-[10px] bg-zinc-900 border border-zinc-800 text-zinc-300">
-                <Bot className="w-2.5 h-2.5 text-violet-400" />
-                <span>审核代理: {reviewerLabel}</span>
-              </span>
-            )}
-
-            {latestReview?.commitSha && (
-              <span className="inline-flex items-center space-x-1 text-[10px] text-zinc-400 bg-zinc-900/80 px-1.5 py-0.5 rounded border border-zinc-850">
-                <GitCommit className="w-2.5 h-2.5 text-zinc-500" />
-                <span className="select-all" title={latestReview.commitSha}>
-                  {latestReview.commitSha.slice(0, 8)}
+              {reviewerLabel && (
+                <span className="inline-flex items-center space-x-1 px-1.5 py-0.5 rounded text-[10px] bg-zinc-900 border border-zinc-800 text-zinc-300">
+                  <Bot className="w-2.5 h-2.5 text-violet-400" />
+                  <span>审核代理: {reviewerLabel}</span>
                 </span>
-              </span>
-            )}
+              )}
 
-            {(latestReview?.branch || latestReview?.worktree) && (
-              <span className="inline-flex items-center space-x-1 text-[10px] text-zinc-500">
-                <GitBranch className="w-2.5 h-2.5 text-zinc-600" />
-                <span>{latestReview.branch || latestReview.worktree}</span>
-              </span>
-            )}
+              {latestReview?.commitSha && (
+                <span className="inline-flex items-center space-x-1 text-[10px] text-zinc-400 bg-zinc-900/80 px-1.5 py-0.5 rounded border border-zinc-850">
+                  <GitCommit className="w-2.5 h-2.5 text-zinc-500" />
+                  <span className="select-all" title={latestReview.commitSha}>
+                    {latestReview.commitSha.slice(0, 8)}
+                  </span>
+                </span>
+              )}
+
+              {(latestReview?.branch || latestReview?.worktree) && (
+                <span className="inline-flex items-center space-x-1 text-[10px] text-zinc-500">
+                  <GitBranch className="w-2.5 h-2.5 text-zinc-600" />
+                  <span>{latestReview.branch || latestReview.worktree}</span>
+                </span>
+              )}
+            </div>
           </div>
         </div>
 
         {/* Action Buttons */}
-        <div className="flex items-center space-x-1.5 shrink-0 pt-0.5">
+        <div className="flex items-center space-x-1.5 shrink-0 pt-0.5 lg:col-start-3 lg:row-start-1">
           <button
             onClick={() => {
               if (!isPassed) {

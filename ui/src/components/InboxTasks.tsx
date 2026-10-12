@@ -31,8 +31,8 @@ export const InboxTasks: React.FC<InboxTasksProps> = ({
   const [confirmRiskLevel, setConfirmRiskLevel] = useState<RiskLevel>("medium");
 
   return (
-    <section className="rounded-lg border border-zinc-800 bg-zinc-900/50 backdrop-blur-xs overflow-hidden">
-      <div className="px-4 py-2.5 border-b border-zinc-800/80 flex items-center justify-between">
+    <section className="rounded-lg border border-zinc-800 bg-zinc-900/50 backdrop-blur-xs overflow-hidden lg:h-full lg:min-h-0 lg:flex lg:flex-col">
+      <div className="px-4 py-2.5 border-b border-zinc-800/80 flex items-center justify-between shrink-0">
         <div className="flex items-center space-x-2">
           <span className="w-2 h-2 rounded-full bg-zinc-500" />
           <h2 className="text-xs font-mono font-bold tracking-wider text-zinc-300 uppercase">
@@ -44,7 +44,7 @@ export const InboxTasks: React.FC<InboxTasksProps> = ({
         </span>
       </div>
 
-      <div className="p-3">
+      <div className="p-3 lg:flex-1 lg:min-h-0 lg:overflow-y-auto">
         {tasks.length === 0 ? (
           <EmptyState
             icon={Inbox}
@@ -70,40 +70,42 @@ export const InboxTasks: React.FC<InboxTasksProps> = ({
               return (
                 <div
                   key={task.id}
-                  className="py-2.5 first:pt-0 last:pb-0 flex items-start justify-between gap-3 group"
+                  className="py-2.5 first:pt-0 last:pb-0 flex items-start justify-between gap-3 group lg:grid lg:grid-cols-[minmax(0,7rem)_minmax(0,1fr)_auto] lg:items-start lg:gap-x-3"
                 >
                   <div
-                    className="flex-1 min-w-0 cursor-pointer"
+                    className="flex flex-1 min-w-0 items-start gap-2 cursor-pointer lg:contents"
                     onClick={() => onSelectTask(task.id)}
                   >
-                    <div className="flex items-start space-x-2 min-w-0">
-                      <TaskIdBadge taskId={task.id} variant="muted" />
-                      <h3 className="flex-1 min-w-0 text-xs font-mono text-zinc-300 line-clamp-2 break-words group-hover:text-amber-300 transition-colors">
+                    <TaskIdBadge taskId={task.id} variant="muted" className="lg:w-full" />
+                    <div className="min-w-0 flex-1">
+                      <h3 className="min-w-0 text-xs font-mono text-zinc-300 line-clamp-2 break-words group-hover:text-amber-300 transition-colors">
                         {task.title}
                       </h3>
-                      <span
-                        className={`inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-mono shrink-0 ${
-                          task.riskLevel === "low"
-                            ? "bg-emerald-950/60 border border-emerald-800/60 text-emerald-300"
-                            : task.riskLevel === "high"
-                            ? "bg-rose-950/60 border border-rose-850 text-rose-300"
-                            : "bg-amber-950/60 border border-amber-800/60 text-amber-300"
-                        }`}
-                        title={`当前风险设定: ${task.riskLevel || "medium"}`}
-                      >
-                        {task.riskLevel === "low" ? "低风险" : task.riskLevel === "high" ? "高风险" : "中风险"}
-                      </span>
-                      {/* 只能标记为“可并行候选”，绝不误标为“当前可领取” */}
-                      {detail.isInboxParallelCandidate && (
+
+                      <div className="mt-1 flex items-center flex-wrap gap-1.5">
                         <span
-                          className="inline-flex items-center space-x-1 px-1.5 py-0.2 rounded text-[10px] font-mono bg-indigo-950/50 border border-indigo-900/60 text-indigo-300 shrink-0"
-                          title="无未完成前置依赖，排入就绪队列后可并行执行"
+                          className={`inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-mono shrink-0 ${
+                            task.riskLevel === "low"
+                              ? "bg-emerald-950/60 border border-emerald-800/60 text-emerald-300"
+                              : task.riskLevel === "high"
+                              ? "bg-rose-950/60 border border-rose-850 text-rose-300"
+                              : "bg-amber-950/60 border border-amber-800/60 text-amber-300"
+                          }`}
+                          title={`当前风险设定: ${task.riskLevel || "medium"}`}
                         >
-                          <Zap className="w-2.5 h-2.5 text-indigo-400" />
-                          <span>可并行候选</span>
+                          {task.riskLevel === "low" ? "低风险" : task.riskLevel === "high" ? "高风险" : "中风险"}
                         </span>
-                      )}
-                    </div>
+                        {/* 只能标记为“可并行候选”，绝不误标为“当前可领取” */}
+                        {detail.isInboxParallelCandidate && (
+                          <span
+                            className="inline-flex items-center space-x-1 px-1.5 py-0.2 rounded text-[10px] font-mono bg-indigo-950/50 border border-indigo-900/60 text-indigo-300 shrink-0"
+                            title="无未完成前置依赖，排入就绪队列后可并行执行"
+                          >
+                            <Zap className="w-2.5 h-2.5 text-indigo-400" />
+                            <span>可并行候选</span>
+                          </span>
+                        )}
+                      </div>
 
                     {/* 待整理依赖轻量摘要：纯文字与短ID链接，不占用多余高度 */}
                     {detail.dependencies.length > 0 && (
@@ -145,9 +147,10 @@ export const InboxTasks: React.FC<InboxTasksProps> = ({
                         )}
                       </div>
                     )}
+                    </div>
                   </div>
 
-                  <div className="flex items-center space-x-1.5 shrink-0 pt-0.5">
+                  <div className="flex items-center space-x-1.5 shrink-0 pt-0.5 lg:col-start-3">
                     {confirmingTaskId === task.id ? (
                       <div className="flex items-center space-x-1 bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-[11px] font-mono">
                         <span className="text-zinc-400 mr-1 text-[10px]">确认风险:</span>

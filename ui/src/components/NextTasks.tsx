@@ -53,8 +53,8 @@ export const NextTasks: React.FC<NextTasksProps> = ({
   };
 
   return (
-    <section className="rounded-lg border border-zinc-800 bg-zinc-900/50 backdrop-blur-xs overflow-hidden">
-      <div className="px-4 py-2.5 border-b border-zinc-800/80 flex items-center justify-between">
+    <section className="rounded-lg border border-zinc-800 bg-zinc-900/50 backdrop-blur-xs overflow-hidden lg:h-full lg:min-h-0 lg:flex lg:flex-col">
+      <div className="px-4 py-2.5 border-b border-zinc-800/80 flex items-center justify-between shrink-0">
         <div className="flex items-center space-x-2">
           <span className="w-2 h-2 rounded-full bg-indigo-400" />
           <h2 className="text-xs font-mono font-bold tracking-wider text-zinc-200 uppercase">
@@ -81,7 +81,7 @@ export const NextTasks: React.FC<NextTasksProps> = ({
         ) : null}
       </div>
 
-      <div className="p-3">
+      <div className="p-3 lg:flex-1 lg:min-h-0 lg:overflow-y-auto">
         {tasks.length === 0 ? (
           <EmptyState
             icon={ListOrdered}
@@ -109,7 +109,7 @@ export const NextTasks: React.FC<NextTasksProps> = ({
               return (
                 <div
                   key={task.id}
-                  className="group flex items-start justify-between p-2.5 rounded-md bg-zinc-950/60 border border-zinc-850 hover:border-zinc-700/80 transition-colors gap-3"
+                  className="group flex items-start justify-between p-2.5 rounded-md bg-zinc-950/60 border border-zinc-850 hover:border-zinc-700/80 transition-colors gap-3 lg:grid lg:grid-cols-[2.75rem_minmax(0,7rem)_minmax(0,1fr)_auto] lg:items-start lg:gap-x-3"
                 >
                   {/* Reorder and Index */}
                   <div className="flex items-center space-x-2 shrink-0 pt-0.5">
@@ -139,103 +139,106 @@ export const NextTasks: React.FC<NextTasksProps> = ({
 
                   {/* Task Info & Dependencies */}
                   <div
-                    className="flex-1 min-w-0 cursor-pointer"
+                    className="flex flex-1 min-w-0 items-start gap-2 cursor-pointer lg:contents"
                     onClick={() => onSelectTask(task.id)}
                   >
-                    <div className="flex items-start space-x-2 min-w-0">
-                      {/* Status indicator dot */}
-                      <span
-                        className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                          isRunnable
-                            ? "bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.7)]"
-                            : "bg-amber-400/80"
-                        }`}
-                        title={isRunnable ? "可直接执行" : "等待前置依赖"}
-                      />
-
-                      <TaskIdBadge taskId={task.id} variant="muted" />
-
-                      <h3 className="flex-1 min-w-0 text-xs font-mono font-medium text-zinc-200 line-clamp-2 break-words group-hover:text-indigo-300 transition-colors">
-                        {task.title}
-                      </h3>
-
-                      {/* 可并行 / 可领取徽标 */}
-                      {isRunnable && (
+                    <TaskIdBadge taskId={task.id} variant="muted" className="lg:w-full" />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start space-x-2 min-w-0">
+                        {/* Status indicator dot */}
                         <span
-                          className={`inline-flex items-center space-x-0.5 px-1.5 py-0.2 rounded text-[10px] font-mono shrink-0 ${
-                            isParallelizable
-                              ? "bg-emerald-950/80 border border-emerald-700/60 text-emerald-300"
-                              : "bg-cyan-950/80 border border-cyan-700/60 text-cyan-300"
+                          className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                            isRunnable
+                              ? "bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.7)]"
+                              : "bg-amber-400/80"
                           }`}
-                        >
-                          {isParallelizable ? (
-                            <>
-                              <Zap className="w-2.5 h-2.5 text-emerald-400" />
-                              <span>可并行</span>
-                            </>
-                          ) : (
-                            <>
-                              <Play className="w-2.5 h-2.5 text-cyan-400" />
-                              <span>可领取</span>
-                            </>
-                          )}
-                        </span>
-                      )}
-                    </div>
+                          title={isRunnable ? "可直接执行" : "等待前置依赖"}
+                        />
 
-                    {/* 直接依赖展示 */}
-                    {detail.dependencies.length > 0 && (
-                      <div className="mt-1.5 flex items-center flex-wrap gap-1.5 text-[10px] font-mono">
-                        {isRunnable ? (
-                          <span className="inline-flex items-center space-x-1 text-emerald-400/90">
-                            <CheckCircle2 className="w-2.5 h-2.5 text-emerald-400" />
-                            <span>前置依赖已全部完成 ({detail.dependencies.length})</span>
-                          </span>
-                        ) : (
-                          <>
-                            <span className="text-amber-400/90 inline-flex items-center space-x-1 shrink-0">
-                              <span className="w-1.5 h-1.5 rounded-full bg-amber-400/90 animate-pulse" />
-                              <span>等待前置 ({detail.waitingFor.length}):</span>
-                            </span>
-                            {visibleDeps.map((dep: DependencyItem) => (
-                              <button
-                                key={dep.id}
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  onSelectTask(dep.id);
-                                }}
-                                className={`inline-flex items-center space-x-1 px-1.5 py-0.5 rounded text-[10px] border transition-colors max-w-[180px] truncate ${
-                                  dep.isCompleted
-                                    ? "bg-emerald-950/20 border-emerald-900/40 text-emerald-300 hover:border-emerald-700"
-                                    : "bg-amber-950/20 border-amber-900/40 text-amber-300 hover:border-amber-700"
-                                }`}
-                                title={`前置依赖: ${dep.title} (${dep.status}) - 点击查看详情`}
-                              >
-                                <span
-                                  className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                                    dep.isCompleted ? "bg-emerald-400" : "bg-amber-400 animate-pulse"
-                                  }`}
-                                />
-                                <span className="shrink-0 text-zinc-400 font-mono">
-                                  #{dep.id.slice(0, 8)}
-                                </span>
-                                <span className="truncate">{dep.title}</span>
-                              </button>
-                            ))}
-                            {hasHiddenDeps && (
-                              <button
-                                type="button"
-                                onClick={(e) => toggleExpandDeps(task.id, e)}
-                                className="text-zinc-500 hover:text-zinc-300 text-[10px] transition-colors"
-                              >
-                                {isDepsExpanded ? "收起" : `等共 ${detail.dependencies.length} 项`}
-                              </button>
+                        <h3 className="min-w-0 flex-1 text-xs font-mono font-medium text-zinc-200 line-clamp-2 break-words group-hover:text-indigo-300 transition-colors">
+                          {task.title}
+                        </h3>
+                      </div>
+
+                      <div className="mt-1 flex items-center flex-wrap gap-1.5">
+                        {/* 可并行 / 可领取徽标 */}
+                        {isRunnable && (
+                          <span
+                            className={`inline-flex items-center space-x-0.5 px-1.5 py-0.2 rounded text-[10px] font-mono shrink-0 ${
+                              isParallelizable
+                                ? "bg-emerald-950/80 border border-emerald-700/60 text-emerald-300"
+                                : "bg-cyan-950/80 border border-cyan-700/60 text-cyan-300"
+                            }`}
+                          >
+                            {isParallelizable ? (
+                              <>
+                                <Zap className="w-2.5 h-2.5 text-emerald-400" />
+                                <span>可并行</span>
+                              </>
+                            ) : (
+                              <>
+                                <Play className="w-2.5 h-2.5 text-cyan-400" />
+                                <span>可领取</span>
+                              </>
                             )}
-                          </>
+                          </span>
                         )}
                       </div>
-                    )}
+
+                      {/* 直接依赖展示 */}
+                      {detail.dependencies.length > 0 && (
+                        <div className="mt-1.5 flex items-center flex-wrap gap-1.5 text-[10px] font-mono">
+                          {isRunnable ? (
+                            <span className="inline-flex items-center space-x-1 text-emerald-400/90">
+                              <CheckCircle2 className="w-2.5 h-2.5 text-emerald-400" />
+                              <span>前置依赖已全部完成 ({detail.dependencies.length})</span>
+                            </span>
+                          ) : (
+                            <>
+                              <span className="text-amber-400/90 inline-flex items-center space-x-1 shrink-0">
+                                <span className="w-1.5 h-1.5 rounded-full bg-amber-400/90 animate-pulse" />
+                                <span>等待前置 ({detail.waitingFor.length}):</span>
+                              </span>
+                              {visibleDeps.map((dep: DependencyItem) => (
+                                <button
+                                  key={dep.id}
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onSelectTask(dep.id);
+                                  }}
+                                  className={`inline-flex items-center space-x-1 px-1.5 py-0.5 rounded text-[10px] border transition-colors max-w-[180px] truncate ${
+                                    dep.isCompleted
+                                      ? "bg-emerald-950/20 border-emerald-900/40 text-emerald-300 hover:border-emerald-700"
+                                      : "bg-amber-950/20 border-amber-900/40 text-amber-300 hover:border-amber-700"
+                                  }`}
+                                  title={`前置依赖: ${dep.title} (${dep.status}) - 点击查看详情`}
+                                >
+                                  <span
+                                    className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                                      dep.isCompleted ? "bg-emerald-400" : "bg-amber-400 animate-pulse"
+                                    }`}
+                                  />
+                                  <span className="shrink-0 text-zinc-400 font-mono">
+                                    #{dep.id.slice(0, 8)}
+                                  </span>
+                                  <span className="truncate">{dep.title}</span>
+                                </button>
+                              ))}
+                              {hasHiddenDeps && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => toggleExpandDeps(task.id, e)}
+                                  className="text-zinc-500 hover:text-zinc-300 text-[10px] transition-colors"
+                                >
+                                  {isDepsExpanded ? "收起" : `等共 ${detail.dependencies.length} 项`}
+                                </button>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   {/* Action buttons */}
