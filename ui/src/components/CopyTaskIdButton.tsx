@@ -48,15 +48,15 @@ export const TaskIdBadge: React.FC<TaskIdBadgeProps> = ({
     <button
       type="button"
       onClick={handleCopy}
-      className={`group/id inline-flex items-center space-x-1.5 px-1.5 py-0.5 rounded text-[11px] font-mono border transition-all cursor-pointer select-none shrink-0 ${
+      className={`group/id inline-flex items-center space-x-1.5 px-1.5 py-0.5 rounded text-[11px] font-mono border transition-all cursor-pointer select-none max-w-full min-w-0 ${
         copied
           ? "text-emerald-300 bg-emerald-950/70 border-emerald-800"
           : currentVariantClass
       } ${className}`}
       title={copied ? "已复制任务 ID 到剪贴板" : title || `点击复制任务 ID: ${taskId}`}
     >
-      {showText && <span>{taskId}</span>}
-      <span className="inline-flex items-center justify-center">
+      {showText && <span className="truncate">{taskId}</span>}
+      <span className="inline-flex items-center justify-center shrink-0">
         {copied ? (
           <Check className="w-3 h-3 text-emerald-400" />
         ) : (
