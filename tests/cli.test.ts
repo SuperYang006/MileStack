@@ -90,6 +90,16 @@ describe("CLI entry point", () => {
     expect(generatedInstructions).toContain("文件/模块所有权");
     expect(generatedInstructions).toContain("不重复本文件的通用领取、审核和 Git 规则");
     expect(generatedInstructions).toContain("start_task");
+    expect(generatedInstructions).toContain(
+      "核对 get_task 返回的任务状态为 ready 后直接调用 start_task",
+    );
+    expect(generatedInstructions).toContain(
+      "可领取性（风险已确认、依赖已完成及并发冲突）由 start_task 在服务端原子校验",
+    );
+    expect(generatedInstructions).toContain("不要从 get_task 读取 runnable");
+    expect(generatedInstructions).not.toContain(
+      "确认任务状态为 ready 且 runnable=true 后调用 start_task",
+    );
     expect(generatedInstructions).toContain("submit_for_review");
     expect(generatedInstructions).toContain("start_review");
     expect(generatedInstructions).toContain("reviewRunId");

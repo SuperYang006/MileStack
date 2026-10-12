@@ -40,7 +40,7 @@ export function formatProjectAgentInstructions(): string {
     "## 领取与执行",
     "",
     "- 已知 taskId 时，先调用 get_task 获取完整任务说明；不要为了已知任务先获取全量项目状态。",
-    "- 确认任务状态为 ready 且 runnable=true 后调用 start_task，保存返回的 runId。",
+    "- 核对 get_task 返回的任务状态为 ready 后直接调用 start_task，保存返回的 runId；可领取性（风险已确认、依赖已完成及并发冲突）由 start_task 在服务端原子校验，不要从 get_task 读取 runnable。",
     "- 后续 update_task、阻塞/恢复、释放和 submit_for_review 都必须使用当前 runId；旧凭证不得重用。",
     "- actorLabel 可选；无法取得模型标签时使用 agent。标签仅用于审计和展示，不代表可靠身份、权限或审核独立性。",
     "",
