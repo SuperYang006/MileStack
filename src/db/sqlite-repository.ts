@@ -68,6 +68,11 @@ export class SqliteRepository implements MileStackRepository {
     return project ? mapProject(project) : null;
   }
 
+  findSingleProject(): ProjectRecord | null {
+    const rows = this.db.select().from(projects).limit(2).all();
+    return rows.length === 1 ? mapProject(rows[0]!) : null;
+  }
+
   insert(project: ProjectRecord): ProjectRecord {
     return mapProject(this.db.insert(projects).values(project).returning().get());
   }

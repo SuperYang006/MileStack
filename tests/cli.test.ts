@@ -14,7 +14,11 @@ import {
   configureProjectMcpClients,
   projectMcpClientNames,
 } from "../src/cli/project-mcp-config.js";
-import { openProjectContext } from "../src/project/project-context.js";
+import {
+  discoverProjectRoot,
+  openProjectContext,
+  resolveWorkspaceProjectRoot,
+} from "../src/project/project-context.js";
 
 const temporaryProjects: string[] = [];
 
@@ -53,7 +57,7 @@ describe("CLI entry point", () => {
     expect(exitCode).toBe(0);
     expect(capture.stdout.join("")).toBe(helpText);
     expect(helpText).toContain("--client <name>");
-    expect(helpText).toContain("claude, cursor, grok, codex");
+    expect(helpText).toContain("claude, cursor, grok, codex, agy");
     expect(helpText).toContain("Project-only MCP config for init");
     expect(capture.stderr).toHaveLength(0);
   });
@@ -72,6 +76,8 @@ describe("CLI entry point", () => {
     );
     const firstOutput = first.stdout.join("");
     expect(firstOutput).toContain('"command": "milestack"');
+    expect(firstOutput).toContain("--discover");
+    expect(firstOutput).toContain("auto-discover");
     expect(firstOutput).toContain(
       `codex mcp add milestack -- milestack mcp --project ${projectRoot}`,
     );
@@ -331,23 +337,29 @@ describe("project MCP configuration", () => {
     const projectRoot = createTemporaryProject();
     const absoluteProjectRoot = path.resolve(projectRoot);
 
-    expect(projectMcpClientNames).toEqual(["claude", "cursor", "grok", "codex"]);
+    expect(projectMcpClientNames).toEqual(["claude", "cursor", "grok", "codex", "agy"]);
+    const fileClients = projectMcpClientNames.filter((name) => name !== "agy");
     const firstResults = configureProjectMcpClients(projectRoot, projectMcpClientNames);
-    expect(firstResults.map((item) => item.action)).toEqual([
+    const fileResults = firstResults.filter((item) => item.client !== "agy");
+    const agyResult = firstResults.find((item) => item.client === "agy");
+    expect(fileResults.map((item) => item.action)).toEqual([
       "created",
       "created",
       "created",
       "created",
     ]);
-    expect(firstResults.map((item) => item.relativePath)).toEqual([
+    expect(fileResults.map((item) => item.relativePath)).toEqual([
       ".mcp.json",
       ".cursor/mcp.json",
       ".grok/config.toml",
       ".codex/config.toml",
     ]);
-    expect(firstResults.every((item) => item.detail.startsWith("已写入 "))).toBe(true);
+    expect(fileResults.every((item) => item.detail.startsWith("已写入 "))).toBe(true);
+    expect(agyResult?.action).toBe("skipped");
+    expect(agyResult?.detail).toContain("--discover");
+    expect(agyResult?.detail).toContain("~/.gemini/settings.json");
 
-    const snapshots = firstResults.map((item) => readFileSync(path.join(projectRoot, item.relativePath), "utf8"));
+    const snapshots = fileResults.map((item) => readFileSync(path.join(projectRoot, item.relativePath), "utf8"));
     expect(JSON.parse(snapshots[0] ?? "{}")).toMatchObject({
       mcpServers: {
         milestack: {
@@ -361,14 +373,15 @@ describe("project MCP configuration", () => {
     expect(snapshots[3]).toContain(`"${absoluteProjectRoot}"`);
 
     const secondResults = configureProjectMcpClients(projectRoot, projectMcpClientNames);
-    expect(secondResults.map((item) => item.action)).toEqual([
+    const secondFileResults = secondResults.filter((item) => item.client !== "agy");
+    expect(secondFileResults.map((item) => item.action)).toEqual([
       "unchanged",
       "unchanged",
       "unchanged",
       "unchanged",
     ]);
-    expect(secondResults.every((item, index) => {
-      const relativePath = firstResults[index]?.relativePath;
+    expect(secondFileResults.every((item, index) => {
+      const relativePath = fileResults[index]?.relativePath;
       return relativePath !== undefined && readFileSync(path.join(projectRoot, relativePath), "utf8") === snapshots[index];
     })).toBe(true);
   });
@@ -534,5 +547,154 @@ describe("project MCP configuration", () => {
       expect(skipped?.action).toBe("skipped");
       expect(readFileSync(tomlPath, "utf8")).toBe(conflictingBytes);
     }
+  });
+});
+
+describe("project discovery", () => {
+  it("discovers a MileStack project from a subdirectory", async () => {
+    const projectRoot = createTemporaryProject();
+    const init = outputCapture();
+    expect(await runCli(["init", "--project", projectRoot], init.output)).toBe(0);
+
+    const subdir = path.join(projectRoot, "src", "deep", "nested");
+    mkdirSync(subdir, { recursive: true });
+
+    const discovered = discoverProjectRoot(subdir);
+    expect(discovered).toBe(path.resolve(projectRoot));
+  });
+
+  it("throws a clear error when no .milestack database is found", () => {
+    const emptyDir = createTemporaryProject();
+    expect(() => discoverProjectRoot(emptyDir)).toThrow(
+      /no \.milestack\/milestack\.db found/,
+    );
+  });
+
+  it("throws when the start directory does not exist", () => {
+    const nonExistent = path.join(os.tmpdir(), `milestack-nonexistent-${randomUUID()}`);
+    expect(() => discoverProjectRoot(nonExistent)).toThrow(/does not exist/);
+  });
+
+  it("uses cwd when no argument is provided", async () => {
+    const projectRoot = createTemporaryProject();
+    const init = outputCapture();
+    expect(await runCli(["init", "--project", projectRoot], init.output)).toBe(0);
+
+    const originalCwd = process.cwd();
+    try {
+      process.chdir(projectRoot);
+      const discovered = discoverProjectRoot();
+      // On macOS /var -> /private/var, so cwd may differ from the original
+      // path used during init.  Verify the discovered root contains the db.
+      expect(existsSync(path.join(discovered, ".milestack", "milestack.db"))).toBe(true);
+    } finally {
+      process.chdir(originalCwd);
+    }
+  });
+
+  it("status --discover finds the project from a subdirectory", async () => {
+    const projectRoot = createTemporaryProject();
+    const init = outputCapture();
+    expect(await runCli(["init", "--project", projectRoot], init.output)).toBe(0);
+
+    const subdir = path.join(projectRoot, "src");
+    mkdirSync(subdir, { recursive: true });
+
+    const originalCwd = process.cwd();
+    try {
+      process.chdir(subdir);
+      const status = outputCapture();
+      expect(await runCli(["status", "--discover"], status.output)).toBe(0);
+      expect(status.stdout.join("")).toContain("项目：");
+    } finally {
+      process.chdir(originalCwd);
+    }
+  });
+
+  it("rejects --discover combined with --project", async () => {
+    const capture = outputCapture();
+    expect(await runCli(["mcp", "--discover", "--project", "/tmp"], capture.output)).toBe(1);
+    expect(capture.stderr.join("")).toContain("--discover and --project cannot be used together");
+  });
+
+  it("rejects --discover on init and serve commands", async () => {
+    for (const command of ["init", "serve"]) {
+      const capture = outputCapture();
+      expect(await runCli([command, "--discover"], capture.output)).toBe(1);
+      expect(capture.stderr.join("")).toContain("--discover is only supported for the mcp and status commands");
+    }
+  });
+
+  describe("resolveWorkspaceProjectRoot", () => {
+    it("resolves single root to discovered project", async () => {
+      const projectRoot = createTemporaryProject();
+      const init = outputCapture();
+      expect(await runCli(["init", "--project", projectRoot], init.output)).toBe(0);
+
+      const subdir = path.join(projectRoot, "src", "sub");
+      mkdirSync(subdir, { recursive: true });
+
+      expect(resolveWorkspaceProjectRoot([subdir])).toBe(path.resolve(projectRoot));
+    });
+
+    it("falls back to cwd when roots list is empty", async () => {
+      const projectRoot = createTemporaryProject();
+      const init = outputCapture();
+      expect(await runCli(["init", "--project", projectRoot], init.output)).toBe(0);
+
+      const originalCwd = process.cwd();
+      try {
+        process.chdir(projectRoot);
+        const resolved = resolveWorkspaceProjectRoot([]);
+        expect(existsSync(path.join(resolved, ".milestack", "milestack.db"))).toBe(true);
+      } finally {
+        process.chdir(originalCwd);
+      }
+    });
+
+    it("resolves multiple roots belonging to the same project", async () => {
+      const projectRoot = createTemporaryProject();
+      const init = outputCapture();
+      expect(await runCli(["init", "--project", projectRoot], init.output)).toBe(0);
+
+      const dir1 = path.join(projectRoot, "pkg1");
+      const dir2 = path.join(projectRoot, "pkg2");
+      mkdirSync(dir1, { recursive: true });
+      mkdirSync(dir2, { recursive: true });
+
+      expect(resolveWorkspaceProjectRoot([dir1, dir2])).toBe(path.resolve(projectRoot));
+    });
+
+    it("rejects multi-root workspace with conflicting projects", async () => {
+      const projectA = createTemporaryProject();
+      const projectB = createTemporaryProject();
+      const initA = outputCapture();
+      const initB = outputCapture();
+      expect(await runCli(["init", "--project", projectA], initA.output)).toBe(0);
+      expect(await runCli(["init", "--project", projectB], initB.output)).toBe(0);
+
+      expect(() => resolveWorkspaceProjectRoot([projectA, projectB])).toThrow(
+        /Cannot start MileStack in multi-root workspace: found multiple different MileStack projects/,
+      );
+    });
+
+    it("rejects multi-root workspace when a root is not an initialized project", async () => {
+      const projectA = createTemporaryProject();
+      const uninitDir = createTemporaryProject();
+      const initA = outputCapture();
+      expect(await runCli(["init", "--project", projectA], initA.output)).toBe(0);
+
+      expect(() => resolveWorkspaceProjectRoot([projectA, uninitDir])).toThrow(
+        /cannot be mapped to an initialized MileStack project/,
+      );
+    });
+
+    it("rejects when database path is not a regular file", async () => {
+      const projectRoot = createTemporaryProject();
+      const dbDir = path.join(projectRoot, ".milestack", "milestack.db");
+      mkdirSync(dbDir, { recursive: true });
+
+      expect(() => discoverProjectRoot(projectRoot)).toThrow(/not a regular file/);
+    });
   });
 });

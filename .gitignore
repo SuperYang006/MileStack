@@ -10,7 +10,8 @@ coverage/
 # Local MileStack data
 .milestack/
 .codegraph/
-
+.codex/
+.grok/
 # Local environment and logs
 .env
 .env.*

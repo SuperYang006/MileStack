@@ -8,7 +8,7 @@ import {
 } from "node:fs";
 import path from "node:path";
 
-export const projectMcpClientNames = ["claude", "cursor", "grok", "codex"] as const;
+export const projectMcpClientNames = ["claude", "cursor", "grok", "codex", "agy"] as const;
 
 export type ProjectMcpClientName = (typeof projectMcpClientNames)[number];
 export type ProjectMcpConfigAction = "created" | "updated" | "unchanged" | "skipped";
@@ -35,7 +35,7 @@ type SafeTarget = {
   exists: boolean;
 };
 
-const clientDefinitions: Record<ProjectMcpClientName, ClientDefinition> = {
+const clientDefinitions: Record<Exclude<ProjectMcpClientName, "agy">, ClientDefinition> = {
   claude: { relativePath: ".mcp.json", format: "json" },
   cursor: { relativePath: ".cursor/mcp.json", format: "json" },
   grok: { relativePath: ".grok/config.toml", format: "toml" },
@@ -545,12 +545,25 @@ export function configureProjectMcpClients(
 ): ProjectMcpConfigResult[] {
   const absoluteProjectRoot = path.resolve(projectRoot);
   const realProjectRoot = resolveRealProjectRoot(absoluteProjectRoot);
-  const entry: McpEntry = {
+  const projectEntry: McpEntry = {
     command: "milestack",
     args: ["mcp", "--project", absoluteProjectRoot],
   };
 
   return clients.map((client) => {
+    if (client === "agy") {
+      return result(
+        client,
+        "~/.gemini/settings.json",
+        "skipped",
+        `AGY（Gemini CLI）使用用户级配置，milestack init 不会自动修改 ~/.gemini/settings.json。\n` +
+          `  请手动将以下 MCP 配置加入 ~/.gemini/settings.json 的 mcpServers 中：\n` +
+          `    "milestack": { "command": "milestack", "args": ["mcp", "--discover"] }\n` +
+          `  此配置使用 --discover 模式，会根据 agy 会话的工作目录自动定位当前项目的 .milestack 数据库。\n` +
+          `  同一份注册可在所有已初始化的 MileStack 项目中使用，无需为每个项目修改配置。\n` +
+          `  如已有固定路径的旧条目，请将其替换为上述 --discover 条目。`,
+      );
+    }
     const definition = clientDefinitions[client];
     if (!definition) {
       throw new Error(`不支持的 MCP 客户端：${String(client)}`);
@@ -567,7 +580,7 @@ export function configureProjectMcpClients(
       );
     }
     return definition.format === "json"
-      ? configureJsonFile(client, definition.relativePath, target, entry)
-      : configureTomlFile(client, definition.relativePath, target, entry);
+      ? configureJsonFile(client, definition.relativePath, target, projectEntry)
+      : configureTomlFile(client, definition.relativePath, target, projectEntry);
   });
 }

@@ -10,6 +10,7 @@ import {
 } from "../core/agent-instructions.js";
 import type { ProjectStatus, TaskSummary } from "../core/query-contract.js";
 import {
+  discoverProjectRoot,
   initializeProject,
   openProjectContext,
   resolveProjectRoot,
@@ -29,9 +30,10 @@ Commands:
   serve                Run the HTTP web and API server
 Options:
   --project <path>     Project root (defaults to the current directory)
+  --discover           Auto-discover the project by walking up from cwd (for mcp/status)
   --json               Output JSON format (for status command)
   --port <port>        Server port (for serve command)
-  --client <name>      Project-only MCP config for init; repeatable or comma-separated (claude, cursor, grok, codex)
+  --client <name>      Project-only MCP config for init; repeatable or comma-separated (claude, cursor, grok, codex, agy)
   -h, --help           Show this help message
 `;
 
@@ -48,6 +50,7 @@ const defaultOutput: CliOutput = {
 type ParsedCommand = {
   command: "init" | "status" | "mcp" | "serve";
   projectPath?: string | undefined;
+  discover?: boolean | undefined;
   port?: number | undefined;
   json?: boolean | undefined;
   clients?: ProjectMcpClientName[] | undefined;
@@ -84,6 +87,7 @@ function parseCommand(args: readonly string[]): ParsedCommand {
   }
 
   let projectPath: string | undefined;
+  let discover: boolean | undefined;
   let port: number | undefined;
   let json: boolean | undefined;
   let clients: ProjectMcpClientName[] | undefined;
@@ -155,17 +159,28 @@ function parseCommand(args: readonly string[]): ParsedCommand {
       json = true;
       continue;
     }
+    if (option === "--discover") {
+      discover = true;
+      continue;
+    }
     if (option === "--help" || option === "-h") {
       continue;
     }
     throw new Error(`Unknown option '${option}'.`);
   }
 
+
   if (clients !== undefined && command !== "init") {
     throw new Error("--client is only supported for the init command.");
   }
+  if (discover && projectPath !== undefined) {
+    throw new Error("--discover and --project cannot be used together.");
+  }
+  if (discover && command !== "mcp" && command !== "status") {
+    throw new Error("--discover is only supported for the mcp and status commands.");
+  }
 
-  return { command, projectPath, port, json, clients };
+  return { command, projectPath, discover, port, json, clients };
 }
 
 function ensureGitignoreEntry(projectRoot: string): void {
@@ -288,6 +303,20 @@ function codexMcpInstructions(projectRoot: string): string {
   ].join("\n");
 }
 
+function agyMcpInstructions(): string {
+  return [
+    "AGY CLI（Gemini CLI）MCP 注册（请手动执行）：",
+    "  agy mcp add milestack -- milestack mcp --discover",
+    "",
+    "验证配置：",
+    "  agy mcp list",
+    "",
+    "新增配置只会在新的 AGY CLI 会话中生效。",
+    "如果已有绑定到固定路径旧项目的全局条目，上述命令会自动将其更新为 --discover 模式。",
+    "milestack init 只输出命令，不会修改 ~/.gemini/config/mcp_config.json 或 ~/.gemini/settings.json。",
+  ].join("\n");
+}
+
 function projectMcpInstructions(
   projectRoot: string,
   clients: readonly ProjectMcpClientName[],
@@ -314,7 +343,7 @@ async function runInit(
     ensureGitignoreEntry(projectRoot);
     const agentInstructionsPath = path.join(projectRoot, projectAgentInstructionsPath);
     writeFileSync(agentInstructionsPath, formatProjectAgentInstructions(), "utf8");
-    const configuration = {
+    const projectConfiguration = {
       mcpServers: {
         milestack: {
           command: "milestack",
@@ -322,8 +351,19 @@ async function runInit(
         },
       },
     };
+    const discoverConfiguration = {
+      mcpServers: {
+        milestack: {
+          command: "milestack",
+          args: ["mcp", "--discover"],
+        },
+      },
+    };
     const mcpOutput = clients === undefined
-      ? `MCP configuration:\n${JSON.stringify(configuration, null, 2)}\n\n${codexMcpInstructions(projectRoot)}`
+      ? `MCP configuration (project-level, fixed path):\n${JSON.stringify(projectConfiguration, null, 2)}\n\n` +
+        `MCP configuration (user-level, auto-discover, for agy/gemini):\n${JSON.stringify(discoverConfiguration, null, 2)}\n\n` +
+        agyMcpInstructions() + "\n\n" +
+        codexMcpInstructions(projectRoot)
       : projectMcpInstructions(projectRoot, clients);
     output.writeStdout(
       `${context.created ? "Initialized" : "Already initialized"} ${projectRoot}\n` +
@@ -339,10 +379,11 @@ async function runInit(
 
 async function runStatus(
   projectPath: string | undefined,
+  discover: boolean | undefined,
   json: boolean | undefined,
   output: CliOutput,
 ): Promise<void> {
-  const projectRoot = resolveProjectRoot(projectPath);
+  const projectRoot = discover ? discoverProjectRoot() : resolveProjectRoot(projectPath);
   const context = await openProjectContext(projectRoot);
   try {
     const status = context.service.getProjectStatus({
@@ -375,7 +416,7 @@ export async function runCli(
       return 0;
     }
     if (parsed.command === "status") {
-      await runStatus(parsed.projectPath, parsed.json, output);
+      await runStatus(parsed.projectPath, parsed.discover, parsed.json, output);
       return 0;
     }
     if (parsed.command === "serve") {
@@ -395,7 +436,11 @@ export async function runCli(
       });
       return 0;
     }
-    await runMcp(resolveProjectRoot(parsed.projectPath));
+    if (parsed.discover) {
+      await runMcp({ discover: true });
+    } else {
+      await runMcp(resolveProjectRoot(parsed.projectPath));
+    }
     return 0;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

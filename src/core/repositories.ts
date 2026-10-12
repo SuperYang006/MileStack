@@ -88,6 +88,8 @@ export type TaskDependencyRecord = {
 export interface ProjectRepository {
   findProjectById(id: string): ProjectRecord | null;
   findByRootPath(rootPath: string): ProjectRecord | null;
+  /** Return the single project in the database, or null if empty or ambiguous. */
+  findSingleProject(): ProjectRecord | null;
   insert(project: ProjectRecord): ProjectRecord;
 }
 

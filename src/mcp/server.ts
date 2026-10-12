@@ -1,8 +1,11 @@
+import { realpathSync } from "node:fs";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
   CallToolRequestSchema,
+  InitializedNotificationSchema,
   ListToolsRequestSchema,
+  RootsListChangedNotificationSchema,
   type Tool,
 } from "@modelcontextprotocol/sdk/types.js";
 import { toJSONSchema, z, ZodError } from "zod";
@@ -22,7 +25,13 @@ import {
   startTaskInputSchema,
   updateTaskInputSchema,
 } from "../core/query-contract.js";
-import { openProjectContext, type ProjectContext } from "../project/project-context.js";
+import {
+  discoverProjectRoot,
+  openProjectContext,
+  resolveProjectRoot,
+  resolveWorkspaceProjectRoot,
+  type ProjectContext,
+} from "../project/project-context.js";
 
 const agentCreateTaskSchema = createTaskInputSchema.omit({
   projectId: true,
@@ -157,7 +166,14 @@ function errorResult(error: unknown) {
   };
 }
 
-export function createMcpServer(context: ProjectContext): Server {
+export function createMcpServer(
+  contextOrResolver: ProjectContext | (() => Promise<ProjectContext>),
+): Server {
+  const getContext =
+    typeof contextOrResolver === "function"
+      ? contextOrResolver
+      : async () => contextOrResolver;
+
   const server = new Server(
     { name: "milestack", version: "0.1.0" },
     {
@@ -166,12 +182,16 @@ export function createMcpServer(context: ProjectContext): Server {
     },
   );
 
-  server.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: toolDefinitions,
-  }));
+  server.setRequestHandler(ListToolsRequestSchema, async () => {
+    await getContext();
+    return {
+      tools: toolDefinitions,
+    };
+  });
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     try {
+      const context = await getContext();
       const args = request.params.arguments ?? {};
       switch (request.params.name) {
         case "get_project_status": {
@@ -297,16 +317,130 @@ export function createMcpServer(context: ProjectContext): Server {
   return server;
 }
 
-export async function runMcp(projectRoot: string): Promise<void> {
-  const context = await openProjectContext(projectRoot);
-  const server = createMcpServer(context);
+export type RunMcpOptions = {
+  projectRoot?: string;
+  discover?: boolean;
+};
+
+export async function runMcp(
+  optionsOrProjectRoot: string | RunMcpOptions,
+): Promise<void> {
+  const options: RunMcpOptions =
+    typeof optionsOrProjectRoot === "string"
+      ? { projectRoot: optionsOrProjectRoot }
+      : optionsOrProjectRoot;
+
+  let currentContext: ProjectContext | undefined;
+
+  if (!options.discover) {
+    const projectRoot = options.projectRoot ?? resolveProjectRoot();
+    currentContext = await openProjectContext(projectRoot);
+    const server = createMcpServer(currentContext);
+    const transport = new StdioServerTransport();
+    transport.onclose = () => currentContext?.database.close();
+
+    try {
+      await server.connect(transport);
+    } catch (error) {
+      currentContext.database.close();
+      throw error;
+    }
+    return;
+  }
+
+  // Discover mode:
+  const envRoots = (process.env.WORKSPACE_DIRS || process.env.ANTIGRAVITY_WORKSPACE_DIRS)
+    ?.split(/[:;,\n]/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  let initialProjectRoot: string;
+  if (envRoots && envRoots.length > 0) {
+    initialProjectRoot = resolveWorkspaceProjectRoot(envRoots);
+  } else {
+    initialProjectRoot = discoverProjectRoot();
+  }
+
+  currentContext = await openProjectContext(initialProjectRoot);
+
+  let rootsValidationPromise: Promise<void> | undefined;
+
+  const validateRoots = async (roots: readonly string[]): Promise<void> => {
+    const newProjectRoot = resolveWorkspaceProjectRoot(roots);
+    let canonicalNew = newProjectRoot;
+    let canonicalCurrent = currentContext!.projectRoot;
+    try {
+      canonicalNew = realpathSync(newProjectRoot);
+    } catch {}
+    try {
+      canonicalCurrent = realpathSync(currentContext!.projectRoot);
+    } catch {}
+
+    if (canonicalNew !== canonicalCurrent) {
+      const oldContext = currentContext!;
+      currentContext = await openProjectContext(newProjectRoot);
+      oldContext.database.close();
+    }
+  };
+
+  let server: Server;
+
+  const ensureRootsValidated = async (): Promise<void> => {
+    if (!rootsValidationPromise && server.getClientCapabilities()?.roots) {
+      rootsValidationPromise = (async () => {
+        const result = await server.listRoots();
+        if (result?.roots && result.roots.length > 0) {
+          const rootPaths = result.roots.map((r) => r.uri);
+          await validateRoots(rootPaths);
+        }
+      })();
+    }
+    if (rootsValidationPromise) {
+      await rootsValidationPromise;
+    }
+  };
+
+  const getContext = async (): Promise<ProjectContext> => {
+    await ensureRootsValidated();
+    return currentContext!;
+  };
+
+  server = createMcpServer(getContext);
+
   const transport = new StdioServerTransport();
-  transport.onclose = () => context.database.close();
+  transport.onclose = () => {
+    currentContext?.database.close();
+  };
+
+  server.setNotificationHandler(InitializedNotificationSchema, async () => {
+    if (server.getClientCapabilities()?.roots) {
+      try {
+        await ensureRootsValidated();
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        process.stderr.write(`Error validating workspace roots: ${message}\n`);
+        transport.close();
+      }
+    }
+  });
+
+  server.setNotificationHandler(RootsListChangedNotificationSchema, async () => {
+    if (server.getClientCapabilities()?.roots) {
+      try {
+        rootsValidationPromise = undefined;
+        await ensureRootsValidated();
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        process.stderr.write(`Error validating workspace roots: ${message}\n`);
+        transport.close();
+      }
+    }
+  });
 
   try {
     await server.connect(transport);
   } catch (error) {
-    context.database.close();
+    currentContext.database.close();
     throw error;
   }
 }
