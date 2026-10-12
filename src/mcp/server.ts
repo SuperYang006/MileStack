@@ -44,6 +44,7 @@ const agentCreateTasksSchema = z
   .strict();
 const projectStatusArgumentsSchema = getProjectStatusInputSchema.omit({
   projectId: true,
+  since: true,
 });
 const listTasksArgumentsSchema = listTasksInputSchema.omit({ projectId: true });
 const taskArgumentsSchema = getTaskInputSchema.omit({ projectId: true });

@@ -265,6 +265,45 @@ describe("TaskService", () => {
     database.close();
   });
 
+  it("skips project status assembly when the latest task timestamp is unchanged", async () => {
+    const projectRoot = createTemporaryProject();
+    const { database, service } = await createService(projectRoot);
+    service.createTask({
+      projectId: "project-1",
+      title: "Track status changes",
+      status: "ready",
+      createdBy: "developer",
+    });
+
+    const initial = service.getProjectStatus({ projectId: "project-1" });
+    expect(initial.latestUpdatedAt).toBe("2026-10-11T12:00:00.000Z");
+    expect(
+      service.getProjectStatusIfChanged({
+        projectId: "project-1",
+        since: initial.latestUpdatedAt ?? undefined,
+      }),
+    ).toBeNull();
+
+    database.db
+      .update(tasks)
+      .set({
+        title: "Status changed",
+        updatedAt: "2026-10-11T13:00:00.000Z",
+      })
+      .where(eq(tasks.id, "generated-1"))
+      .run();
+
+    const changed = service.getProjectStatusIfChanged({
+      projectId: "project-1",
+      since: initial.latestUpdatedAt ?? undefined,
+    });
+    expect(changed).toMatchObject({
+      latestUpdatedAt: "2026-10-11T13:00:00.000Z",
+      next: [expect.objectContaining({ title: "Status changed" })],
+    });
+    database.close();
+  });
+
   it("returns a bounded compact status and stable status cursors", async () => {
     const projectRoot = createTemporaryProject();
     const { database, service } = await createService(projectRoot);

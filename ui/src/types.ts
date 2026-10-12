@@ -37,6 +37,8 @@ export interface TaskSummary {
   id: string;
   projectId: string;
   title: string;
+  objective?: string | null;
+  acceptanceCriteria?: string[] | null;
   status: TaskStatus;
   queuePosition: number | null;
   dependencyIds: string[];
@@ -50,6 +52,7 @@ export interface TaskSummary {
   completedAt: string | null;
   riskLevel?: RiskLevel;
   riskConfirmed?: boolean;
+  latestReview?: TaskReview | null;
 }
 
 export type RiskLevel = "low" | "medium" | "high";
@@ -141,6 +144,7 @@ export interface TaskEvent {
 
 export interface ProjectStatus {
   project: ProjectSummary;
+  latestUpdatedAt?: string | null;
   counts: TaskStatusCounts;
   current: TaskSummary[];
   next: TaskSummary[];

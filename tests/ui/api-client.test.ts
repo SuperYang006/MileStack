@@ -7,6 +7,21 @@ afterEach(() => {
 });
 
 describe("UI API client", () => {
+  it("returns null for an unchanged status response and sends since", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(null, { status: 304 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      apiClient.getProjectStatus("project-1", "2026-10-13T00:00:00.000Z"),
+    ).resolves.toBeNull();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/status?view=full&projectId=project-1&since=2026-10-13T00%3A00%3A00.000Z",
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+  });
+
   it("loads completed task pages with the requested cursor and page size", async () => {
     const page = {
       status: "completed",

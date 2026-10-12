@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   useQuery,
   useInfiniteQuery,
@@ -19,10 +19,35 @@ import { TaskDetailModal } from "../components/TaskDetailModal";
 import { CreateTaskModal } from "../components/CreateTaskModal";
 import { BriefingModal } from "../components/BriefingModal";
 import { EditInboxModal } from "../components/EditInboxModal";
-import type { TaskSummary, CreateTaskPayload, EditInboxTaskPayload, TaskDetails, RiskLevel } from "../types";
+import type {
+  ProjectStatus,
+  TaskSummary,
+  CreateTaskPayload,
+  EditInboxTaskPayload,
+  TaskDetails,
+  RiskLevel,
+} from "../types";
+
+function useDocumentVisible(): boolean {
+  const [isVisible, setIsVisible] = useState(
+    () => typeof document === "undefined" || document.visibilityState === "visible",
+  );
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      setIsVisible(document.visibilityState === "visible");
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, []);
+
+  return isVisible;
+}
 
 export const DashboardPage: React.FC = () => {
   const queryClient = useQueryClient();
+  const isDocumentVisible = useDocumentVisible();
+  const forceFullStatusRef = useRef(false);
 
   // State
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
@@ -39,14 +64,26 @@ export const DashboardPage: React.FC = () => {
     refetch,
   } = useQuery({
     queryKey: ["projectStatus"],
-    queryFn: () => apiClient.getProjectStatus(),
-    refetchInterval: 5000, // Poll every 5s per technical design
+    queryFn: async () => {
+      const previous = queryClient.getQueryData<ProjectStatus>(["projectStatus"]);
+      const since = forceFullStatusRef.current ? undefined : previous?.latestUpdatedAt ?? undefined;
+      forceFullStatusRef.current = false;
+      const nextStatus = await apiClient.getProjectStatus(undefined, since);
+      if (nextStatus) return nextStatus;
+      if (previous) return previous;
+      throw new Error("Project status was not returned.");
+    },
+    enabled: isDocumentVisible,
+    refetchInterval: 15_000,
+    refetchIntervalInBackground: false,
   });
 
   const { data: backendConnected = false } = useQuery({
     queryKey: ["backendHealth"],
     queryFn: () => apiClient.isBackendAvailable(),
-    refetchInterval: 10000,
+    enabled: isDocumentVisible,
+    refetchInterval: 30_000,
+    refetchIntervalInBackground: false,
   });
 
   const completedTasksQuery = useInfiniteQuery({
@@ -56,7 +93,7 @@ export const DashboardPage: React.FC = () => {
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) =>
       lastPage.hasMore ? lastPage.nextCursor ?? undefined : undefined,
-    enabled: isArchiveExpanded,
+    enabled: isArchiveExpanded && isDocumentVisible,
   });
 
   const completedTasks = useMemo(() => {
@@ -72,8 +109,9 @@ export const DashboardPage: React.FC = () => {
   const { data: selectedDetails, isLoading: isDetailsLoading, isError: isDetailsError } = useQuery({
     queryKey: ["taskDetails", selectedTaskId],
     queryFn: () => (selectedTaskId ? apiClient.getTaskDetails(selectedTaskId) : null),
-    enabled: !!selectedTaskId,
-    refetchInterval: 5000,
+    enabled: isDocumentVisible && !!selectedTaskId,
+    refetchInterval: 15_000,
+    refetchIntervalInBackground: false,
   });
 
   // Mutations
@@ -184,7 +222,8 @@ export const DashboardPage: React.FC = () => {
         project={status.project}
         isBackendConnected={backendConnected}
         onRefresh={() => {
-          refetch();
+          forceFullStatusRef.current = true;
+          void refetch();
           if (isArchiveExpanded) {
             void completedTasksQuery.refetch();
           }

@@ -96,6 +96,7 @@ export interface ProjectRepository {
 export interface TaskRepository {
   findTaskById(id: string): TaskRecord | null;
   listByProjectId(projectId: string): TaskRecord[];
+  findLatestUpdatedAtByProjectId(projectId: string): string | null;
 }
 
 export interface TaskDependencyRepository {
@@ -109,6 +110,7 @@ export interface TaskEventRepository {
 
 export interface TaskReviewRepository {
   listReviewsByTaskId(taskId: string): ReviewRecord[];
+  listReviewsByProjectId(projectId: string): ReviewRecord[];
 }
 
 export interface TaskRepositoryTransaction {

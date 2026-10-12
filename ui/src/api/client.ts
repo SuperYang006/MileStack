@@ -90,12 +90,20 @@ export const apiClient = {
     return backendAvailable;
   },
 
-  async getProjectStatus(projectId?: string): Promise<ProjectStatus> {
+  async getProjectStatus(
+    projectId?: string,
+    since?: string,
+  ): Promise<ProjectStatus | null> {
     try {
       const params = new URLSearchParams({ view: "full" });
       if (projectId) params.set("projectId", projectId);
+      if (since) params.set("since", since);
       const url = `/api/status?${params.toString()}`;
       const res = await fetch(url, { signal: AbortSignal.timeout(2000) });
+      if (res.status === 304) {
+        backendAvailable = true;
+        return null;
+      }
       if (res.ok) {
         backendAvailable = true;
         return (await res.json()) as ProjectStatus;

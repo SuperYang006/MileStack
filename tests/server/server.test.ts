@@ -185,6 +185,46 @@ describe("HTTP API Server", () => {
     });
   });
 
+  it("returns 304 for an unchanged status and a full response after a task changes", async () => {
+    const initial = await serverInstance.app.inject({
+      method: "GET",
+      url: "/api/status",
+    });
+    const initialBody = JSON.parse(initial.payload);
+    expect(initial.statusCode).toBe(200);
+    expect(initialBody.latestUpdatedAt).toBeNull();
+
+    const created = await serverInstance.app.inject({
+      method: "POST",
+      url: "/api/tasks",
+      payload: { title: "Status polling task", status: "inbox" },
+    });
+    expect(created.statusCode).toBe(201);
+    const createdStatus = JSON.parse(
+      (await serverInstance.app.inject({ method: "GET", url: "/api/status" })).payload,
+    );
+    expect(createdStatus.latestUpdatedAt).toBeTruthy();
+
+    const unchanged = await serverInstance.app.inject({
+      method: "GET",
+      url: `/api/status?since=${encodeURIComponent(createdStatus.latestUpdatedAt)}`,
+    });
+    expect(unchanged.statusCode).toBe(304);
+    expect(unchanged.payload).toBe("");
+
+    await serverInstance.app.inject({
+      method: "POST",
+      url: "/api/tasks",
+      payload: { title: "New status polling task", status: "inbox" },
+    });
+    const changed = await serverInstance.app.inject({
+      method: "GET",
+      url: `/api/status?since=${encodeURIComponent(createdStatus.latestUpdatedAt)}`,
+    });
+    expect(changed.statusCode).toBe(200);
+    expect(JSON.parse(changed.payload).inbox).toHaveLength(2);
+  });
+
   it("supports batch task creation via POST /api/tasks/batch", async () => {
     const batchRes = await serverInstance.app.inject({
       method: "POST",
@@ -495,7 +535,11 @@ describe("HTTP API Server", () => {
       (await serverInstance.app.inject({ method: "GET", url: "/api/status" })).payload,
     );
     expect(statusInReview.inReview).toEqual([
-      expect.objectContaining({ id: created.id, status: "in_review" }),
+      expect.objectContaining({
+        id: created.id,
+        status: "in_review",
+        latestReview: expect.objectContaining({ status: "pending" }),
+      }),
     ]);
     expect(statusInReview.recentlyCompleted).toEqual([]);
 

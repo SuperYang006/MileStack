@@ -103,15 +103,23 @@ export async function createHttpServer(
 
   // Project Status
   app.get("/api/status", async (request, reply) => {
-    const query = request.query as { projectId?: string; view?: string };
+    const query = request.query as {
+      projectId?: string;
+      view?: string;
+      since?: string;
+    };
 
     try {
-      const status = context.service.getProjectStatus(
+      const status = context.service.getProjectStatusIfChanged(
         getProjectStatusInputSchema.parse({
           projectId: query.projectId || context.project.id,
           view: query.view || "full",
+          since: query.since,
         }),
       );
+      if (status === null) {
+        return reply.code(304).send();
+      }
       return status;
     } catch (err) {
       if (err instanceof ProjectNotFoundError) {

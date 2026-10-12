@@ -1,5 +1,5 @@
 import type BetterSqlite3 from "better-sqlite3";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, desc, eq } from "drizzle-orm";
 
 import type {
   MileStackRepository,
@@ -92,6 +92,17 @@ export class SqliteRepository implements MileStackRepository {
       .map(mapTask);
   }
 
+  findLatestUpdatedAtByProjectId(projectId: string): string | null {
+    const task = this.db
+      .select({ updatedAt: tasks.updatedAt })
+      .from(tasks)
+      .where(eq(tasks.projectId, projectId))
+      .orderBy(desc(tasks.updatedAt))
+      .limit(1)
+      .get();
+    return task?.updatedAt ?? null;
+  }
+
   listByTaskId(taskId: string): TaskEventRecord[] {
     return this.db
       .select()
@@ -108,6 +119,16 @@ export class SqliteRepository implements MileStackRepository {
       .from(taskReviews)
       .where(eq(taskReviews.taskId, taskId))
       .orderBy(asc(taskReviews.reviewRound))
+      .all()
+      .map(mapReview);
+  }
+
+  listReviewsByProjectId(projectId: string): ReviewRecord[] {
+    return this.db
+      .select()
+      .from(taskReviews)
+      .where(eq(taskReviews.projectId, projectId))
+      .orderBy(asc(taskReviews.taskId), asc(taskReviews.reviewRound))
       .all()
       .map(mapReview);
   }

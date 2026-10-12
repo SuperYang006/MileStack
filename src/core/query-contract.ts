@@ -78,6 +78,8 @@ export const taskSummarySchema = z
     id: identifierSchema,
     projectId: identifierSchema,
     title: z.string().min(1),
+    objective: nullableTextSchema.optional(),
+    acceptanceCriteria: z.array(z.string()).nullable().optional(),
     status: taskStatusSchema,
     queuePosition: z.number().int().nullable(),
     dependencyIds: z.array(identifierSchema),
@@ -99,6 +101,7 @@ export const taskSummarySchema = z
     completedAt: nullableTextSchema,
     riskLevel: riskLevelSchema,
     riskConfirmed: z.boolean(),
+    latestReview: reviewSchema.nullable().optional(),
   })
   .strict();
 
@@ -165,6 +168,7 @@ const taskStatusCountSchema = z
 export const projectStatusSchema = z
   .object({
     project: projectSummarySchema,
+    latestUpdatedAt: nullableTextSchema.optional(),
     counts: taskStatusCountSchema,
     current: z.array(taskSummarySchema),
     next: z.array(taskSummarySchema),
@@ -190,6 +194,7 @@ export const compactProjectStatusSchema = z
   .object({
     view: z.literal("compact"),
     project: projectSummarySchema,
+    latestUpdatedAt: nullableTextSchema.optional(),
     counts: taskStatusCountSchema,
     current: z.array(taskSummarySchema),
     next: z.array(taskSummarySchema),
@@ -221,6 +226,7 @@ export const getProjectStatusInputSchema = z
   .object({
     projectId: identifierSchema,
     view: projectStatusViewSchema.optional(),
+    since: z.string().min(1).optional(),
   })
   .strict();
 

@@ -1,5 +1,4 @@
 import React from "react";
-import { useQuery } from "@tanstack/react-query";
 import {
   Check,
   MessageSquare,
@@ -14,9 +13,8 @@ import {
   Terminal,
   GitBranch,
 } from "lucide-react";
-import type { TaskSummary, TaskDetails } from "../types";
+import type { TaskSummary } from "../types";
 import { TaskIdBadge } from "./CopyTaskIdButton";
-import { apiClient } from "../api/client";
 
 interface ReviewTasksProps {
   tasks: TaskSummary[];
@@ -31,13 +29,7 @@ const ReviewTaskItem: React.FC<{
   onRequestChanges: (taskId: string, feedback: string) => void;
   onSelectTask: (taskId: string) => void;
 }> = ({ task, onApprove, onRequestChanges, onSelectTask }) => {
-  const { data: details, isLoading, isError } = useQuery<TaskDetails>({
-    queryKey: ["taskDetails", task.id],
-    queryFn: () => apiClient.getTaskDetails(task.id),
-    refetchInterval: 5000,
-  });
-
-  const latestReview = details?.reviews?.at(-1);
+  const latestReview = task.latestReview;
   const reviewStatus = latestReview?.status ?? "pending";
   const reviewerLabel = latestReview?.reviewerActorLabel;
 
@@ -98,8 +90,8 @@ const ReviewTaskItem: React.FC<{
     </span>
   );
 
-  const objective = details?.task.objective;
-  const acceptanceCriteria = details?.task.acceptanceCriteria;
+  const objective = task.objective;
+  const acceptanceCriteria = task.acceptanceCriteria;
 
   return (
     <div className="p-3.5 rounded-lg bg-zinc-950/80 border border-zinc-800 hover:border-violet-900/60 transition-colors space-y-3 font-mono">
@@ -195,49 +187,35 @@ const ReviewTaskItem: React.FC<{
           </span>
           <span className="text-[9px] text-zinc-600 font-normal lowercase">源自任务详情契约</span>
         </div>
-        {isLoading ? (
-          <div className="py-2 text-[11px] text-zinc-500 animate-pulse flex items-center space-x-2">
-            <Clock className="w-3.5 h-3.5 text-zinc-500 animate-spin" />
-            <span>正在加载任务权威定义...</span>
-          </div>
-        ) : isError || !details ? (
-          <div className="py-2 text-[11px] text-rose-400 flex items-center space-x-2">
-            <ShieldAlert className="w-3.5 h-3.5 text-rose-400" />
-            <span>获取任务详情失败，请检查服务连接</span>
-          </div>
-        ) : (
-          <>
-            {/* Objective */}
-            <div className="text-[11px] leading-relaxed">
-              <span className="text-zinc-500 font-semibold mr-1.5">核心目标:</span>
-              {objective ? (
-                <span className="text-zinc-300">{objective}</span>
-              ) : (
-                <span className="text-zinc-600 italic">未提供详细目标说明</span>
-              )}
-            </div>
+        {/* Objective */}
+        <div className="text-[11px] leading-relaxed">
+          <span className="text-zinc-500 font-semibold mr-1.5">核心目标:</span>
+          {objective ? (
+            <span className="text-zinc-300">{objective}</span>
+          ) : (
+            <span className="text-zinc-600 italic">未提供详细目标说明</span>
+          )}
+        </div>
 
-            {/* Acceptance Criteria */}
-            <div className="space-y-1">
-              <div className="text-[11px] text-zinc-500 font-semibold flex items-center space-x-1">
-                <ListChecks className="w-3 h-3 text-zinc-500" />
-                <span>验收条件:</span>
-              </div>
-              {acceptanceCriteria && acceptanceCriteria.length > 0 ? (
-                <div className="space-y-0.5 pl-2 border-l border-zinc-800 text-[11px]">
-                  {acceptanceCriteria.map((criterion, idx) => (
-                    <div key={idx} className="flex items-start space-x-1.5 text-zinc-300">
-                      <span className="text-cyan-500/80 select-none shrink-0">•</span>
-                      <span>{criterion}</span>
-                    </div>
-                  ))}
+        {/* Acceptance Criteria */}
+        <div className="space-y-1">
+          <div className="text-[11px] text-zinc-500 font-semibold flex items-center space-x-1">
+            <ListChecks className="w-3 h-3 text-zinc-500" />
+            <span>验收条件:</span>
+          </div>
+          {acceptanceCriteria && acceptanceCriteria.length > 0 ? (
+            <div className="space-y-0.5 pl-2 border-l border-zinc-800 text-[11px]">
+              {acceptanceCriteria.map((criterion, idx) => (
+                <div key={idx} className="flex items-start space-x-1.5 text-zinc-300">
+                  <span className="text-cyan-500/80 select-none shrink-0">•</span>
+                  <span>{criterion}</span>
                 </div>
-              ) : (
-                <div className="pl-2 text-[11px] text-zinc-600 italic">未指定具体验收条件</div>
-              )}
+              ))}
             </div>
-          </>
-        )}
+          ) : (
+            <div className="pl-2 text-[11px] text-zinc-600 italic">未指定具体验收条件</div>
+          )}
+        </div>
       </div>
 
       {/* Layer 2: Fixed Artifact & Review Summary */}

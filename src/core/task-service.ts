@@ -129,11 +129,14 @@ function taskToSummary(
   task: TaskRecord,
   dependencyIds: string[],
   waitingFor: TaskSummary["waitingFor"],
+  latestReview: ReviewRecord | null = null,
 ): TaskSummary {
   return {
     id: task.id,
     projectId: task.projectId,
     title: task.title,
+    objective: task.objective,
+    acceptanceCriteria: task.acceptanceCriteria,
     status: task.status,
     queuePosition: task.queuePosition,
     dependencyIds,
@@ -148,7 +151,19 @@ function taskToSummary(
     completedAt: task.completedAt,
     riskLevel: task.riskLevel,
     riskConfirmed: task.riskConfirmed,
+    latestReview,
   };
+}
+
+function latestReviewsByTaskId(reviews: ReviewRecord[]): Map<string, ReviewRecord> {
+  const latestReviews = new Map<string, ReviewRecord>();
+  for (const review of reviews) {
+    const current = latestReviews.get(review.taskId);
+    if (!current || review.reviewRound > current.reviewRound) {
+      latestReviews.set(review.taskId, review);
+    }
+  }
+  return latestReviews;
 }
 
 function taskToDetails(
@@ -177,6 +192,7 @@ function taskToSummaryWithDependencies(
   task: TaskRecord,
   tasks: TaskRecord[],
   dependencies: TaskDependencyRecord[],
+  latestReviews: ReadonlyMap<string, ReviewRecord>,
 ): TaskSummary {
   const tasksById = new Map(tasks.map((candidate) => [candidate.id, candidate]));
   const dependencyIds = dependencyIdsForTask(task.id, dependencies);
@@ -197,7 +213,7 @@ function taskToSummaryWithDependencies(
       status: dependency.status,
     }));
 
-  return taskToSummary(task, dependencyIds, waitingFor);
+  return taskToSummary(task, dependencyIds, waitingFor, latestReviews.get(task.id) ?? null);
 }
 
 function summaryForTask(summaries: TaskSummary[], taskId: string): TaskSummary {
@@ -1313,10 +1329,37 @@ export class TaskService {
   getProjectStatus(input: GetProjectStatusInput): ProjectStatusResult {
     const parsed = getProjectStatusInputSchema.parse(input);
     const project = this.requireProject(parsed.projectId);
+    return this.buildProjectStatus(
+      project,
+      parsed.view,
+      this.repository.findLatestUpdatedAtByProjectId(project.id),
+    );
+  }
+
+  getProjectStatusIfChanged(
+    input: GetProjectStatusInput,
+  ): ProjectStatusResult | null {
+    const parsed = getProjectStatusInputSchema.parse(input);
+    const project = this.requireProject(parsed.projectId);
+    const latestUpdatedAt = this.repository.findLatestUpdatedAtByProjectId(project.id);
+    if (parsed.since !== undefined && parsed.since === latestUpdatedAt) {
+      return null;
+    }
+    return this.buildProjectStatus(project, parsed.view, latestUpdatedAt);
+  }
+
+  private buildProjectStatus(
+    project: ProjectRecord,
+    view: GetProjectStatusInput["view"],
+    latestUpdatedAt: string | null,
+  ): ProjectStatusResult {
     const tasks = this.repository.listByProjectId(project.id);
     const dependencies = this.repository.listDependenciesByProjectId(project.id);
+    const latestReviews = latestReviewsByTaskId(
+      this.repository.listReviewsByProjectId(project.id),
+    );
     const summaries = tasks.map((task) =>
-      taskToSummaryWithDependencies(task, tasks, dependencies),
+      taskToSummaryWithDependencies(task, tasks, dependencies, latestReviews),
     );
     const currentTasks = tasks
       .filter((task) => task.status === "running")
@@ -1357,10 +1400,11 @@ export class TaskService {
       total: tasks.length,
     };
 
-    if (parsed.view === "compact") {
+    if (view === "compact") {
       const compact = {
         view: "compact" as const,
         project: projectToSummary(project),
+        latestUpdatedAt,
         counts,
         current: current.slice(0, compactProjectStatusLimits.current),
         next: next.slice(0, compactProjectStatusLimits.next),
@@ -1388,6 +1432,7 @@ export class TaskService {
 
     return projectStatusSchema.parse({
       project: projectToSummary(project),
+      latestUpdatedAt,
       counts,
       current,
       next,
@@ -1406,8 +1451,11 @@ export class TaskService {
       .filter((task) => task.status === parsed.status)
       .sort((left, right) => compareTasksByStatus(left, right, parsed.status));
     const dependencies = this.repository.listDependenciesByProjectId(project.id);
+    const latestReviews = latestReviewsByTaskId(
+      this.repository.listReviewsByProjectId(project.id),
+    );
     const allSummaries = allTasks.map((task) =>
-      taskToSummaryWithDependencies(task, allTasks, dependencies),
+      taskToSummaryWithDependencies(task, allTasks, dependencies, latestReviews),
     );
 
     let startIndex = 0;
