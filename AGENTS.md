@@ -135,7 +135,10 @@ Report the exact verification commands and results. Never claim a test passed if
 - Add forward migrations; do not edit migrations that may already have been applied.
 - Create and verify a backup before a migration that changes an existing non-empty database.
 - Keep SQLite write transactions short. Do not perform network calls, file scans, or AI work inside a transaction.
-- `milestack init` must be idempotent and must not overwrite existing project files, Agent instructions, or client configuration.
+- `milestack init` must be idempotent and must not overwrite existing project files, Agent instructions, or client configuration. Without `--client`, it only prints generic MCP configuration and does not create project-level client files.
+- With explicit `--client` selection, `init` may add missing project-level `milestack` entries only for the selected clients: `claude` -> `.mcp.json`, `cursor` -> `.cursor/mcp.json`, `grok` -> `.grok/config.toml`, and `codex` -> `.codex/config.toml`.
+- `init --client` must preserve unrelated project files, Agent instructions, and existing different `milestack` entries; it must never modify global client configuration such as `~/.claude.json`, `~/.cursor`, `~/.grok`, or `~/.codex`.
+- Confirm that `--project` is the absolute path of the current checkout before writing. After a project file is written, reopen the corresponding client session; Codex project configuration requires a trusted repository and Claude `.mcp.json` still requires user approval.
 - Any automatic edit to `.gitignore` must preserve its existing content and avoid duplicate entries.
 
 ## Scope restrictions for V0

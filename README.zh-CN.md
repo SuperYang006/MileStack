@@ -102,13 +102,37 @@ node /absolute/path/to/MileStack/dist/index.js init \
   --project /absolute/path/to/project
 ```
 
-初始化操作是幂等的，具体会：
+初始化操作是幂等的。不传 `--client` 时会：
 
 - 创建或迁移 `.milestack/milestack.db`；
 - 在不替换现有内容的前提下，将 `.milestack/` 加入 `.gitignore`；
 - 生成 `.milestack/agent-instructions.md`；
-- 输出 MCP 客户端配置和根 Agent 指令入口；
+- 输出通用 MCP JSON 和手动注册 Codex 的说明；
+- 不创建 `.mcp.json`、`.cursor/mcp.json`、`.grok/config.toml` 或 `.codex/config.toml`；
 - 不会创建、覆盖或追加项目根目录中的 `AGENTS.md`。
+
+如需写入项目级 MCP 配置，必须为当前 checkout 显式选择客户端。`--client`
+可以重复，也可以使用逗号分隔的列表：
+
+```bash
+milestack init --client claude --client cursor --client grok --client codex \
+  --project /absolute/path/to/current/checkout
+```
+
+选中的客户端只会写入各自的项目文件：
+
+| 客户端 | 项目文件 |
+| --- | --- |
+| `claude` | `.mcp.json` |
+| `cursor` | `.cursor/mcp.json` |
+| `grok` | `.grok/config.toml` |
+| `codex` | `.codex/config.toml` |
+
+执行或提交前请确认 `--project` 是当前 checkout 的绝对路径。MileStack 不会修改
+`~/.claude.json`、`~/.cursor`、`~/.grok` 或 `~/.codex` 等全局客户端配置。
+已有不同的 `milestack` 条目会保持不变，不会被覆盖。写入项目文件后，请重新打开
+对应的客户端会话。Codex 项目配置只会在已信任的仓库中生效；Claude 的项目
+`.mcp.json` 配置仍需用户批准。
 
 请手动将下面这行加入项目版本控制中的根 `AGENTS.md`：
 
@@ -119,6 +143,10 @@ Before working on tasks, read and follow .milestack/agent-instructions.md
 每位开发者都应在自己的 checkout 中运行 `milestack init`，因为 `.milestack/` 是有意保持本地化并被忽略的目录。
 
 ## 通过 MCP 连接 Codex
+
+下面的命令是可选的手动全局注册方式，`milestack init` 不会自动执行它们。
+如需保持配置只属于当前项目，请改用
+`milestack init --client codex --project /absolute/path/to/current/checkout`。
 
 当 `milestack` 已经可以全局使用时：
 
@@ -160,7 +188,7 @@ Agent 创建的任务会进入 `inbox`。开发者必须先确认其风险和队
 ## CLI
 
 ```text
-milestack init [--project <path>]
+milestack init [--project <path>] [--client <name>]...
 milestack status [--project <path>] [--json]
 milestack mcp [--project <path>]
 milestack serve [--project <path>] [--port <port>]

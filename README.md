@@ -102,13 +102,39 @@ node /absolute/path/to/MileStack/dist/index.js init \
   --project /absolute/path/to/project
 ```
 
-Initialization is idempotent. It:
+Initialization is idempotent. Without `--client`, it:
 
 - creates or migrates `.milestack/milestack.db`;
 - adds `.milestack/` to `.gitignore` without replacing existing content;
 - generates `.milestack/agent-instructions.md`;
-- prints MCP client configuration and the root Agent-instruction entry point;
+- prints the generic MCP JSON and manual Codex registration instructions;
+- does not create `.mcp.json`, `.cursor/mcp.json`, `.grok/config.toml`, or `.codex/config.toml`;
 - never creates, overwrites, or appends to the project's root `AGENTS.md`.
+
+To write project-level MCP configuration, explicitly select the clients for the current
+checkout. `--client` may be repeated or given as a comma-separated list:
+
+```bash
+milestack init --client claude --client cursor --client grok --client codex \
+  --project /absolute/path/to/current/checkout
+```
+
+The selected clients write only their project file:
+
+| Client | Project file |
+| --- | --- |
+| `claude` | `.mcp.json` |
+| `cursor` | `.cursor/mcp.json` |
+| `grok` | `.grok/config.toml` |
+| `codex` | `.codex/config.toml` |
+
+Before running or submitting the command, verify that `--project` is the absolute
+path of the current checkout. MileStack never modifies global client configuration such as
+`~/.claude.json`, `~/.cursor`, `~/.grok`, or `~/.codex`. An existing different
+`milestack` entry is preserved and not replaced. After writing a project file,
+reopen the corresponding client session. Codex project configuration takes effect
+only in trusted repositories, and Claude still requires user approval for the
+project `.mcp.json` configuration.
 
 Add this line manually to the project's version-controlled root `AGENTS.md`:
 
@@ -119,6 +145,10 @@ Before working on tasks, read and follow .milestack/agent-instructions.md
 Every developer should run `milestack init` in their own checkout because `.milestack/` is intentionally local and ignored.
 
 ## Connect Codex through MCP
+
+The commands below are an optional manual global registration path; `milestack init`
+does not run them. To keep the configuration project-local, use
+`milestack init --client codex --project /absolute/path/to/current/checkout` instead.
 
 When `milestack` is globally available:
 
@@ -160,7 +190,7 @@ Agent-created tasks enter `inbox`. A developer must confirm their risk and queue
 ## CLI
 
 ```text
-milestack init [--project <path>]
+milestack init [--project <path>] [--client <name>]...
 milestack status [--project <path>] [--json]
 milestack mcp [--project <path>]
 milestack serve [--project <path>] [--port <port>]

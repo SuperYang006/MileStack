@@ -106,7 +106,7 @@ milestack status --project /absolute/path/to/project
 初始化项目时执行：
 
 ```bash
-milestack init
+milestack init --project /absolute/path/to/current/checkout
 ```
 
 `init` 负责：
@@ -114,11 +114,23 @@ milestack init
 - 创建 `.milestack/`；
 - 初始化 SQLite Schema；
 - 创建项目记录；
-- 确保 `.milestack/` 被项目的 `.gitignore` 忽略。
-- 输出该项目可直接使用的 MCP 客户端配置；
+- 确保 `.milestack/` 被项目的 `.gitignore` 忽略；
 - 输出带 `MILESTACK_START` 和 `MILESTACK_END` 标记的 AI 接入规则。
 
-`init` 必须可以安全重复执行，不覆盖已有数据库、项目文件或标记区块外的 Agent 指令。V0 可以先将配置和规则输出到终端，由开发者确认后复制；不要求自动修改各类 AI 客户端的全局配置。
+默认不传 `--client` 时，`init` 只把通用 MCP JSON 和手动执行 Codex 注册命令打印到终端，
+不会创建项目级客户端配置文件。显式传入一个或多个 `--client` 后，才为选中的客户端
+写入当前项目目录中的配置：`claude` 写 `.mcp.json`，`cursor` 写
+`.cursor/mcp.json`，`grok` 写 `.grok/config.toml`，`codex` 写
+`.codex/config.toml`。`--client` 可以重复，也可以使用逗号分隔的客户端名称。
+
+`--project` 必须指向当前 checkout 的绝对路径，执行或提交前由开发者确认路径无误。
+项目级写入不会修改 `~/.claude.json`、`~/.cursor`、`~/.grok` 或 `~/.codex` 等全局
+客户端配置；已有不同的 `milestack` 条目保持不变，不会被覆盖。写入后需要重新打开
+对应客户端会话。Codex 项目配置只在已信任的仓库中生效，Claude 的 `.mcp.json`
+仍需用户批准。
+
+`init` 必须可以安全重复执行，不覆盖已有数据库、无关项目文件、Agent 指令或已有不同的
+客户端配置；显式 `--client` 只补充缺失的项目级 `milestack` 条目。
 
 V0 不通过 Git 同步数据库，也不提供云端备份。
 
@@ -307,13 +319,17 @@ V0 可以用上移、下移操作调整队列顺序，不要求一开始实现�
 旧项目采用零侵入接入，不要求修改业务代码或现有构建方式：
 
 ```text
-milestack init --project <project-root>
+milestack init --project <absolute-checkout>
   -> 创建本地数据库
-  -> 输出 MCP 配置和 AI 接入规则
+  -> 默认只输出通用 MCP 配置和 AI 接入规则
+  -> （显式 --client 时）只写入选中的项目级 MCP 配置
   -> AI 读取已有任务资料与代码状态
   -> create_tasks 批量写入 inbox
   -> 开发者确认、编辑并排列 ready 队列
 ```
+
+显式 `--client` 时使用当前 checkout 的绝对路径，并在执行或提交前确认路径；全局客户端
+配置不自动修改，已有不同的 `milestack` 条目不覆盖。
 
 基线整理遵循以下规则：
 
