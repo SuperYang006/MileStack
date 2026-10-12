@@ -52,7 +52,7 @@ export interface TaskSummary {
   completedAt: string | null;
   riskLevel?: RiskLevel;
   riskConfirmed?: boolean;
-  latestReview?: TaskReview | null;
+  latestReview?: ReviewDigest | null;
 }
 
 export type RiskLevel = "low" | "medium" | "high";
@@ -96,6 +96,21 @@ export interface TaskReview {
   startedAt: string | null;
   concludedAt: string | null;
   updatedAt: string;
+}
+
+/** Compact review facts carried by project status for collapsed queue cards. */
+export interface ReviewDigest {
+  status: "pending" | "in_progress" | "passed" | "changes_requested";
+  reviewRound: number;
+  commitSha: string;
+  reviewerActorLabel: string | null;
+  branch: string | null;
+  worktree: string | null;
+  summary: string | null;
+  createdAt: string;
+  acceptanceCriteriaCount: number;
+  verificationEvidenceCount: number;
+  findingsCount: number;
 }
 
 export interface TaskModel {

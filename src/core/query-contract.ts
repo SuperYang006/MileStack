@@ -65,6 +65,22 @@ export const reviewSchema = z
   })
   .strict();
 
+export const reviewDigestSchema = z
+  .object({
+    status: reviewStatusSchema,
+    reviewRound: z.number().int().positive(),
+    commitSha: z.string().regex(/^[0-9a-f]{40}$/i),
+    reviewerActorLabel: nullableTextSchema,
+    branch: nullableTextSchema,
+    worktree: nullableTextSchema,
+    summary: nullableTextSchema,
+    createdAt: z.string().min(1),
+    acceptanceCriteriaCount: z.number().int().nonnegative(),
+    verificationEvidenceCount: z.number().int().nonnegative(),
+    findingsCount: z.number().int().nonnegative(),
+  })
+  .strict();
+
 export const projectSummarySchema = z
   .object({
     id: identifierSchema,
@@ -101,7 +117,7 @@ export const taskSummarySchema = z
     completedAt: nullableTextSchema,
     riskLevel: riskLevelSchema,
     riskConfirmed: z.boolean(),
-    latestReview: reviewSchema.nullable().optional(),
+    latestReview: reviewDigestSchema.nullable().optional(),
   })
   .strict();
 
@@ -452,6 +468,7 @@ export type ProjectSummary = z.infer<typeof projectSummarySchema>;
 export type TaskSummary = z.infer<typeof taskSummarySchema>;
 export type TaskDetails = z.infer<typeof taskDetailsSchema>;
 export type Review = z.infer<typeof reviewSchema>;
+export type ReviewDigest = z.infer<typeof reviewDigestSchema>;
 export type ProjectStatus = z.infer<typeof projectStatusSchema>;
 export type CompactProjectStatus = z.infer<typeof compactProjectStatusSchema>;
 export type ProjectStatusResult = z.infer<typeof projectStatusResultSchema>;

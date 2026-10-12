@@ -41,6 +41,7 @@ import {
   type ProjectStatusResult,
   type ReleaseTaskInput,
   type ReorderTaskInput,
+  type ReviewDigest,
   type ApproveTaskInput,
   type RequestTaskChangesInput,
   type ReopenTaskInput,
@@ -125,6 +126,25 @@ function projectToSummary(project: ProjectRecord) {
   };
 }
 
+function reviewToDigest(
+  review: ReviewRecord,
+  acceptanceCriteriaCount: number,
+): ReviewDigest {
+  return {
+    status: review.status,
+    reviewRound: review.reviewRound,
+    commitSha: review.commitSha,
+    reviewerActorLabel: review.reviewerActorLabel,
+    branch: review.branch,
+    worktree: review.worktree,
+    summary: review.summary,
+    createdAt: review.createdAt,
+    acceptanceCriteriaCount,
+    verificationEvidenceCount: review.verificationEvidence.length,
+    findingsCount: review.findings.length,
+  };
+}
+
 function taskToSummary(
   task: TaskRecord,
   dependencyIds: string[],
@@ -151,7 +171,10 @@ function taskToSummary(
     completedAt: task.completedAt,
     riskLevel: task.riskLevel,
     riskConfirmed: task.riskConfirmed,
-    latestReview,
+    latestReview:
+      latestReview === null
+        ? null
+        : reviewToDigest(latestReview, task.acceptanceCriteria?.length ?? 0),
   };
 }
 

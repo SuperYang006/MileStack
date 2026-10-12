@@ -1,4 +1,5 @@
-import React from "react";
+import React, { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   Check,
   MessageSquare,
@@ -12,8 +13,12 @@ import {
   ListChecks,
   Terminal,
   GitBranch,
+  ChevronDown,
+  ChevronRight,
+  Loader2,
 } from "lucide-react";
-import type { TaskSummary } from "../types";
+import { apiClient } from "../api/client";
+import type { TaskDetails, TaskReview, TaskSummary } from "../types";
 import { TaskIdBadge } from "./CopyTaskIdButton";
 
 interface ReviewTasksProps {
@@ -23,15 +28,38 @@ interface ReviewTasksProps {
   onSelectTask: (taskId: string) => void;
 }
 
+function latestReviewOf(details: TaskDetails | null): TaskReview | null {
+  const reviews = details?.reviews ?? [];
+  if (reviews.length === 0) {
+    return null;
+  }
+  return reviews.reduce((latest, review) =>
+    review.reviewRound > latest.reviewRound ? review : latest,
+  );
+}
+
 const ReviewTaskItem: React.FC<{
   task: TaskSummary;
+  details: TaskDetails | null;
+  isDetailsLoading: boolean;
+  isExpanded: boolean;
+  onToggleExpand: () => void;
   onApprove: (taskId: string) => void;
   onRequestChanges: (taskId: string, feedback: string) => void;
   onSelectTask: (taskId: string) => void;
-}> = ({ task, onApprove, onRequestChanges, onSelectTask }) => {
-  const latestReview = task.latestReview;
-  const reviewStatus = latestReview?.status ?? "pending";
-  const reviewerLabel = latestReview?.reviewerActorLabel;
+}> = ({
+  task,
+  details,
+  isDetailsLoading,
+  isExpanded,
+  onToggleExpand,
+  onApprove,
+  onRequestChanges,
+  onSelectTask,
+}) => {
+  const digest = task.latestReview;
+  const reviewStatus = digest?.status ?? "pending";
+  const reviewerLabel = digest?.reviewerActorLabel;
 
   // Review states:
   // 1. pending: 未领取 (等待 AI 审核)
@@ -39,8 +67,7 @@ const ReviewTaskItem: React.FC<{
   // 3. passed: AI 已通过 · 等待开发者人工批准
   // 4. changes_requested: AI 退回返工
   const isPassed = reviewStatus === "passed";
-  const isInProgress = reviewStatus === "in_progress";
-  const isPending = !latestReview || reviewStatus === "pending";
+  const isPending = !digest || reviewStatus === "pending";
 
   const getStatusBadge = () => {
     if (isPending) {
@@ -51,7 +78,7 @@ const ReviewTaskItem: React.FC<{
         </span>
       );
     }
-    if (isInProgress) {
+    if (reviewStatus === "in_progress") {
       return (
         <span className="inline-flex items-center space-x-1 px-1.5 py-0.5 rounded text-[10px] font-mono bg-cyan-950/60 border border-cyan-800 text-cyan-300">
           <Bot className="w-2.5 h-2.5 text-cyan-400 animate-pulse" />
@@ -90,23 +117,57 @@ const ReviewTaskItem: React.FC<{
     </span>
   );
 
-  const objective = task.objective;
-  const acceptanceCriteria = task.acceptanceCriteria;
+  const counts = [
+    { label: "验收条件", value: digest?.acceptanceCriteriaCount ?? 0 },
+    { label: "验证证据", value: digest?.verificationEvidenceCount ?? 0 },
+    { label: "审核发现", value: digest?.findingsCount ?? 0 },
+  ];
+
+  const review = latestReviewOf(details);
+  const objective = details?.task.objective ?? task.objective;
+  const acceptanceCriteria =
+    details?.task.acceptanceCriteria ?? task.acceptanceCriteria ?? [];
 
   return (
     <div className="p-3.5 rounded-lg bg-zinc-950/80 border border-zinc-800 hover:border-violet-900/60 transition-colors space-y-3 font-mono">
-      {/* Top Header Bar */}
+      {/* Collapsed summary row: identity, risk, review state, and review counts. */}
       <div className="flex items-start justify-between gap-3 lg:grid lg:grid-cols-[minmax(0,7rem)_minmax(0,1fr)_auto] lg:items-start lg:gap-x-3">
-        <div className="flex flex-1 min-w-0 items-start gap-2 cursor-pointer lg:contents" onClick={() => onSelectTask(task.id)}>
+        <div
+          role="button"
+          tabIndex={0}
+          aria-expanded={isExpanded}
+          onClick={onToggleExpand}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              onToggleExpand();
+            }
+          }}
+          className="flex flex-1 min-w-0 items-start gap-2 text-left cursor-pointer lg:contents"
+          title={isExpanded ? "收起卡片" : "展开卡片查看全文"}
+        >
           <TaskIdBadge taskId={task.id} variant="muted" className="lg:w-full" />
           <div className="min-w-0 flex-1">
-            <h3 className="min-w-0 text-xs font-medium text-zinc-100 line-clamp-2 break-words hover:text-violet-300 transition-colors">
-              {task.title}
+            <h3 className="min-w-0 flex items-start gap-1 text-xs font-medium text-zinc-100 line-clamp-2 break-words hover:text-violet-300 transition-colors">
+              <span className="mt-px shrink-0 text-zinc-500">
+                {isExpanded ? (
+                  <ChevronDown className="w-3 h-3" />
+                ) : (
+                  <ChevronRight className="w-3 h-3" />
+                )}
+              </span>
+              <span className="min-w-0">{task.title}</span>
             </h3>
 
             <div className="mt-1.5 flex items-center flex-wrap gap-2 text-[11px]">
               {riskBadge}
               {getStatusBadge()}
+
+              {digest && (
+                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono bg-zinc-900 border border-zinc-800 text-zinc-400">
+                  <span>第 {digest.reviewRound} 轮</span>
+                </span>
+              )}
 
               {reviewerLabel && (
                 <span className="inline-flex items-center space-x-1 px-1.5 py-0.5 rounded text-[10px] bg-zinc-900 border border-zinc-800 text-zinc-300">
@@ -115,21 +176,30 @@ const ReviewTaskItem: React.FC<{
                 </span>
               )}
 
-              {latestReview?.commitSha && (
+              {digest?.commitSha && (
                 <span className="inline-flex items-center space-x-1 text-[10px] text-zinc-400 bg-zinc-900/80 px-1.5 py-0.5 rounded border border-zinc-850">
                   <GitCommit className="w-2.5 h-2.5 text-zinc-500" />
-                  <span className="select-all" title={latestReview.commitSha}>
-                    {latestReview.commitSha.slice(0, 8)}
+                  <span className="select-all" title={digest.commitSha}>
+                    {digest.commitSha.slice(0, 8)}
                   </span>
                 </span>
               )}
 
-              {(latestReview?.branch || latestReview?.worktree) && (
+              {(digest?.branch || digest?.worktree) && (
                 <span className="inline-flex items-center space-x-1 text-[10px] text-zinc-500">
                   <GitBranch className="w-2.5 h-2.5 text-zinc-600" />
-                  <span>{latestReview.branch || latestReview.worktree}</span>
+                  <span>{digest.branch || digest.worktree}</span>
                 </span>
               )}
+
+              {counts.map((count) => (
+                <span
+                  key={count.label}
+                  className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono bg-zinc-900/60 border border-zinc-850 text-zinc-400"
+                >
+                  {count.label} {count.value}
+                </span>
+              ))}
             </div>
           </div>
         </div>
@@ -178,125 +248,150 @@ const ReviewTaskItem: React.FC<{
         </div>
       </div>
 
-      {/* Layer 1: Task Definition (Objective & Acceptance Criteria) */}
-      <div className="p-2.5 rounded bg-zinc-900/40 border border-zinc-850/80 space-y-2 text-xs">
-        <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider flex items-center justify-between">
-          <span className="flex items-center space-x-1">
-            <Target className="w-3 h-3 text-cyan-400" />
-            <span>原始任务定义 (Task Definition)</span>
-          </span>
-          <span className="text-[9px] text-zinc-600 font-normal lowercase">源自任务详情契约</span>
+      {/* Review summary: two lines while collapsed, full text when expanded. */}
+      {digest?.summary ? (
+        <div
+          className={`text-[11px] leading-relaxed text-zinc-300 bg-zinc-950/50 p-2 rounded border border-zinc-850 ${
+            isExpanded ? "whitespace-pre-wrap" : "line-clamp-2"
+          }`}
+        >
+          <span className="text-zinc-500 font-semibold mr-1">审核摘要：</span>
+          {digest.summary}
         </div>
-        {/* Objective */}
-        <div className="text-[11px] leading-relaxed">
-          <span className="text-zinc-500 font-semibold mr-1.5">核心目标:</span>
-          {objective ? (
-            <span className="text-zinc-300">{objective}</span>
-          ) : (
-            <span className="text-zinc-600 italic">未提供详细目标说明</span>
-          )}
-        </div>
-
-        {/* Acceptance Criteria */}
-        <div className="space-y-1">
-          <div className="text-[11px] text-zinc-500 font-semibold flex items-center space-x-1">
-            <ListChecks className="w-3 h-3 text-zinc-500" />
-            <span>验收条件:</span>
-          </div>
-          {acceptanceCriteria && acceptanceCriteria.length > 0 ? (
-            <div className="space-y-0.5 pl-2 border-l border-zinc-800 text-[11px]">
-              {acceptanceCriteria.map((criterion, idx) => (
-                <div key={idx} className="flex items-start space-x-1.5 text-zinc-300">
-                  <span className="text-cyan-500/80 select-none shrink-0">•</span>
-                  <span>{criterion}</span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="pl-2 text-[11px] text-zinc-600 italic">未指定具体验收条件</div>
-          )}
-        </div>
-      </div>
-
-      {/* Layer 2: Fixed Artifact & Review Summary */}
-      <div className="p-2.5 rounded bg-zinc-900/60 border border-zinc-850 space-y-2 text-xs">
-        <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider flex items-center justify-between">
-          <span className="flex items-center space-x-1">
-            <GitCommit className="w-3 h-3 text-violet-400" />
-            <span>固定提交制品与审核结论</span>
-          </span>
-          {latestReview && (
-            <span className="text-[10px] text-zinc-500">
-              第 {latestReview.reviewRound} 轮审核 · {new Date(latestReview.createdAt).toLocaleTimeString()}
-            </span>
-          )}
-        </div>
-
-        {latestReview?.summary ? (
-          <div className="text-[11px] leading-relaxed text-zinc-300 bg-zinc-950/50 p-2 rounded border border-zinc-850">
-            <span className="text-zinc-500 font-semibold mr-1">审核摘要：</span>
-            {latestReview.summary}
-          </div>
-        ) : (
+      ) : (
+        !isExpanded && (
           <div className="text-[11px] text-zinc-600 italic">
             {isPending ? "等待 AI 审核代理领取并出具审核结论" : "暂无审核摘要"}
           </div>
-        )}
+        )
+      )}
 
-        {/* Verification Evidence List */}
-        {latestReview?.verificationEvidence && latestReview.verificationEvidence.length > 0 && (
-          <div className="space-y-1 pt-1 border-t border-zinc-850/60">
-            <div className="text-[10px] font-semibold text-emerald-400/90 flex items-center space-x-1">
-              <Terminal className="w-3 h-3 text-emerald-400" />
-              <span>验证证据 ({latestReview.verificationEvidence.length} 项)：</span>
+      {!isExpanded ? null : (
+        <div className="space-y-2.5">
+          {isDetailsLoading && (
+            <div className="flex items-center space-x-1.5 text-[11px] text-zinc-500">
+              <Loader2 className="w-3 h-3 animate-spin" />
+              <span>正在加载任务全文…</span>
             </div>
-            <div className="space-y-1 bg-zinc-950/80 p-2 rounded border border-zinc-850/90 text-[11px]">
-              {latestReview.verificationEvidence.map((ev, i) => (
-                <div key={i} className="space-y-0.5 border-b border-zinc-900 last:border-b-0 pb-1 last:pb-0">
-                  <div className="text-cyan-300 flex items-center space-x-1">
-                    <span className="text-zinc-600 select-none">$</span>
-                    <span>{ev.command}</span>
-                  </div>
-                  <div className="text-zinc-400 text-[10px] pl-3 whitespace-pre-wrap">
-                    {ev.result}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+          )}
 
-        {/* Findings List */}
-        {latestReview?.findings && latestReview.findings.length > 0 && (
-          <div className="space-y-1 pt-1 border-t border-zinc-850/60">
-            <div className="text-[10px] font-semibold text-amber-400 flex items-center space-x-1">
-              <ShieldAlert className="w-3 h-3 text-amber-400" />
-              <span>审核发现与建议 ({latestReview.findings.length} 项)：</span>
+          {/* Task Definition (Objective & Acceptance Criteria) */}
+          <div className="p-2.5 rounded bg-zinc-900/40 border border-zinc-850/80 space-y-2 text-xs">
+            <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider flex items-center justify-between">
+              <span className="flex items-center space-x-1">
+                <Target className="w-3 h-3 text-cyan-400" />
+                <span>原始任务定义 (Task Definition)</span>
+              </span>
+              <span className="text-[9px] text-zinc-600 font-normal lowercase">源自任务详情契约</span>
             </div>
+            <div className="text-[11px] leading-relaxed">
+              <span className="text-zinc-500 font-semibold mr-1.5">核心目标:</span>
+              {objective ? (
+                <span className="text-zinc-300 whitespace-pre-wrap">{objective}</span>
+              ) : (
+                <span className="text-zinc-600 italic">未提供详细目标说明</span>
+              )}
+            </div>
+
             <div className="space-y-1">
-              {latestReview.findings.map((f, i) => (
-                <div key={i} className="p-2 rounded bg-amber-950/20 border border-amber-900/40 text-[11px] space-y-0.5">
-                  <div className="flex items-center space-x-1.5">
-                    <span
-                      className={`px-1 py-0.2 rounded text-[9px] uppercase font-bold ${
-                        f.severity === "high"
-                          ? "bg-rose-950 border border-rose-800 text-rose-300"
-                          : f.severity === "low"
-                          ? "bg-emerald-950 border border-emerald-800 text-emerald-300"
-                          : "bg-amber-950 border border-amber-800 text-amber-300"
-                      }`}
-                    >
-                      {f.severity}
-                    </span>
-                    <span className="text-zinc-200 font-medium">{f.issue}</span>
-                  </div>
-                  <div className="text-zinc-400 text-[10px] pl-2">建议：{f.suggestion}</div>
+              <div className="text-[11px] text-zinc-500 font-semibold flex items-center space-x-1">
+                <ListChecks className="w-3 h-3 text-zinc-500" />
+                <span>验收条件:</span>
+              </div>
+              {acceptanceCriteria.length > 0 ? (
+                <div className="space-y-0.5 pl-2 border-l border-zinc-800 text-[11px]">
+                  {acceptanceCriteria.map((criterion, idx) => (
+                    <div key={idx} className="flex items-start space-x-1.5 text-zinc-300">
+                      <span className="text-cyan-500/80 select-none shrink-0">•</span>
+                      <span>{criterion}</span>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              ) : (
+                <div className="pl-2 text-[11px] text-zinc-600 italic">未指定具体验收条件</div>
+              )}
             </div>
           </div>
-        )}
-      </div>
+
+          {/* Full Review Conclusion: evidence commands/results and findings */}
+          <div className="p-2.5 rounded bg-zinc-900/60 border border-zinc-850 space-y-2 text-xs">
+            <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider flex items-center justify-between">
+              <span className="flex items-center space-x-1">
+                <GitCommit className="w-3 h-3 text-violet-400" />
+                <span>固定提交制品与审核结论</span>
+              </span>
+              {review && (
+                <span className="text-[10px] text-zinc-500">
+                  第 {review.reviewRound} 轮审核 · {new Date(review.createdAt).toLocaleTimeString()}
+                </span>
+              )}
+            </div>
+
+            {review?.summary ? (
+              <div className="text-[11px] leading-relaxed text-zinc-300 bg-zinc-950/50 p-2 rounded border border-zinc-850 whitespace-pre-wrap">
+                <span className="text-zinc-500 font-semibold mr-1">审核摘要：</span>
+                {review.summary}
+              </div>
+            ) : (
+              <div className="text-[11px] text-zinc-600 italic">
+                {isPending ? "等待 AI 审核代理领取并出具审核结论" : "暂无审核摘要"}
+              </div>
+            )}
+
+            {review && review.verificationEvidence.length > 0 && (
+              <div className="space-y-1 pt-1 border-t border-zinc-850/60">
+                <div className="text-[10px] font-semibold text-emerald-400/90 flex items-center space-x-1">
+                  <Terminal className="w-3 h-3 text-emerald-400" />
+                  <span>验证证据 ({review.verificationEvidence.length} 项)：</span>
+                </div>
+                <div className="space-y-1 bg-zinc-950/80 p-2 rounded border border-zinc-850/90 text-[11px]">
+                  {review.verificationEvidence.map((ev, i) => (
+                    <div key={i} className="space-y-0.5 border-b border-zinc-900 last:border-b-0 pb-1 last:pb-0">
+                      <div className="text-cyan-300 flex items-center space-x-1">
+                        <span className="text-zinc-600 select-none">$</span>
+                        <span>{ev.command}</span>
+                      </div>
+                      <div className="text-zinc-400 text-[10px] pl-3 whitespace-pre-wrap">
+                        {ev.result}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {review && review.findings.length > 0 && (
+              <div className="space-y-1 pt-1 border-t border-zinc-850/60">
+                <div className="text-[10px] font-semibold text-amber-400 flex items-center space-x-1">
+                  <ShieldAlert className="w-3 h-3 text-amber-400" />
+                  <span>审核发现与建议 ({review.findings.length} 项)：</span>
+                </div>
+                <div className="space-y-1">
+                  {review.findings.map((f, i) => (
+                    <div key={i} className="p-2 rounded bg-amber-950/20 border border-amber-900/40 text-[11px] space-y-0.5">
+                      <div className="flex items-center space-x-1.5">
+                        <span
+                          className={`px-1 py-0.2 rounded text-[9px] uppercase font-bold ${
+                            f.severity === "high"
+                              ? "bg-rose-950 border border-rose-800 text-rose-300"
+                              : f.severity === "low"
+                              ? "bg-emerald-950 border border-emerald-800 text-emerald-300"
+                              : "bg-amber-950 border border-amber-800 text-amber-300"
+                          }`}
+                        >
+                          {f.severity}
+                        </span>
+                        <span className="text-zinc-200 font-medium">{f.issue}</span>
+                      </div>
+                      <div className="text-zinc-400 text-[10px] pl-2">建议：{f.suggestion}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -307,6 +402,16 @@ export const ReviewTasks: React.FC<ReviewTasksProps> = ({
   onRequestChanges,
   onSelectTask,
 }) => {
+  const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
+
+  const { data: expandedDetails, isLoading: isDetailsLoading } = useQuery({
+    queryKey: ["reviewQueueTaskDetails", expandedTaskId],
+    queryFn: () =>
+      expandedTaskId ? apiClient.getTaskDetails(expandedTaskId) : null,
+    enabled: expandedTaskId !== null,
+    gcTime: 0,
+  });
+
   if (tasks.length === 0) {
     return (
       <section className="rounded-lg border border-violet-900/50 bg-violet-950/15 backdrop-blur-xs overflow-hidden shrink-0">
@@ -347,6 +452,12 @@ export const ReviewTasks: React.FC<ReviewTasksProps> = ({
           <ReviewTaskItem
             key={task.id}
             task={task}
+            details={expandedTaskId === task.id ? expandedDetails ?? null : null}
+            isDetailsLoading={expandedTaskId === task.id && isDetailsLoading}
+            isExpanded={expandedTaskId === task.id}
+            onToggleExpand={() =>
+              setExpandedTaskId((current) => (current === task.id ? null : task.id))
+            }
             onApprove={onApprove}
             onRequestChanges={onRequestChanges}
             onSelectTask={onSelectTask}

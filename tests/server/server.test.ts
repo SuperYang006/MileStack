@@ -538,9 +538,22 @@ describe("HTTP API Server", () => {
       expect.objectContaining({
         id: created.id,
         status: "in_review",
-        latestReview: expect.objectContaining({ status: "pending" }),
+        latestReview: expect.objectContaining({
+          status: "pending",
+          reviewRound: 1,
+          commitSha: "5555555555555555555555555555555555555555",
+          summary: null,
+          acceptanceCriteriaCount: 0,
+          verificationEvidenceCount: 0,
+          findingsCount: 0,
+        }),
       }),
     ]);
+    // Collapsed queue cards read only the digest; full evidence and findings stay in task details.
+    expect(statusInReview.inReview[0].latestReview).not.toHaveProperty("findings");
+    expect(statusInReview.inReview[0].latestReview).not.toHaveProperty(
+      "verificationEvidence",
+    );
     expect(statusInReview.recentlyCompleted).toEqual([]);
 
     const missingFeedback = await serverInstance.app.inject({
@@ -584,6 +597,23 @@ describe("HTTP API Server", () => {
       summary: "AI review passed",
       verificationEvidence: [{ command: "pnpm test", result: "passed" }],
     });
+
+    const passedStatus = JSON.parse(
+      (await serverInstance.app.inject({ method: "GET", url: "/api/status" })).payload,
+    );
+    expect(passedStatus.inReview).toEqual([
+      expect.objectContaining({
+        id: created.id,
+        latestReview: expect.objectContaining({
+          status: "passed",
+          reviewRound: 2,
+          commitSha: "6666666666666666666666666666666666666666",
+          summary: "AI review passed",
+          verificationEvidenceCount: 1,
+          findingsCount: 0,
+        }),
+      }),
+    ]);
 
     const approve = await serverInstance.app.inject({
       method: "POST",
