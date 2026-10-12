@@ -4,126 +4,11 @@ import { EmptyState } from "./EmptyState";
 import type { TaskDetails, TaskEvent, TaskSummary } from "../types";
 import { TaskIdBadge } from "./CopyTaskIdButton";
 import { buildDownstreamMap } from "../utils/dependencyGraph";
-
-function formatDuration(ms: number): string {
-  if (ms < 0) return "0秒";
-  const totalSeconds = Math.floor(ms / 1000);
-  if (totalSeconds < 60) {
-    return `${totalSeconds}秒`;
-  }
-  const totalMinutes = Math.floor(totalSeconds / 60);
-  const remainingSeconds = totalSeconds % 60;
-  if (totalMinutes < 60) {
-    return `${totalMinutes}分${remainingSeconds > 0 ? `${remainingSeconds}秒` : ""}`;
-  }
-  const totalHours = Math.floor(totalMinutes / 60);
-  const remainingMinutes = totalMinutes % 60;
-  if (totalHours < 24) {
-    return `${totalHours}小时${remainingMinutes > 0 ? `${remainingMinutes}分` : ""}`;
-  }
-  const days = Math.floor(totalHours / 24);
-  const remainingHours = totalHours % 24;
-  return `${days}天${remainingHours > 0 ? `${remainingHours}小时` : ""}`;
-}
-
-interface RunExecution {
-  runId: string;
-  actorLabel?: string | null;
-  startedAt: Date;
-  endedAt?: Date;
-  status: "running" | "in_review" | "completed" | "released" | "incomplete";
-  durationMs: number | null;
-}
-
-function computeRunExecutions(
-  events: TaskEvent[],
-  activeRunId: string | null,
-  taskStatus: string,
-  nowMs: number,
-): RunExecution[] {
-  const runEventsMap = new Map<string, TaskEvent[]>();
-  const runOrder: string[] = [];
-
-  for (const event of events) {
-    if (!event.runId) continue;
-    if (!runEventsMap.has(event.runId)) {
-      runEventsMap.set(event.runId, []);
-      runOrder.push(event.runId);
-    }
-    runEventsMap.get(event.runId)!.push(event);
-  }
-
-  const runs: RunExecution[] = [];
-
-  for (const runId of runOrder) {
-    const runEvts = runEventsMap.get(runId)!;
-    const startedEvent = runEvts.find((e) => e.type === "started");
-    if (!startedEvent) {
-      runs.push({
-        runId,
-        actorLabel: runEvts[0]?.actorLabel ?? null,
-        startedAt: new Date(NaN),
-        status: "incomplete",
-        durationMs: null,
-      });
-      continue;
-    }
-
-    const startMs = new Date(startedEvent.createdAt).getTime();
-    if (isNaN(startMs)) {
-      runs.push({
-        runId,
-        actorLabel: startedEvent.actorLabel,
-        startedAt: new Date(NaN),
-        status: "incomplete",
-        durationMs: null,
-      });
-      continue;
-    }
-
-    const completedEvent = runEvts.find((e) => e.type === "completed");
-    const releasedEvent = runEvts.find((e) => e.type === "released");
-    const submittedEvent = runEvts.find((e) => e.type === "submitted_for_review");
-    const terminalEvent = completedEvent || releasedEvent || submittedEvent;
-
-    if (terminalEvent) {
-      const endMs = new Date(terminalEvent.createdAt).getTime();
-      const isValidEnd = !isNaN(endMs) && endMs >= startMs;
-      runs.push({
-        runId,
-        actorLabel: terminalEvent.actorLabel || startedEvent.actorLabel,
-        startedAt: new Date(startMs),
-        endedAt: isValidEnd ? new Date(endMs) : undefined,
-        status:
-          terminalEvent.type === "completed"
-            ? "completed"
-            : terminalEvent.type === "submitted_for_review"
-            ? "in_review"
-            : "released",
-        durationMs: isValidEnd ? Math.max(0, endMs - startMs) : null,
-      });
-    } else if (activeRunId === runId && (taskStatus === "running" || taskStatus === "blocked")) {
-      const elapsed = Math.max(0, nowMs - startMs);
-      runs.push({
-        runId,
-        actorLabel: startedEvent.actorLabel,
-        startedAt: new Date(startMs),
-        status: "running",
-        durationMs: elapsed,
-      });
-    } else {
-      runs.push({
-        runId,
-        actorLabel: startedEvent.actorLabel,
-        startedAt: new Date(startMs),
-        status: "incomplete",
-        durationMs: null,
-      });
-    }
-  }
-
-  return runs;
-}
+import {
+  computeRunExecutions,
+  formatDuration,
+  type RunExecution,
+} from "../utils/runExecutions";
 
 interface TaskDetailModalProps {
   details: TaskDetails | null;
@@ -152,11 +37,26 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
 }) => {
   const [now, setNow] = useState(() => Date.now());
 
+  const runs = details
+    ? computeRunExecutions(
+        details.events,
+        details.task.activeRunId,
+        details.task.status,
+        now,
+        details.reviews,
+        details.task.activeReviewRunId,
+      )
+    : [];
+
+  const executionRuns = runs.filter((r) => r.kind !== "review");
+
   const isRunning =
     isOpen &&
     Boolean(
-      details?.task.activeRunId &&
-        (details.task.status === "running" || details.task.status === "blocked"),
+      (details?.task.activeRunId &&
+        (details.task.status === "running" || details.task.status === "blocked")) ||
+      (details?.task.activeReviewRunId && details.task.status === "in_review") ||
+      runs.some((r) => r.status === "running" || r.status === "reviewing"),
     );
 
   useEffect(() => {
@@ -174,22 +74,14 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
     ? latestClaim.actorLabel ?? "agent"
     : "未领取";
 
-  const runs = details
-    ? computeRunExecutions(
-        details.events,
-        details.task.activeRunId,
-        details.task.status,
-        now,
-      )
-    : [];
-
   const activeRun = details?.task.activeRunId
-    ? runs.find((r) => r.runId === details.task.activeRunId && r.status === "running")
+    ? executionRuns.find((r) => r.runId === details.task.activeRunId && r.status === "running")
     : undefined;
 
   const primaryRun =
     activeRun ||
-    [...runs].reverse().find((r) => r.status === "completed" || r.status === "in_review") ||
+    [...executionRuns].reverse().find((r) => r.status === "completed" || r.status === "in_review") ||
+    executionRuns[executionRuns.length - 1] ||
     runs[runs.length - 1];
   if (!isOpen) return null;
 
@@ -592,6 +484,12 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                               className={`text-[10px] px-1 py-0.2 rounded font-mono ${
                                 r.status === "completed"
                                   ? "text-emerald-400 bg-emerald-950/60"
+                                  : r.status === "review_passed"
+                                  ? "text-emerald-400 bg-emerald-950/60"
+                                  : r.status === "changes_requested"
+                                  ? "text-rose-400 bg-rose-950/60"
+                                  : r.status === "reviewing"
+                                  ? "text-cyan-400 bg-cyan-950/60"
                                   : r.status === "in_review"
                                   ? "text-violet-400 bg-violet-950/60"
                                   : r.status === "running"
@@ -603,6 +501,12 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                             >
                               {r.status === "completed"
                                 ? "已完成"
+                                : r.status === "review_passed"
+                                ? "审核通过"
+                                : r.status === "changes_requested"
+                                ? "已退回"
+                                : r.status === "reviewing"
+                                ? "审核中"
                                 : r.status === "in_review"
                                 ? "待审核"
                                 : r.status === "running"
