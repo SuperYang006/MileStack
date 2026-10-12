@@ -93,10 +93,8 @@ Fastify 提供本地 JSON API，并在生产构建中托管 Vite 生成的静态
 
 工作原理与安全边界：
 
-- **向上递归寻根**：`discoverProjectRoot()` 从当前工作目录（`process.cwd()`）或所在子目录递归向上查找 `.milestack/milestack.db`，进行基于 `path.resolve` 的绝对路径与词法规范化，并校验目标不是非常规文件；该发现阶段不进行符号链接 realpath 解析。
-- **动态工作区根解析与失败关闭**：多根工作区防串项目保护依赖客户端向服务端声明 MCP `roots` capability：
-  - 若客户端声明了 `roots` capability，`runMcp` 在握手完成后通过 `roots/list` 获取工作区根，并在 `resolveWorkspaceProjectRoot()` 中分别发现各根目录对应的 MileStack 项目，在比较项目身份时尝试 `realpathSync` 规范化真实路径。如果所有工作区根唯一定位到同一个 MileStack 项目，绑定该项目正常启动；如果根目录跨越不同的 MileStack 项目或包含未初始化目录，**明确抛出错误并退出进程**（Fail-Close），拒绝静默任意选择项目；
-  - 若客户端未声明 `roots` capability，服务端只能依据启动时的当前工作目录（`process.cwd()`）发现并绑定单个项目，无法感知或验证其他附加工作区根；客户端此时必须作为单根工作区使用，并从目标项目目录启动。
+- **初始项目根解析**：`runMcp` 启动时先读取 `WORKSPACE_DIRS` 或 `ANTIGRAVITY_WORKSPACE_DIRS` 的非空工作区根；若存在，则通过 `resolveWorkspaceProjectRoot()` 校验这些根，并在多根项目身份比较时尝试 `realpathSync` 规范化真实路径。如果环境变量未提供工作区根，才调用 `discoverProjectRoot()` 从当前工作目录（`process.cwd()`）或所在子目录递归向上查找 `.milestack/milestack.db`，进行基于 `path.resolve` 的绝对路径与词法规范化，并校验目标不是非常规文件；该发现阶段不进行符号链接 realpath 解析。
+- **动态工作区根解析与失败关闭**：客户端声明 MCP `roots` capability 后，`runMcp` 在握手完成后通过 `roots/list` 获取返回的非空工作区根，并用 `resolveWorkspaceProjectRoot()` 再次校验。若所有工作区根唯一定位到同一个 MileStack 项目，绑定该项目正常启动；如果根目录跨越不同的 MileStack 项目或包含未初始化目录，**明确抛出错误并退出进程**（Fail-Close），拒绝静默任意选择项目。若客户端未声明 `roots` capability，服务端无法感知或验证其他附加工作区根；在环境变量也未提供工作区根时，只能依据启动时的当前工作目录发现并绑定单个项目，客户端此时必须作为单根工作区使用，并从目标项目目录启动。
 - **项目隔离**：MCP 进程直接使用共享业务核心访问绑定项目的 SQLite 数据库，因此页面未运行时，AI 仍然可以工作；不同项目启动的独立进程互不干扰。
 
 V0 先支持 stdio，以覆盖常见的本地 AI 编程客户端。后续可以复用相同的 MCP 工具处理器增加 Streamable HTTP 传输。
@@ -434,7 +432,7 @@ V0 优先测试影响事实可信度的行为：
 14. 完整 MCP 流程可以执行领取、更新、阻塞、恢复、释放、提交审核和审核决策；
 15. `--discover` 自动向上寻根支持从子目录启动，未找到项目或非常规文件安全失败关闭；
 16. 单份 AGY 全局 MCP 注册在两个不同项目中分别启动独立会话并保持项目状态隔离；
-17. 多根工作区跨项目或包含未初始化根目录时明确拒绝并关闭进程。
+17. 通过环境工作区根或客户端 `roots` 提供的多根工作区跨项目或包含未初始化根目录时明确拒绝并关闭进程；未声明 `roots` 且未提供环境工作区根的客户端按 cwd 单根运行。
 
 页面视觉和复杂交互测试不作为 V0 的首要工作。
 
