@@ -1,4 +1,4 @@
-import type { ProjectStatus, TaskDetails, TaskModel, TaskEvent } from "../types";
+import type { ProjectStatus, TaskDetails, TaskModel, TaskEvent } from "../types.js";
 
 export const initialProjectStatus: ProjectStatus = {
   project: {

@@ -3,11 +3,9 @@ import type {
   TaskDetails,
   CreateTaskPayload,
   TaskSummary,
-  TaskModel,
-  TaskEvent,
   EditInboxTaskPayload,
-} from "../types";
-import { initialProjectStatus, sampleTaskDetails } from "./mock-data";
+} from "../types.js";
+import { initialProjectStatus, sampleTaskDetails } from "./mock-data.js";
 
 const STORAGE_KEY = "milestack_ui_status_data";
 const DETAILS_KEY = "milestack_ui_details_data";
@@ -83,75 +81,34 @@ export const apiClient = {
   },
 
   async getTaskDetails(taskId: string, projectId?: string): Promise<TaskDetails> {
+    const url = projectId
+      ? `/api/tasks/${encodeURIComponent(taskId)}?projectId=${encodeURIComponent(projectId)}`
+      : `/api/tasks/${encodeURIComponent(taskId)}`;
+
+    let res: Response;
     try {
-      const url = projectId
-        ? `/api/tasks/${encodeURIComponent(taskId)}?projectId=${encodeURIComponent(projectId)}`
-        : `/api/tasks/${encodeURIComponent(taskId)}`;
-      const res = await fetch(url, { signal: AbortSignal.timeout(2000) });
-      if (res.ok) {
-        return (await res.json()) as TaskDetails;
-      }
-    } catch {
-      // fallback
+      res = await fetch(url, { signal: AbortSignal.timeout(2000) });
+    } catch (error) {
+      backendAvailable = false;
+      throw error;
     }
 
-    const detailsMap = loadStoredDetails();
-    if (detailsMap[taskId]) {
-      return detailsMap[taskId];
+    backendAvailable = true;
+    if (!res.ok) {
+      const error: unknown = await res.json().catch(() => null);
+      const message =
+        typeof error === "object" &&
+        error !== null &&
+        "error" in error &&
+        typeof error.error === "string"
+          ? error.error
+          : `HTTP ${res.status}`;
+      throw new Error(
+        message,
+      );
     }
 
-    // Generate detail from summary if not in detail map
-    const status = loadStoredStatus();
-    const allSummaries = [
-      ...status.current,
-      ...status.next,
-      ...status.blocked,
-      ...status.inReview,
-      ...status.inbox,
-      ...status.recentlyCompleted,
-    ];
-    const found = allSummaries.find((t) => t.id === taskId);
-    const mockModel: TaskModel = {
-      id: taskId,
-      projectId: projectId || "proj_milestack",
-      title: found?.title ?? `任务 ${taskId}`,
-      objective: null,
-      acceptanceCriteria: [],
-      status: found?.status ?? "ready",
-      queuePosition: found?.queuePosition ?? null,
-      dependencyIds: found?.dependencyIds ?? [],
-      currentStep: found?.currentStep ?? null,
-      nextStep: found?.nextStep ?? null,
-      blocker: found?.blocker ?? null,
-      requiredAction: found?.requiredAction ?? null,
-      handoffNote: null,
-      sourceTaskId: null,
-      activeRunId: null,
-      createdBy: "developer",
-      createdAt: new Date().toISOString(),
-      updatedAt: found?.updatedAt ?? new Date().toISOString(),
-      completedAt: found?.completedAt ?? null,
-    };
-    const mockEvents: TaskEvent[] = [
-      {
-        id: `evt-${Date.now()}`,
-        projectId: mockModel.projectId,
-        taskId,
-        runId: null,
-        type: "created",
-        summary: `创建任务：${mockModel.title}`,
-        completedWork: null,
-        currentStep: null,
-        nextStep: null,
-        blocker: null,
-        requiredAction: null,
-        handoffNote: null,
-        actorLabel: "developer",
-        createdAt: mockModel.createdAt,
-      },
-    ];
-
-    return { task: mockModel, events: mockEvents };
+    return (await res.json()) as TaskDetails;
   },
 
   async createTask(payload: CreateTaskPayload, projectId?: string): Promise<TaskSummary> {
@@ -327,7 +284,7 @@ export const apiClient = {
     return this.getTaskDetails(taskId, projectId);
   },
 
-  async confirmInboxTask(taskId: string, riskLevel?: import("../types").RiskLevel, projectId?: string): Promise<void> {
+  async confirmInboxTask(taskId: string, riskLevel?: import("../types.js").RiskLevel, projectId?: string): Promise<void> {
     try {
       const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/confirm`, {
         method: "POST",
