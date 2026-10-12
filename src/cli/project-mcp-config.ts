@@ -1,4 +1,11 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
 
 export const projectMcpClientNames = ["claude", "cursor", "grok", "codex"] as const;
@@ -21,6 +28,11 @@ type McpEntry = {
 type ClientDefinition = {
   relativePath: string;
   format: "json" | "toml";
+};
+
+type SafeTarget = {
+  filePath: string;
+  exists: boolean;
 };
 
 const clientDefinitions: Record<ProjectMcpClientName, ClientDefinition> = {
@@ -55,6 +67,87 @@ function result(
   return { client, relativePath, action, detail };
 }
 
+function hasErrorCode(error: unknown, code: string): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: unknown }).code === code
+  );
+}
+
+function isPathInside(rootPath: string, candidatePath: string): boolean {
+  const relativePath = path.relative(rootPath, candidatePath);
+  return (
+    relativePath === "" ||
+    (!relativePath.startsWith(`..${path.sep}`) && relativePath !== ".." && !path.isAbsolute(relativePath))
+  );
+}
+
+function resolveRealProjectRoot(absoluteProjectRoot: string): string | undefined {
+  try {
+    const realProjectRoot = realpathSync(absoluteProjectRoot);
+    return statSync(realProjectRoot).isDirectory() ? realProjectRoot : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function resolveSafeTarget(
+  absoluteProjectRoot: string,
+  realProjectRoot: string,
+  relativePath: string,
+): SafeTarget | undefined {
+  const requestedPath = path.join(absoluteProjectRoot, relativePath);
+  let currentPath = requestedPath;
+  const missingParts: string[] = [];
+
+  while (true) {
+    try {
+      lstatSync(currentPath);
+    } catch (error) {
+      if (!hasErrorCode(error, "ENOENT")) {
+        return undefined;
+      }
+      const parentPath = path.dirname(currentPath);
+      if (parentPath === currentPath) {
+        return undefined;
+      }
+      missingParts.unshift(path.basename(currentPath));
+      currentPath = parentPath;
+      continue;
+    }
+
+    let realCurrentPath: string;
+    try {
+      realCurrentPath = realpathSync(currentPath);
+    } catch {
+      return undefined;
+    }
+    if (!isPathInside(realProjectRoot, realCurrentPath)) {
+      return undefined;
+    }
+
+    if (missingParts.length === 0) {
+      return { filePath: realCurrentPath, exists: true };
+    }
+    let currentIsDirectory: boolean;
+    try {
+      currentIsDirectory = statSync(realCurrentPath).isDirectory();
+    } catch {
+      return undefined;
+    }
+    if (!currentIsDirectory) {
+      return undefined;
+    }
+
+    const resolvedPath = path.join(realCurrentPath, ...missingParts);
+    return isPathInside(realProjectRoot, resolvedPath)
+      ? { filePath: resolvedPath, exists: false }
+      : undefined;
+  }
+}
+
 function createParentDirectory(filePath: string): void {
   mkdirSync(path.dirname(filePath), { recursive: true });
 }
@@ -66,19 +159,19 @@ function createJsonContent(entry: McpEntry): string {
 function configureJsonFile(
   client: ProjectMcpClientName,
   relativePath: string,
-  filePath: string,
+  target: SafeTarget,
   entry: McpEntry,
 ): ProjectMcpConfigResult {
-  if (!existsSync(filePath)) {
-    createParentDirectory(filePath);
-    writeFileSync(filePath, createJsonContent(entry), "utf8");
+  if (!target.exists) {
+    createParentDirectory(target.filePath);
+    writeFileSync(target.filePath, createJsonContent(entry), "utf8");
     return result(client, relativePath, "created", `已写入 ${relativePath}`);
   }
 
   let original: string;
   let parsed: unknown;
   try {
-    original = readFileSync(filePath, "utf8");
+    original = readFileSync(target.filePath, "utf8");
     parsed = JSON.parse(original) as unknown;
   } catch {
     return result(client, relativePath, "skipped", `未覆盖 ${relativePath}：JSON 无法解析，已保留原文件`);
@@ -108,7 +201,7 @@ function configureJsonFile(
   }
 
   servers.milestack = entry;
-  writeFileSync(filePath, `${JSON.stringify(parsed, null, 2)}\n`, "utf8");
+  writeFileSync(target.filePath, `${JSON.stringify(parsed, null, 2)}\n`, "utf8");
   return result(client, relativePath, "updated", `已加入 ${relativePath}，并保留原有其他配置`);
 }
 
@@ -231,17 +324,128 @@ function parseTomlStringArray(value: string): string[] | undefined {
   return values;
 }
 
+function parseTomlKeyPath(value: string): string[] | undefined {
+  const keys: string[] = [];
+  let index = 0;
+
+  while (index < value.length) {
+    while (/\s/.test(value[index] ?? "")) {
+      index += 1;
+    }
+    if (index >= value.length) {
+      return keys.length > 0 ? keys : undefined;
+    }
+
+    const firstCharacter = value[index];
+    let key: string | undefined;
+    if (firstCharacter === '"') {
+      const start = index;
+      index += 1;
+      let escaped = false;
+      let closed = false;
+      while (index < value.length) {
+        const character = value[index];
+        index += 1;
+        if (escaped) {
+          escaped = false;
+        } else if (character === "\\") {
+          escaped = true;
+        } else if (character === '"') {
+          closed = true;
+          break;
+        }
+      }
+      if (!closed) {
+        return undefined;
+      }
+      key = parseTomlBasicString(value.slice(start, index));
+    } else if (firstCharacter === "'") {
+      index += 1;
+      const start = index;
+      let closed = false;
+      while (index < value.length) {
+        const character = value[index];
+        if (character === "'") {
+          if (value[index + 1] === "'") {
+            index += 2;
+            continue;
+          }
+          key = value.slice(start, index).replace(/''/g, "'");
+          index += 1;
+          closed = true;
+          break;
+        }
+        index += 1;
+      }
+      if (!closed) {
+        return undefined;
+      }
+    } else {
+      const bareKey = value.slice(index).match(/^[A-Za-z0-9_-]+/);
+      if (bareKey === null) {
+        return undefined;
+      }
+      key = bareKey[0];
+      index += key.length;
+    }
+
+    if (key === undefined) {
+      return undefined;
+    }
+    keys.push(key);
+
+    while (/\s/.test(value[index] ?? "")) {
+      index += 1;
+    }
+    if (index >= value.length) {
+      return keys;
+    }
+    if (value[index] !== ".") {
+      return undefined;
+    }
+    index += 1;
+  }
+
+  return keys.length > 0 ? keys : undefined;
+}
+
+type TomlTableHeader = {
+  array: boolean;
+  keys: string[];
+};
+
+function parseTomlTableHeader(line: string): TomlTableHeader | undefined {
+  const trimmed = line.trim();
+  const arrayMatch = trimmed.match(/^\[\[([\s\S]*?)\]\]\s*(?:#.*)?$/);
+  if (arrayMatch?.[1] !== undefined) {
+    const keys = parseTomlKeyPath(arrayMatch[1]);
+    return keys === undefined ? undefined : { array: true, keys };
+  }
+
+  const tableMatch = trimmed.match(/^\[([\s\S]*?)\]\s*(?:#.*)?$/);
+  if (tableMatch?.[1] === undefined) {
+    return undefined;
+  }
+  const keys = parseTomlKeyPath(tableMatch[1]);
+  return keys === undefined ? undefined : { array: false, keys };
+}
+
+function isMcpMilestackTable(header: TomlTableHeader): boolean {
+  return header.keys.length === 2 && header.keys[0] === "mcp_servers" && header.keys[1] === "milestack";
+}
+
 type TomlMcpTable =
   | { found: false }
   | { found: true; entry?: McpEntry };
 
 function parseTomlMcpTable(contents: string): TomlMcpTable {
   const lines = contents.split(/\r?\n/);
-  if (lines.some((line) => /^\s*\[\[\s*mcp_servers\.milestack\s*\]\]\s*(?:#.*)?$/.test(line))) {
+  const headers = lines.map((line, index) => ({ header: parseTomlTableHeader(line), index }));
+  if (headers.some(({ header }) => header?.array === true && isMcpMilestackTable(header))) {
     return { found: true };
   }
-  const tableIndices = lines.flatMap((line, index) =>
-    /^\s*\[\s*mcp_servers\.milestack\s*\]\s*(?:#.*)?$/.test(line) ? [index] : [],
+  const tableIndices = headers.flatMap(({ header, index }) =>
+    header !== undefined && !header.array && isMcpMilestackTable(header) ? [index] : [],
   );
   if (tableIndices.length === 0) {
     return { found: false };
@@ -306,18 +510,18 @@ function parseTomlMcpTable(contents: string): TomlMcpTable {
 function configureTomlFile(
   client: ProjectMcpClientName,
   relativePath: string,
-  filePath: string,
+  target: SafeTarget,
   entry: McpEntry,
 ): ProjectMcpConfigResult {
-  if (!existsSync(filePath)) {
-    createParentDirectory(filePath);
-    writeFileSync(filePath, createTomlContent(entry), "utf8");
+  if (!target.exists) {
+    createParentDirectory(target.filePath);
+    writeFileSync(target.filePath, createTomlContent(entry), "utf8");
     return result(client, relativePath, "created", `已写入 ${relativePath}`);
   }
 
   let original: string;
   try {
-    original = readFileSync(filePath, "utf8");
+    original = readFileSync(target.filePath, "utf8");
   } catch {
     return result(client, relativePath, "skipped", `未覆盖 ${relativePath}：无法读取原文件，已保留原内容`);
   }
@@ -331,7 +535,7 @@ function configureTomlFile(
   }
 
   const separator = original.length === 0 || original.endsWith("\n") ? "" : "\n";
-  writeFileSync(filePath, `${original}${separator}${createTomlContent(entry)}`, "utf8");
+  writeFileSync(target.filePath, `${original}${separator}${createTomlContent(entry)}`, "utf8");
   return result(client, relativePath, "updated", `已加入 ${relativePath}，并保留原有其他配置`);
 }
 
@@ -340,6 +544,7 @@ export function configureProjectMcpClients(
   clients: readonly ProjectMcpClientName[],
 ): ProjectMcpConfigResult[] {
   const absoluteProjectRoot = path.resolve(projectRoot);
+  const realProjectRoot = resolveRealProjectRoot(absoluteProjectRoot);
   const entry: McpEntry = {
     command: "milestack",
     args: ["mcp", "--project", absoluteProjectRoot],
@@ -350,9 +555,19 @@ export function configureProjectMcpClients(
     if (!definition) {
       throw new Error(`不支持的 MCP 客户端：${String(client)}`);
     }
-    const filePath = path.join(absoluteProjectRoot, definition.relativePath);
+    const target = realProjectRoot === undefined
+      ? undefined
+      : resolveSafeTarget(absoluteProjectRoot, realProjectRoot, definition.relativePath);
+    if (target === undefined) {
+      return result(
+        client,
+        definition.relativePath,
+        "skipped",
+        `未覆盖 ${definition.relativePath}：目标路径无法安全解析到项目根内，已保留原内容`,
+      );
+    }
     return definition.format === "json"
-      ? configureJsonFile(client, definition.relativePath, filePath, entry)
-      : configureTomlFile(client, definition.relativePath, filePath, entry);
+      ? configureJsonFile(client, definition.relativePath, target, entry)
+      : configureTomlFile(client, definition.relativePath, target, entry);
   });
 }

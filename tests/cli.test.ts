@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -397,5 +397,65 @@ describe("project MCP configuration", () => {
     const [conflict] = configureProjectMcpClients(projectRoot, ["codex"]);
     expect(conflict?.action).toBe("skipped");
     expect(readFileSync(codexPath, "utf8")).toBe(conflictingBytes);
+  });
+
+  it("skips symlink targets that resolve outside the project and preserves external bytes", () => {
+    const projectRoot = createTemporaryProject();
+    const externalRoot = path.join(os.tmpdir(), `milestack-cli-external-${randomUUID()}`);
+    mkdirSync(externalRoot, { recursive: true });
+    temporaryProjects.push(externalRoot);
+
+    const externalParentTarget = path.join(externalRoot, "config.toml");
+    const externalParentBytes = "[other]\nvalue = 1\n";
+    writeFileSync(externalParentTarget, externalParentBytes, "utf8");
+    symlinkSync(externalRoot, path.join(projectRoot, ".codex"), "dir");
+
+    const [parentSymlinkResult] = configureProjectMcpClients(projectRoot, ["codex"]);
+    expect(parentSymlinkResult?.action).toBe("skipped");
+    expect(readFileSync(externalParentTarget, "utf8")).toBe(externalParentBytes);
+
+    const externalFileTarget = path.join(externalRoot, "mcp.json");
+    const externalFileBytes = JSON.stringify({
+      custom: "outside",
+      mcpServers: { other: { command: "other-tool", args: [] } },
+    }, null, 2);
+    writeFileSync(externalFileTarget, externalFileBytes, "utf8");
+    symlinkSync(externalFileTarget, path.join(projectRoot, ".mcp.json"));
+
+    const [fileSymlinkResult] = configureProjectMcpClients(projectRoot, ["claude"]);
+    expect(fileSymlinkResult?.action).toBe("skipped");
+    expect(readFileSync(externalFileTarget, "utf8")).toBe(externalFileBytes);
+  });
+
+  it("recognizes equivalent TOML mcp_servers.milestack table headers", () => {
+    const projectRoot = createTemporaryProject();
+    const tomlPath = path.join(projectRoot, ".codex", "config.toml");
+    mkdirSync(path.dirname(tomlPath), { recursive: true });
+
+    for (const header of [
+      '[mcp_servers."milestack"]',
+      '[mcp_servers . "milestack"]',
+      "[mcp_servers.'milestack']",
+    ]) {
+      const matching = [
+        header,
+        'command = "milestack"',
+        `args = ["mcp", "--project", "${path.resolve(projectRoot)}"]`,
+        "enabled = false",
+        "",
+      ].join("\n");
+      writeFileSync(tomlPath, matching, "utf8");
+      const matchingBytes = readFileSync(tomlPath, "utf8");
+      const [unchanged] = configureProjectMcpClients(projectRoot, ["codex"]);
+      expect(unchanged?.action).toBe("unchanged");
+      expect(readFileSync(tomlPath, "utf8")).toBe(matchingBytes);
+
+      const conflicting = matching.replace('command = "milestack"', 'command = "different"');
+      writeFileSync(tomlPath, conflicting, "utf8");
+      const conflictingBytes = readFileSync(tomlPath, "utf8");
+      const [skipped] = configureProjectMcpClients(projectRoot, ["codex"]);
+      expect(skipped?.action).toBe("skipped");
+      expect(readFileSync(tomlPath, "utf8")).toBe(conflictingBytes);
+    }
   });
 });
