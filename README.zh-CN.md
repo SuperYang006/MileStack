@@ -107,7 +107,7 @@ node /absolute/path/to/MileStack/dist/index.js init \
 - 创建或迁移 `.milestack/milestack.db`；
 - 在不替换现有内容的前提下，将 `.milestack/` 加入 `.gitignore`；
 - 生成 `.milestack/agent-instructions.md`；
-- 输出通用 MCP JSON 和手动注册 Codex 的说明；
+- 输出通用 MCP JSON 以及手动注册 Codex 与 AGY 的说明；
 - 不创建 `.mcp.json`、`.cursor/mcp.json`、`.grok/config.toml` 或 `.codex/config.toml`；
 - 不会创建、覆盖或追加项目根目录中的 `AGENTS.md`。
 
@@ -210,11 +210,11 @@ agy mcp add milestack -- \
 
 ### 工作原理与安全启动
 
-- **自动向上寻根**：会话启动时，`milestack mcp --discover` 从当前工作目录（或所在子目录）自动向上查找最近包含 `.milestack/milestack.db` 的项目根目录，并安全规范化路径。
+- **自动向上寻根**：会话启动时，`milestack mcp --discover` 从当前工作目录（或所在子目录）自动向上查找最近包含 `.milestack/milestack.db` 的项目根目录，进行绝对路径规范化与常规文件安全性校验。
 - **失败关闭（Fail-Close）**：如果当前目录及其祖先目录中未找到已初始化的 MileStack 项目，或路径不安全（如非正常文件），服务会立即输出清晰错误并退出，绝不回退到历史项目或任意无关数据库。
-- **多根工作区边界**：当 AGY 会话打开多个工作区根时，MileStack 会动态获取并校验所有工作区根：
-  - 如果所有工作区根均映射到同一个 MileStack 项目（例如属于同一项目的不同子目录），正常启动并绑定该项目；
-  - 如果工作区根跨越不同的 MileStack 项目，或者包含未初始化的目录，MileStack 会**明确拒绝启动并失败关闭**，防止跨项目静默混淆。
+- **多根工作区边界**：多根工作区防串项目保护依赖客户端向服务端声明 MCP `roots` capability：
+  - 若客户端声明了 `roots` capability，MileStack 会在握手完成后通过 `roots/list` 动态获取并校验所有工作区根（并在多根项目身份比较时尝试 realpath 规范化）：若所有工作区根均映射到同一个 MileStack 项目（例如属于同一项目的不同子目录），正常启动并绑定该项目；若工作区根跨越不同的 MileStack 项目或包含未初始化的目录，MileStack 会**明确拒绝启动并失败关闭**，防止跨项目静默混淆；
+  - 若客户端未声明 `roots` capability，服务端只能依据启动时的当前工作目录（cwd）定位项目，无法感知或验证其他附加工作区根；此时必须作为单根工作区使用，并确保直接从目标项目目录启动会话。
 
 ### 验证
 
@@ -233,7 +233,7 @@ agy mcp add milestack -- \
    milestack status --discover
    ```
 
-   确认返回的 `project.name` 和任务列表与当前项目完全一致。
+   确认终端输出中显示的项目名称与任务列表与当前项目完全一致（若使用 `--json`，可核对 `project.name` 字段）。
 
 ### 从旧的固定项目配置迁移
 
@@ -253,7 +253,7 @@ agy mcp add milestack -- \
    ```
 
 2. **重启 AGY 会话**：关闭并重新打开当前会话使新配置生效。
-3. **确认绑定**：在不同项目的目录中启动 AGY 会话，分别通过 `get_project_status` 确认各自独立读取当前项目的状态，不再固定到旧项目 A。
+3. **确认绑定**：在不同项目的目录中启动 AGY 会话，分别通过 `get_project_status` 工具或 `milestack status --discover` 确认各自独立读取当前项目的状态与任务，不再固定到旧项目 A。
 
 ### 移除
 

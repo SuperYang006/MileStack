@@ -93,10 +93,10 @@ Fastify 提供本地 JSON API，并在生产构建中托管 Vite 生成的静态
 
 工作原理与安全边界：
 
-- **向上递归寻根**：`discoverProjectRoot()` 从当前工作目录（`process.cwd()`）或所在子目录递归向上查找 `.milestack/milestack.db`，并进行符号链接规范化、循环检测与常规文件安全性校验。
-- **动态工作区根解析与失败关闭**：`resolveWorkspaceProjectRoot()` 在 MCP 握手完成后请求客户端的 `roots/list`：
-  - 单工作区根或无根时：按当前目录或单个根目录发现项目；
-  - 多根工作区时：分别发现每个根目录对应的项目。如果所有根目录映射到同一个 MileStack 项目，绑定该项目正常启动；如果根目录跨越不同的 MileStack 项目或包含未初始化目录，**明确抛出错误并退出进程**（Fail-Close），拒绝静默任意选择项目。
+- **向上递归寻根**：`discoverProjectRoot()` 从当前工作目录（`process.cwd()`）或所在子目录递归向上查找 `.milestack/milestack.db`，进行基于 `path.resolve` 的绝对路径与词法规范化，并校验目标不是非常规文件；该发现阶段不进行符号链接 realpath 解析。
+- **动态工作区根解析与失败关闭**：多根工作区防串项目保护依赖客户端向服务端声明 MCP `roots` capability：
+  - 若客户端声明了 `roots` capability，`runMcp` 在握手完成后通过 `roots/list` 获取工作区根，并在 `resolveWorkspaceProjectRoot()` 中分别发现各根目录对应的 MileStack 项目，在比较项目身份时尝试 `realpathSync` 规范化真实路径。如果所有工作区根唯一定位到同一个 MileStack 项目，绑定该项目正常启动；如果根目录跨越不同的 MileStack 项目或包含未初始化目录，**明确抛出错误并退出进程**（Fail-Close），拒绝静默任意选择项目；
+  - 若客户端未声明 `roots` capability，服务端只能依据启动时的当前工作目录（`process.cwd()`）发现并绑定单个项目，无法感知或验证其他附加工作区根；客户端此时必须作为单根工作区使用，并从目标项目目录启动。
 - **项目隔离**：MCP 进程直接使用共享业务核心访问绑定项目的 SQLite 数据库，因此页面未运行时，AI 仍然可以工作；不同项目启动的独立进程互不干扰。
 
 V0 先支持 stdio，以覆盖常见的本地 AI 编程客户端。后续可以复用相同的 MCP 工具处理器增加 Streamable HTTP 传输。

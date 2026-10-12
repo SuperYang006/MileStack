@@ -107,7 +107,7 @@ Initialization is idempotent. Without `--client`, it:
 - creates or migrates `.milestack/milestack.db`;
 - adds `.milestack/` to `.gitignore` without replacing existing content;
 - generates `.milestack/agent-instructions.md`;
-- prints the generic MCP JSON and manual Codex registration instructions;
+- prints the generic MCP JSON and manual Codex and AGY registration instructions;
 - does not create `.mcp.json`, `.cursor/mcp.json`, `.grok/config.toml`, or `.codex/config.toml`;
 - never creates, overwrites, or appends to the project's root `AGENTS.md`.
 
@@ -212,11 +212,11 @@ Or manually add or update `milestack` under `mcpServers` in `~/.gemini/config/mc
 
 ### How it works and safe startup
 
-- **Upward traversal**: When a session starts, `milestack mcp --discover` walks upward from the current working directory (or subdirectory) to locate the nearest ancestor directory containing `.milestack/milestack.db`, resolving and normalizing the path safely.
+- **Upward traversal**: When a session starts, `milestack mcp --discover` walks upward from the current working directory (or subdirectory) to locate the nearest ancestor directory containing `.milestack/milestack.db`, performing absolute path normalization and regular-file safety checks.
 - **Fail-close safety**: If no initialized MileStack project is found in the current directory or its ancestors, or if the path is unsafe (such as a non-regular file), the service exits immediately with a clear error. It never falls back to historical projects or arbitrary databases.
-- **Multi-root workspace boundaries**: When an AGY session opens multiple workspace roots, MileStack dynamically queries and validates all workspace roots:
-  - If all roots map to the exact same MileStack project (e.g. subdirectories within the same checkout), startup succeeds and binds to that project;
-  - If workspace roots span multiple distinct MileStack projects, or include uninitialized directories, MileStack **explicitly rejects and exits**, preventing ambiguous cross-project contamination.
+- **Multi-root workspace boundaries**: Multi-root workspace cross-project protection depends on the client declaring the MCP `roots` capability:
+  - If the client declares the `roots` capability, MileStack dynamically queries and validates all workspace roots via `roots/list` after initialization (attempting realpath canonicalization during multi-root identity comparisons): if all roots map to the exact same MileStack project (e.g. subdirectories within the same checkout), startup succeeds and binds to that project; if workspace roots span multiple distinct MileStack projects or include uninitialized directories, MileStack **explicitly rejects and exits**, preventing ambiguous cross-project contamination;
+  - If the client does not declare the `roots` capability, the server can only discover the project from its current working directory (cwd) and cannot inspect or reject additional workspace roots. In that case, the session must be treated as a single-root workspace and started directly from the target project directory.
 
 ### Verification
 
@@ -235,7 +235,7 @@ Or manually add or update `milestack` under `mcpServers` in `~/.gemini/config/mc
    milestack status --discover
    ```
 
-   Confirm that `project.name` and the returned tasks match the current checkout.
+   Confirm that the project name and task list displayed in the terminal output match the current checkout (when using `--json`, inspect the `project.name` field).
 
 ### Migrate from legacy fixed-project configuration
 
@@ -255,7 +255,7 @@ If you previously registered a global `milestack` entry tied to a specific proje
    ```
 
 2. **Restart the AGY session**: Close and reopen any running AGY session to load the updated configuration.
-3. **Verify the bound project**: Start AGY in different project directories and call `get_project_status` to verify that each session independently inspects its own project rather than legacy project A.
+3. **Verify the bound project**: Start AGY in different project directories and call `get_project_status` or run `milestack status --discover` to verify that each session independently inspects its own project and tasks rather than legacy project A.
 
 ### Removal
 
