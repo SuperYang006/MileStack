@@ -45,10 +45,12 @@ const TypewriterEgg: React.FC = () => {
   const displayed = currentPhrase.slice(0, subIdx);
 
   return (
-    <span className="inline-flex items-center space-x-0.5 text-zinc-400 font-mono text-xs select-none">
-      <span className="text-zinc-500 mr-1">$</span>
-      <span>{displayed}</span>
-      <span className="inline-block w-1.5 h-3 bg-cyan-400 animate-pulse ml-0.5 opacity-90" />
+    <span className="inline-flex items-center space-x-0.5 font-mono text-xs select-none">
+      <span className="text-amber-500/70 mr-1 select-none font-bold">$</span>
+      <span className="text-amber-300/90 tracking-wide drop-shadow-[0_0_8px_rgba(245,158,11,0.2)]">
+        {displayed}
+      </span>
+      <span className="inline-block w-1.5 h-3.5 bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.7)] animate-pulse ml-0.5 opacity-90 rounded-[0.5px]" />
     </span>
   );
 };
