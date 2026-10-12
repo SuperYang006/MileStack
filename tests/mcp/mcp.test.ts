@@ -75,10 +75,25 @@ describe("MCP task tools", () => {
       "update_task",
       "submit_for_review",
       "start_review",
+      "approve_review",
+      "request_changes",
       "complete_review",
     ]);
     expect(toolNames).toContain("submit_for_review");
     expect(toolNames).not.toContain("finish_task");
+    const approveReviewTool = listed.tools.find((tool) => tool.name === "approve_review");
+    const requestChangesTool = listed.tools.find((tool) => tool.name === "request_changes");
+    expect(approveReviewTool?.inputSchema).toMatchObject({
+      required: expect.arrayContaining(["taskId", "reviewRunId", "summary"]),
+    });
+    expect(requestChangesTool?.inputSchema).toMatchObject({
+      required: expect.arrayContaining(["taskId", "reviewRunId", "summary", "findings"]),
+    });
+    expect(approveReviewTool?.inputSchema.properties).not.toHaveProperty("decision");
+    expect(requestChangesTool?.inputSchema.properties).not.toHaveProperty("decision");
+    expect(requestChangesTool?.inputSchema.properties).not.toHaveProperty(
+      "verificationEvidence",
+    );
 
     const initialStatus = await client.callTool({
       name: "get_project_status",
@@ -239,24 +254,49 @@ describe("MCP task tools", () => {
     expect(submittedValue.events.at(-1).type).toBe("submitted_for_review");
     expect(submittedValue.events.at(-1).actorLabel).toBe("gpt-5-codex");
 
+    const submittedDetails = await client.callTool({
+      name: "get_task",
+      arguments: { taskId: ready.task.id },
+    });
+    expect(JSON.parse(textContent(submittedDetails))).toMatchObject({
+      task: {
+        id: ready.task.id,
+        riskLevel: "medium",
+        status: "in_review",
+      },
+      reviews: [
+        {
+          reviewRound: 1,
+          commitSha: "7777777777777777777777777777777777777777",
+          status: "pending",
+        },
+      ],
+    });
+
     const reviewStarted = await client.callTool({
       name: "start_review",
-      arguments: { taskId: ready.task.id, actorLabel: "review-model" },
+      arguments: { taskId: ready.task.id },
     });
     const reviewStartedValue = JSON.parse(textContent(reviewStarted));
     expect(reviewStartedValue.reviewRunId).toBeTruthy();
     expect(reviewStartedValue.task.reviews.at(-1)).toMatchObject({
       status: "in_progress",
-      reviewerActorLabel: "review-model",
+      reviewerActorLabel: "agent",
     });
 
     const reviewCompleted = await client.callTool({
-      name: "complete_review",
+      name: "approve_review",
       arguments: {
         taskId: ready.task.id,
         reviewRunId: reviewStartedValue.reviewRunId,
-        decision: "passed",
         summary: "Verified the implementation.",
+        findings: [
+          {
+            issue: "No blocking issues found.",
+            suggestion: "Keep the focused regression coverage.",
+            severity: "low",
+          },
+        ],
         verificationEvidence: [{ command: "pnpm test", result: "passed" }],
       },
     });
@@ -264,6 +304,7 @@ describe("MCP task tools", () => {
     expect(reviewCompletedValue.task.status).toBe("in_review");
     expect(reviewCompletedValue.reviews.at(-1)).toMatchObject({
       status: "passed",
+      reviewerActorLabel: "agent",
       verificationEvidence: [{ command: "pnpm test", result: "passed" }],
     });
 

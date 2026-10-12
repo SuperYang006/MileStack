@@ -17,6 +17,7 @@ import {
   getProjectStatusInputSchema,
   getTaskInputSchema,
   listTasksInputSchema,
+  reviewFindingSchema,
   startReviewInputSchema,
   startTaskInputSchema,
   updateTaskInputSchema,
@@ -42,6 +43,12 @@ const updateTaskArgumentsSchema = updateTaskInputSchema.omit({ projectId: true }
 const submitForReviewArgumentsSchema = submitForReviewInputSchema.omit({ projectId: true });
 const startReviewArgumentsSchema = startReviewInputSchema.omit({ projectId: true });
 const completeReviewArgumentsSchema = completeReviewInputSchema.omit({ projectId: true });
+const reviewDecisionArgumentsSchema = completeReviewArgumentsSchema.omit({
+  decision: true,
+});
+const requestChangesArgumentsSchema = reviewDecisionArgumentsSchema
+  .omit({ verificationEvidence: true })
+  .extend({ findings: z.array(reviewFindingSchema).min(1) });
 
 const toolDefinitions: Tool[] = [
   {
@@ -97,6 +104,18 @@ const toolDefinitions: Tool[] = [
     description:
       "Atomically claim the latest pending review and save the returned reviewRunId before inspecting the submitted artifact.",
     inputSchema: toJSONSchema(startReviewArgumentsSchema) as Tool["inputSchema"],
+  },
+  {
+    name: "approve_review",
+    description:
+      "Pass the claimed review with a summary, structured findings, and verification evidence. The reviewRunId must own the current review; low-risk tasks may complete automatically while medium- and high-risk tasks wait for developer approval.",
+    inputSchema: toJSONSchema(reviewDecisionArgumentsSchema) as Tool["inputSchema"],
+  },
+  {
+    name: "request_changes",
+    description:
+      "Return the claimed review for rework with actionable feedback and structured findings. The reviewRunId must own the current review; the task returns to ready and requires a new execution runId.",
+    inputSchema: toJSONSchema(requestChangesArgumentsSchema) as Tool["inputSchema"],
   },
   {
     name: "complete_review",
@@ -234,6 +253,27 @@ export function createMcpServer(context: ProjectContext): Server {
             context.service.startReview({
               ...parsed,
               projectId: context.project.id,
+            }),
+          );
+        }
+        case "approve_review": {
+          const parsed = reviewDecisionArgumentsSchema.parse(args);
+          return jsonResult(
+            context.service.completeReview({
+              ...parsed,
+              projectId: context.project.id,
+              decision: "passed",
+            }),
+          );
+        }
+        case "request_changes": {
+          const parsed = requestChangesArgumentsSchema.parse(args);
+          return jsonResult(
+            context.service.completeReview({
+              ...parsed,
+              projectId: context.project.id,
+              decision: "changes_requested",
+              verificationEvidence: [],
             }),
           );
         }
