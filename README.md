@@ -111,30 +111,31 @@ Initialization is idempotent. Without `--client`, it:
 - does not create `.mcp.json`, `.cursor/mcp.json`, `.grok/config.toml`, or `.codex/config.toml`;
 - never creates, overwrites, or appends to the project's root `AGENTS.md`.
 
-To write project-level MCP configuration, explicitly select the clients for the current
-checkout. `--client` may be repeated or given as a comma-separated list:
+To configure client MCP integration, explicitly select the clients for the current
+checkout. `--client` may be repeated or given as a comma-separated list (supports `claude`, `cursor`, `grok`, `codex`, `agy`):
 
 ```bash
-milestack init --client claude --client cursor --client grok --client codex \
+milestack init --client claude --client cursor --client grok --client codex --client agy \
   --project /absolute/path/to/current/checkout
 ```
 
-The selected clients write only their project file:
+Client support matrix:
 
-| Client | Project file |
-| --- | --- |
-| `claude` | `.mcp.json` |
-| `cursor` | `.cursor/mcp.json` |
-| `grok` | `.grok/config.toml` |
-| `codex` | `.codex/config.toml` |
+| Client | Scope | Configuration file / mechanism | Behavior and notes |
+| --- | --- | --- | --- |
+| `claude` | Project-level | `.mcp.json` | Writes to current project directory, bound to checkout absolute path |
+| `cursor` | Project-level | `.cursor/mcp.json` | Writes to current project directory, bound to checkout absolute path |
+| `grok` | Project-level | `.grok/config.toml` | Writes to current project directory, bound to checkout absolute path |
+| `codex` | Project-level | `.codex/config.toml` | Writes to current project directory, bound to checkout absolute path |
+| `agy` | User-level | `~/.gemini/config/mcp_config.json` | Skips writing user-global files; outputs recommended `agy mcp` dynamic discovery command guidance |
 
 Before running or submitting the command, verify that `--project` is the absolute
-path of the current checkout. MileStack never modifies global client configuration such as
-`~/.claude.json`, `~/.cursor`, `~/.grok`, or `~/.codex`. An existing different
-`milestack` entry is preserved and not replaced. After writing a project file,
+path of the current checkout. MileStack strictly enforces safety boundaries and **never modifies**
+global client configuration such as `~/.claude.json`, `~/.cursor`, `~/.grok`, `~/.codex`, or `~/.gemini`.
+An existing different `milestack` entry is preserved and not replaced. After writing a project file,
 reopen the corresponding client session. Codex project configuration takes effect
 only in trusted repositories, and Claude still requires user approval for the
-project `.mcp.json` configuration.
+project `.mcp.json` configuration. See below for detailed AGY (Gemini CLI) connection, dynamic root discovery, and migration instructions.
 
 Add this line manually to the project's version-controlled root `AGENTS.md`:
 
@@ -174,6 +175,96 @@ codex mcp get milestack
 
 Start a new Codex session after adding or changing MCP configuration so the updated tool list and server instructions are loaded.
 
+## Connect AGY (Gemini CLI) through MCP
+
+Gemini Antigravity CLI (`agy`) currently provides only user-level global MCP configuration (managing `~/.gemini/config/mcp_config.json`) and does not support project-level MCP files.
+
+### Why AGY cannot use a fixed project path
+
+If `--project /path/to/projectA` were recorded as a fixed path in global configuration, opening an AGY session in `projectB` or any other directory would still connect to `projectA`'s database, silently reading or modifying the wrong task database.
+
+To prevent cross-project state corruption, MileStack provides the `--discover` dynamic root-discovery mode: configure it **once globally** in AGY, and the single registration works across all initialized MileStack projects without project-specific re-registration.
+
+### Installation and registration
+
+When `milestack` is globally available, run:
+
+```bash
+agy mcp add milestack -- milestack mcp --discover
+```
+
+Without a global link, use the built CLI directly:
+
+```bash
+agy mcp add milestack -- \
+  node /absolute/path/to/MileStack/dist/index.js \
+  mcp --discover
+```
+
+Or manually add or update `milestack` under `mcpServers` in `~/.gemini/config/mcp_config.json`:
+
+```json
+"milestack": {
+  "command": "milestack",
+  "args": ["mcp", "--discover"]
+}
+```
+
+### How it works and safe startup
+
+- **Upward traversal**: When a session starts, `milestack mcp --discover` walks upward from the current working directory (or subdirectory) to locate the nearest ancestor directory containing `.milestack/milestack.db`, resolving and normalizing the path safely.
+- **Fail-close safety**: If no initialized MileStack project is found in the current directory or its ancestors, or if the path is unsafe (such as a non-regular file), the service exits immediately with a clear error. It never falls back to historical projects or arbitrary databases.
+- **Multi-root workspace boundaries**: When an AGY session opens multiple workspace roots, MileStack dynamically queries and validates all workspace roots:
+  - If all roots map to the exact same MileStack project (e.g. subdirectories within the same checkout), startup succeeds and binds to that project;
+  - If workspace roots span multiple distinct MileStack projects, or include uninitialized directories, MileStack **explicitly rejects and exits**, preventing ambiguous cross-project contamination.
+
+### Verification
+
+1. **Verify CLI registration**:
+
+   ```bash
+   agy mcp list
+   ```
+
+   Verify that the `milestack` entry is present with the `--discover` argument.
+
+2. **Verify project binding**:
+   Start an AGY session in an initialized project directory, have the agent call `get_project_status`, or run directly in your terminal:
+
+   ```bash
+   milestack status --discover
+   ```
+
+   Confirm that `project.name` and the returned tasks match the current checkout.
+
+### Migrate from legacy fixed-project configuration
+
+If you previously registered a global `milestack` entry tied to a specific project (e.g. containing `--project /path/to/projectA`):
+
+1. **Replace the registration** (`agy mcp add` automatically overwrites an existing entry with the same name):
+
+   ```bash
+   agy mcp add milestack -- milestack mcp --discover
+   ```
+
+   Or explicitly remove and re-add:
+
+   ```bash
+   agy mcp remove milestack
+   agy mcp add milestack -- milestack mcp --discover
+   ```
+
+2. **Restart the AGY session**: Close and reopen any running AGY session to load the updated configuration.
+3. **Verify the bound project**: Start AGY in different project directories and call `get_project_status` to verify that each session independently inspects its own project rather than legacy project A.
+
+### Removal
+
+To remove the global MileStack MCP registration from AGY:
+
+```bash
+agy mcp remove milestack
+```
+
 ## MCP tools
 
 The current MCP server exposes:
@@ -191,16 +282,18 @@ Agent-created tasks enter `inbox`. A developer must confirm their risk and queue
 
 ```text
 milestack init [--project <path>] [--client <name>]...
-milestack status [--project <path>] [--json]
-milestack mcp [--project <path>]
+milestack status [--project <path>] [--discover] [--json]
+milestack mcp [--project <path>] [--discover]
 milestack serve [--project <path>] [--port <port>]
 ```
 
 Examples:
 
 ```bash
+milestack status --discover
 milestack status --project /absolute/path/to/project
 milestack status --project /absolute/path/to/project --json
+milestack mcp --discover
 milestack serve --project /absolute/path/to/project --port 7331
 ```
 

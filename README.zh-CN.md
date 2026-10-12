@@ -111,28 +111,29 @@ node /absolute/path/to/MileStack/dist/index.js init \
 - 不创建 `.mcp.json`、`.cursor/mcp.json`、`.grok/config.toml` 或 `.codex/config.toml`；
 - 不会创建、覆盖或追加项目根目录中的 `AGENTS.md`。
 
-如需写入项目级 MCP 配置，必须为当前 checkout 显式选择客户端。`--client`
-可以重复，也可以使用逗号分隔的列表：
+如需配置客户端 MCP 接入，必须为当前 checkout 显式选择客户端。`--client`
+可以重复，也可以使用逗号分隔的列表（支持 `claude`、`cursor`、`grok`、`codex`、`agy`）：
 
 ```bash
-milestack init --client claude --client cursor --client grok --client codex \
+milestack init --client claude --client cursor --client grok --client codex --client agy \
   --project /absolute/path/to/current/checkout
 ```
 
-选中的客户端只会写入各自的项目文件：
+客户端支持矩阵：
 
-| 客户端 | 项目文件 |
-| --- | --- |
-| `claude` | `.mcp.json` |
-| `cursor` | `.cursor/mcp.json` |
-| `grok` | `.grok/config.toml` |
-| `codex` | `.codex/config.toml` |
+| 客户端 | 作用域 | 配置文件 / 方式 | 行为与说明 |
+| --- | --- | --- | --- |
+| `claude` | 项目级 | `.mcp.json` | 写入当前项目目录，绑定当前 checkout 绝对路径 |
+| `cursor` | 项目级 | `.cursor/mcp.json` | 写入当前项目目录，绑定当前 checkout 绝对路径 |
+| `grok` | 项目级 | `.grok/config.toml` | 写入当前项目目录，绑定当前 checkout 绝对路径 |
+| `codex` | 项目级 | `.codex/config.toml` | 写入当前项目目录，绑定当前 checkout 绝对路径 |
+| `agy` | 用户级 | `~/.gemini/config/mcp_config.json` | 不修改用户全局文件；输出推荐的 `agy mcp` 动态发现命令指引 |
 
-执行或提交前请确认 `--project` 是当前 checkout 的绝对路径。MileStack 不会修改
-`~/.claude.json`、`~/.cursor`、`~/.grok` 或 `~/.codex` 等全局客户端配置。
+执行或提交前请确认 `--project` 是当前 checkout 的绝对路径。MileStack 严格遵守安全边界，**绝不自动修改**
+`~/.claude.json`、`~/.cursor`、`~/.grok`、`~/.codex` 或 `~/.gemini` 等全局客户端配置。
 已有不同的 `milestack` 条目会保持不变，不会被覆盖。写入项目文件后，请重新打开
 对应的客户端会话。Codex 项目配置只会在已信任的仓库中生效；Claude 的项目
-`.mcp.json` 配置仍需用户批准。
+`.mcp.json` 配置仍需用户批准。关于 AGY（Gemini CLI）的详细连接、动态寻根与迁移方法，请参见下文专门章节。
 
 请手动将下面这行加入项目版本控制中的根 `AGENTS.md`：
 
@@ -172,6 +173,96 @@ codex mcp get milestack
 
 新增或修改 MCP 配置后，请重新启动 Codex 会话，使更新后的工具列表和服务端说明生效。
 
+## 通过 MCP 连接 AGY（Gemini CLI）
+
+Gemini Antigravity CLI（`agy`）目前仅提供用户级全局 MCP 配置（管理 `~/.gemini/config/mcp_config.json`），不支持项目级 MCP 配置文件。
+
+### 为什么不能为 AGY 写入固定项目路径
+
+如果将 `--project /path/to/projectA` 作为固定路径写入全局配置，当你在 `projectB` 或其他目录打开 AGY 会话时，它仍然会连接到 `projectA` 的数据库，导致跨项目静默读写错误的任务状态。
+
+因此，MileStack 提供了 `--discover` 动态寻根模式：只需在 AGY 中**一次性全局注册**，即可在所有已执行 `milestack init` 的项目中通用，无需为每个项目重新配置。
+
+### 安装与注册
+
+当 `milestack` 已经全局可用时，直接运行：
+
+```bash
+agy mcp add milestack -- milestack mcp --discover
+```
+
+如果没有建立全局链接，可以使用构建后的 CLI：
+
+```bash
+agy mcp add milestack -- \
+  node /absolute/path/to/MileStack/dist/index.js \
+  mcp --discover
+```
+
+若需手动配置，请在 `~/.gemini/config/mcp_config.json` 的 `mcpServers` 中添加或更新：
+
+```json
+"milestack": {
+  "command": "milestack",
+  "args": ["mcp", "--discover"]
+}
+```
+
+### 工作原理与安全启动
+
+- **自动向上寻根**：会话启动时，`milestack mcp --discover` 从当前工作目录（或所在子目录）自动向上查找最近包含 `.milestack/milestack.db` 的项目根目录，并安全规范化路径。
+- **失败关闭（Fail-Close）**：如果当前目录及其祖先目录中未找到已初始化的 MileStack 项目，或路径不安全（如非正常文件），服务会立即输出清晰错误并退出，绝不回退到历史项目或任意无关数据库。
+- **多根工作区边界**：当 AGY 会话打开多个工作区根时，MileStack 会动态获取并校验所有工作区根：
+  - 如果所有工作区根均映射到同一个 MileStack 项目（例如属于同一项目的不同子目录），正常启动并绑定该项目；
+  - 如果工作区根跨越不同的 MileStack 项目，或者包含未初始化的目录，MileStack 会**明确拒绝启动并失败关闭**，防止跨项目静默混淆。
+
+### 验证
+
+1. **验证 CLI 注册**：
+
+   ```bash
+   agy mcp list
+   ```
+
+   应看到 `milestack` 条目且参数包含 `--discover`。
+
+2. **验证项目绑定**：
+   在已初始化的项目目录中启动 AGY 会话，AI 调用 `get_project_status` 工具，或直接在终端运行：
+
+   ```bash
+   milestack status --discover
+   ```
+
+   确认返回的 `project.name` 和任务列表与当前项目完全一致。
+
+### 从旧的固定项目配置迁移
+
+如果你之前曾为 AGY 全局注册过绑定到某单项目固定路径的 `milestack` 条目（例如包含 `--project /path/to/projectA`）：
+
+1. **替换注册**（`agy mcp add` 会自动替换同名条目）：
+
+   ```bash
+   agy mcp add milestack -- milestack mcp --discover
+   ```
+
+   也可以显式先移除再添加：
+
+   ```bash
+   agy mcp remove milestack
+   agy mcp add milestack -- milestack mcp --discover
+   ```
+
+2. **重启 AGY 会话**：关闭并重新打开当前会话使新配置生效。
+3. **确认绑定**：在不同项目的目录中启动 AGY 会话，分别通过 `get_project_status` 确认各自独立读取当前项目的状态，不再固定到旧项目 A。
+
+### 移除
+
+如需移除 AGY 的全局 MileStack MCP 注册：
+
+```bash
+agy mcp remove milestack
+```
+
 ## MCP 工具
 
 当前 MCP 服务提供以下工具：
@@ -189,16 +280,18 @@ Agent 创建的任务会进入 `inbox`。开发者必须先确认其风险和队
 
 ```text
 milestack init [--project <path>] [--client <name>]...
-milestack status [--project <path>] [--json]
-milestack mcp [--project <path>]
+milestack status [--project <path>] [--discover] [--json]
+milestack mcp [--project <path>] [--discover]
 milestack serve [--project <path>] [--port <port>]
 ```
 
 示例：
 
 ```bash
+milestack status --discover
 milestack status --project /absolute/path/to/project
 milestack status --project /absolute/path/to/project --json
+milestack mcp --discover
 milestack serve --project /absolute/path/to/project --port 7331
 ```
 

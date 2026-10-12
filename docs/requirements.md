@@ -228,19 +228,38 @@ V0 必须提供一个低成本的旧项目接入入口。初始化操作应：
 
 - 在项目中创建本地 MileStack 数据库；
 - 创建初始项目记录；
-- 默认只输出通用 MCP JSON 和手动执行 Codex 注册命令，不创建客户端项目配置文件；
-- 只有显式传入 `--client` 时，才为选中的客户端写入项目级文件：`claude` 写 `.mcp.json`，
-  `cursor` 写 `.cursor/mcp.json`，`grok` 写 `.grok/config.toml`，`codex` 写
-  `.codex/config.toml`；`--client` 可以重复或使用逗号分隔；
+- 默认只输出通用 MCP JSON 和手动执行 Codex/AGY 注册命令，不创建客户端项目配置文件；
+- 显式传入 `--client` 时（支持 `claude`、`cursor`、`grok`、`codex`、`agy`，可重复或使用逗号分隔）：
+  - 项目级文件客户端：`claude` 写 `.mcp.json`，`cursor` 写 `.cursor/mcp.json`，`grok` 写 `.grok/config.toml`，`codex` 写 `.codex/config.toml`；
+  - 用户级全局客户端：`agy` 跳过文件写入，输出推荐的 `agy mcp add milestack -- milestack mcp --discover` 注册命令、验证命令及手动配置说明（指向 `~/.gemini/config/mcp_config.json`）；
 - 输出可加入 `AGENTS.md` 或其他 AI 指令文件的接入规则；
 - `--project` 使用当前 checkout 的绝对路径，执行或提交前由开发者确认路径无误；
-- 不自动修改 `~/.claude.json`、`~/.cursor`、`~/.grok` 或 `~/.codex` 等全局客户端配置；
+- **严格遵守安全约束**：绝不自动修改 `~/.claude.json`、`~/.cursor`、`~/.grok`、`~/.codex` 或 `~/.gemini` 等用户全局客户端配置文件；
 - 初始化必须幂等，不覆盖无关项目文件、Agent 指令或已有不同的 `milestack` 条目；
 - 写入项目配置后需要重新打开对应客户端会话。Codex 项目配置只在已信任的仓库中生效，
   Claude 的 `.mcp.json` 仍需用户批准；
 - 支持将多条已有任务一次性记录到 `inbox`，用于建立项目基线。
 
 旧项目基线由开发者确认。AI 可以帮助阅读已有任务文档和代码状态、筛选仍然有效的工作并批量记录，但 V0 不自动解析、删除或改写原有文档。
+
+### 6.7 项目感知 MCP 启动与多根工作区
+
+对于仅支持用户级全局 MCP 配置的客户端（如 Gemini Antigravity CLI `agy`），必须提供安全、路径无关的启动流程：
+
+- **禁止在全局配置中写入固定项目路径**：若将固定项目绝对路径写入全局配置，当开发者在其他项目或未初始化目录启动会话时，会错误读写原项目的任务数据库，导致跨项目静默状态混淆；
+- **显式项目自动发现（`--discover`）**：
+  - `mcp` 和 `status` 命令支持 `--discover` 选项，从会话当前工作目录（或所在子目录）自动递归向上查找 `.milestack/milestack.db`，并规范化安全路径；
+  - 单份全局配置在所有已执行 `milestack init` 的项目中通用，无需为每个项目重新配置；
+- **严格失败关闭（Fail-Close）**：
+  - 若在当前目录及其祖先目录中未找到已初始化的 MileStack 项目，或数据库路径存在安全隐患（非正常文件等），必须立即返回清晰错误并失败关闭；
+  - 绝不回退到历史项目、上一次使用的项目或任意兜底数据库；
+- **多根工作区（Multi-Root Workspaces）支持边界**：
+  - 会话初始化时通过 MCP `roots/list` 动态校验所有工作区根；
+  - 当所有工作区根唯一定位到同一个 MileStack 项目（例如属于同一项目的不同子目录）时，允许正常启动；
+  - 当工作区根跨越多个不同的 MileStack 项目，或包含未初始化的目录时，**必须明确拒绝启动并失败关闭**，不能静默选择其中一个项目；
+- **迁移与验证**：
+  - 提供明确且需用户主动执行的命令指引（`agy mcp add milestack -- milestack mcp --discover`），替换已固定到单项目的全局旧条目；
+  - 变更后重启会话，并通过调用 `get_project_status` 验证实际绑定的项目与当前工作区一致。
 
 当 MileStack 已实现数据库、核心状态机、基础 MCP 工具和 CLI 状态查询后，应在 MileStack 项目自身完成初始化，并使用 MileStack 管理后续 V0 开发。
 

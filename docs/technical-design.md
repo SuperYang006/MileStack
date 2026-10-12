@@ -73,13 +73,31 @@ Fastify 提供本地 JSON API，并在生产构建中托管 Vite 生成的静态
 
 ### 3.2 MCP 服务
 
-每个 AI 客户端通过 stdio 启动独立的 MCP 进程：
+每个 AI 客户端通过 stdio 启动独立的 MCP 进程，支持两种启动模式：
 
-```bash
-milestack mcp --project /absolute/path/to/project
-```
+1. **显式项目路径模式**（项目级客户端使用）：
 
-MCP 进程直接使用共享业务核心访问该项目的 SQLite 数据库，因此页面未运行时，AI 仍然可以工作。
+   ```bash
+   milestack mcp --project /absolute/path/to/project
+   ```
+
+   适用于 Codex、Claude Code、Cursor、Grok 等支持项目级配置文件的客户端，直接绑定指定项目的绝对路径。
+
+2. **项目自动发现模式**（用户级全局客户端使用）：
+
+   ```bash
+   milestack mcp --discover
+   ```
+
+   适用于 Gemini Antigravity CLI（`agy`）等仅提供用户级全局 MCP 配置的客户端，单份全局注册可在所有已初始化项目中复用。
+
+工作原理与安全边界：
+
+- **向上递归寻根**：`discoverProjectRoot()` 从当前工作目录（`process.cwd()`）或所在子目录递归向上查找 `.milestack/milestack.db`，并进行符号链接规范化、循环检测与常规文件安全性校验。
+- **动态工作区根解析与失败关闭**：`resolveWorkspaceProjectRoot()` 在 MCP 握手完成后请求客户端的 `roots/list`：
+  - 单工作区根或无根时：按当前目录或单个根目录发现项目；
+  - 多根工作区时：分别发现每个根目录对应的项目。如果所有根目录映射到同一个 MileStack 项目，绑定该项目正常启动；如果根目录跨越不同的 MileStack 项目或包含未初始化目录，**明确抛出错误并退出进程**（Fail-Close），拒绝静默任意选择项目。
+- **项目隔离**：MCP 进程直接使用共享业务核心访问绑定项目的 SQLite 数据库，因此页面未运行时，AI 仍然可以工作；不同项目启动的独立进程互不干扰。
 
 V0 先支持 stdio，以覆盖常见的本地 AI 编程客户端。后续可以复用相同的 MCP 工具处理器增加 Streamable HTTP 传输。
 
@@ -89,6 +107,8 @@ V0 先支持 stdio，以覆盖常见的本地 AI 编程客户端。后续可以�
 
 ```bash
 milestack status --project /absolute/path/to/project
+# 或在当前项目目录及其子目录中使用自动发现：
+milestack status --discover
 ```
 
 输出应与 `get_project_status` 使用同一个 `TaskService` 查询，并至少包含当前任务、下一任务、阻塞和 inbox 数量。该命令既是早期验证入口，也是 MileStack 自举开发阶段的基础界面。
@@ -117,20 +137,18 @@ milestack init --project /absolute/path/to/current/checkout
 - 确保 `.milestack/` 被项目的 `.gitignore` 忽略；
 - 输出带 `MILESTACK_START` 和 `MILESTACK_END` 标记的 AI 接入规则。
 
-默认不传 `--client` 时，`init` 只把通用 MCP JSON 和手动执行 Codex 注册命令打印到终端，
-不会创建项目级客户端配置文件。显式传入一个或多个 `--client` 后，才为选中的客户端
-写入当前项目目录中的配置：`claude` 写 `.mcp.json`，`cursor` 写
-`.cursor/mcp.json`，`grok` 写 `.grok/config.toml`，`codex` 写
-`.codex/config.toml`。`--client` 可以重复，也可以使用逗号分隔的客户端名称。
+默认不传 `--client` 时，`init` 只把通用 MCP JSON 和手动执行 Codex/AGY 注册命令打印到终端，不会创建项目级客户端配置文件。
 
-`--project` 必须指向当前 checkout 的绝对路径，执行或提交前由开发者确认路径无误。
-项目级写入不会修改 `~/.claude.json`、`~/.cursor`、`~/.grok` 或 `~/.codex` 等全局
-客户端配置；已有不同的 `milestack` 条目保持不变，不会被覆盖。写入后需要重新打开
-对应客户端会话。Codex 项目配置只在已信任的仓库中生效，Claude 的 `.mcp.json`
-仍需用户批准。
+显式传入一个或多个 `--client` 时（支持 `claude`、`cursor`、`grok`、`codex`、`agy`，可重复或使用逗号分隔）：
 
-`init` 必须可以安全重复执行，不覆盖已有数据库、无关项目文件、Agent 指令或已有不同的
-客户端配置；显式 `--client` 只补充缺失的项目级 `milestack` 条目。
+- **项目级文件客户端**：`claude` 写 `.mcp.json`，`cursor` 写 `.cursor/mcp.json`，`grok` 写 `.grok/config.toml`，`codex` 写 `.codex/config.toml`，绑定当前 checkout 的绝对路径；
+- **用户级全局客户端**：`agy`（Gemini CLI）使用全局配置 `~/.gemini/config/mcp_config.json`。`init` 遵循不自动修改用户全局配置的安全约束，跳过文件写入，输出推荐的注册命令 `agy mcp add milestack -- milestack mcp --discover`、验证命令 `agy mcp list` 及手动配置指引。
+
+**为什么 AGY 不能写入固定项目路径**：若在用户级全局配置中写入固定路径 `--project /path/to/projectA`，在其他项目目录启动 AGY 时仍会错误读写项目 A 的数据库，造成跨项目数据污染。因此 AGY 必须采用 `--discover` 动态寻根模式。
+
+`--project` 必须指向当前 checkout 的绝对路径，执行或提交前由开发者确认路径无误。项目级写入不会修改 `~/.claude.json`、`~/.cursor`、`~/.grok`、`~/.codex` 或 `~/.gemini` 等全局客户端配置；已有不同的 `milestack` 条目保持不变，不会被覆盖。写入后需要重新打开对应客户端会话。Codex 项目配置只在已信任的仓库中生效，Claude 的 `.mcp.json` 仍需用户批准。
+
+`init` 必须可以安全重复执行，不覆盖已有数据库、无关项目文件、Agent 指令或已有不同的客户端配置；显式 `--client` 只补充缺失的项目级 `milestack` 条目。
 
 V0 不通过 Git 同步数据库，也不提供云端备份。
 
@@ -413,7 +431,10 @@ V0 优先测试影响事实可信度的行为：
 11. 已有数据库可以通过前向迁移升级并保留原任务和事件；
 12. 审核领取具有并发保护，旧执行或审核凭证不能继续写入；
 13. 低风险审核通过可自动完成，中高风险审核通过仍需开发者批准；
-14. 完整 MCP 流程可以执行领取、更新、阻塞、恢复、释放、提交审核和审核决策。
+14. 完整 MCP 流程可以执行领取、更新、阻塞、恢复、释放、提交审核和审核决策；
+15. `--discover` 自动向上寻根支持从子目录启动，未找到项目或非常规文件安全失败关闭；
+16. 单份 AGY 全局 MCP 注册在两个不同项目中分别启动独立会话并保持项目状态隔离；
+17. 多根工作区跨项目或包含未初始化根目录时明确拒绝并关闭进程。
 
 页面视觉和复杂交互测试不作为 V0 的首要工作。
 
