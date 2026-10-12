@@ -1,7 +1,57 @@
-import React from "react";
-import { Terminal, Plus, RefreshCw, Radio } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { Terminal, Plus, RefreshCw } from "lucide-react";
 import type { ProjectSummary } from "../types";
 
+const TERMINAL_EGG_PHRASES = [
+  "keeping context coherent across turns",
+  "verifying acceptance criteria, bit by bit",
+  "no hallucinations allowed in the loop",
+  "local-first source of truth for humans & agents",
+  "shipping working software with verifiable evidence",
+  "aligning intentions with verifiable outcomes",
+];
+
+const TypewriterEgg: React.FC = () => {
+  const [phraseIdx, setPhraseIdx] = useState(0);
+  const [subIdx, setSubIdx] = useState(0);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  useEffect(() => {
+    const currentPhrase = TERMINAL_EGG_PHRASES[phraseIdx] || "";
+
+    // If typing and reached full text, pause before deleting
+    if (!isDeleting && subIdx === currentPhrase.length) {
+      const timeout = setTimeout(() => setIsDeleting(true), 3200);
+      return () => clearTimeout(timeout);
+    }
+
+    // If deleting and reached 0, move to next phrase
+    if (isDeleting && subIdx === 0) {
+      setIsDeleting(false);
+      setPhraseIdx((prev) => (prev + 1) % TERMINAL_EGG_PHRASES.length);
+      return;
+    }
+
+    // Typing/deleting interval speed
+    const speed = isDeleting ? 28 : 55;
+    const timeout = setTimeout(() => {
+      setSubIdx((prev) => prev + (isDeleting ? -1 : 1));
+    }, speed);
+
+    return () => clearTimeout(timeout);
+  }, [phraseIdx, subIdx, isDeleting]);
+
+  const currentPhrase = TERMINAL_EGG_PHRASES[phraseIdx] || "";
+  const displayed = currentPhrase.slice(0, subIdx);
+
+  return (
+    <span className="inline-flex items-center space-x-0.5 text-zinc-400 font-mono text-xs select-none">
+      <span className="text-zinc-500 mr-1">$</span>
+      <span>{displayed}</span>
+      <span className="inline-block w-1.5 h-3 bg-cyan-400 animate-pulse ml-0.5 opacity-90" />
+    </span>
+  );
+};
 interface HeaderProps {
   project: ProjectSummary;
   isBackendConnected: boolean;
@@ -32,9 +82,15 @@ export const Header: React.FC<HeaderProps> = ({
                 {project.name.toLowerCase() || "milestack"}
               </span>
               <span className="font-mono text-xs text-zinc-500">::</span>
-              <span className="font-mono text-xs text-zinc-400 truncate">
-                {project.goal || "纵览项目全局，推进每个里程碑。"}
-              </span>
+              {project.goal ? (
+                <span className="font-mono text-xs text-zinc-400 truncate">
+                  {project.goal}
+                </span>
+              ) : (
+                <div className="truncate">
+                  <TypewriterEgg />
+                </div>
+              )}
             </div>
           </div>
 

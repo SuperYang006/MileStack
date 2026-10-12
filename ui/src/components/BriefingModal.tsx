@@ -40,7 +40,7 @@ export const BriefingModal: React.FC<BriefingModalProps> = ({
 
 ## 1. 项目概览
 - **项目名称**: ${project.name}
-- **项目目标**: ${project.goal || "纵览项目全局，推进每个里程碑。"}
+- **项目目标**: ${project.goal || "对齐人机任务上下文，保障可信工程交付。"}
 
 ## 2. 目标任务
 - **Task ID**: \`${task.id}\`
