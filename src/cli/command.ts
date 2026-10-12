@@ -1,8 +1,13 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import path from "node:path";
 
 import { runMcp } from "../mcp/server.js";
 import { startHttpServer } from "../server/server.js";
-import { formatAgentIntegrationInstructions } from "../core/agent-instructions.js";
+import {
+  formatAgentIntegrationInstructions,
+  formatProjectAgentInstructions,
+  projectAgentInstructionsPath,
+} from "../core/agent-instructions.js";
 import type { ProjectStatus, TaskSummary } from "../core/query-contract.js";
 import {
   initializeProject,
@@ -224,6 +229,8 @@ async function runInit(projectPath: string | undefined, output: CliOutput): Prom
   const context = await initializeProject(projectRoot);
   try {
     ensureGitignoreEntry(projectRoot);
+    const agentInstructionsPath = path.join(projectRoot, projectAgentInstructionsPath);
+    writeFileSync(agentInstructionsPath, formatProjectAgentInstructions(), "utf8");
     const configuration = {
       mcpServers: {
         milestack: {
@@ -235,6 +242,7 @@ async function runInit(projectPath: string | undefined, output: CliOutput): Prom
     output.writeStdout(
       `${context.created ? "Initialized" : "Already initialized"} ${projectRoot}\n` +
         `Database: ${context.database.databasePath}\n\n` +
+        `Agent instructions: ${agentInstructionsPath}\n\n` +
         `MCP configuration:\n${JSON.stringify(configuration, null, 2)}\n\n` +
         `${codexMcpInstructions(projectRoot)}\n\n` +
         `AI integration instructions:\n${formatAgentIntegrationInstructions()}\n`,
