@@ -137,14 +137,34 @@ milestack init --project /absolute/path/to/current/checkout
 
 默认不传 `--client` 时，`init` 只把通用 MCP JSON 和手动执行 Codex/AGY 注册命令打印到终端，不会创建项目级客户端配置文件。
 
-显式传入一个或多个 `--client` 时（支持 `claude`、`cursor`、`grok`、`codex`、`agy`，可重复或使用逗号分隔）：
+显式传入一个或多个 `--client` 时（支持 `claude`、`cursor`、`grok`、`codex`、`opencode`、`agy`，可重复或使用逗号分隔）：
 
-- **项目级文件客户端**：`claude` 写 `.mcp.json`，`cursor` 写 `.cursor/mcp.json`，`grok` 写 `.grok/config.toml`，`codex` 写 `.codex/config.toml`，绑定当前 checkout 的绝对路径；
+- **项目级文件客户端**：`claude` 写 `.mcp.json`，`cursor` 写 `.cursor/mcp.json`，`grok` 写 `.grok/config.toml`，`codex` 写 `.codex/config.toml`，`opencode` 写项目根目录的 `opencode.json`，均绑定当前 checkout 的绝对路径；
 - **用户级全局客户端**：`agy`（Gemini CLI）使用全局配置 `~/.gemini/config/mcp_config.json`。`init` 遵循不自动修改用户全局配置的安全约束，跳过文件写入，输出推荐的注册命令 `agy mcp add milestack -- milestack mcp --discover`、验证命令 `agy mcp list` 及手动配置指引。
+
+`opencode` 使用其官方配置结构，条目写在顶层 `mcp.milestack`，与 JSON/TOML 客户端的 `mcpServers.milestack`、`[mcp_servers.milestack]` 不同：
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "milestack": {
+      "type": "local",
+      "command": ["milestack", "mcp", "--project", "<当前 checkout 的绝对路径>"],
+      "enabled": true
+    }
+  }
+}
+```
+
+- 新建文件时写入上面的 `$schema`；已有文件只补齐缺失的 `mcp.milestack`，保留模型、其他 MCP 服务等既有字段和已有 `$schema`；条目相同时不改文件；
+- 已有不同的 `mcp.milestack`、JSON 无法解析、配置根值不是对象或 `mcp` 不是对象时，跳过并保留原文件；
+- 只有 `opencode.jsonc` 时不另建 `opencode.json`，改为在终端给出应手写的 `mcp.milestack` 条目；两个文件都存在时只更新 `opencode.json`，并说明 `opencode.jsonc` 未被修改；
+- OpenCode 会把项目级 `opencode.json` 与全局 `~/.config/opencode/opencode.json` 合并，同名 MCP 服务以项目条目为准，因此 `init` 只补项目内缺失的 `milestack`，既不修改全局文件，也不执行 `opencode mcp add`。
 
 **为什么 AGY 不能写入固定项目路径**：若在用户级全局配置中写入固定路径 `--project /path/to/projectA`，在其他项目目录启动 AGY 时仍会错误读写项目 A 的数据库，造成跨项目数据污染。因此 AGY 必须采用 `--discover` 动态寻根模式。
 
-`--project` 必须指向当前 checkout 的绝对路径，执行或提交前由开发者确认路径无误。项目级写入不会修改 `~/.claude.json`、`~/.cursor`、`~/.grok`、`~/.codex` 或 `~/.gemini` 等全局客户端配置；已有不同的 `milestack` 条目保持不变，不会被覆盖。写入后需要重新打开对应客户端会话。Codex 项目配置只在已信任的仓库中生效，Claude 的 `.mcp.json` 仍需用户批准。
+`--project` 必须指向当前 checkout 的绝对路径，执行或提交前由开发者确认路径无误。项目级写入不会修改 `~/.claude.json`、`~/.cursor`、`~/.grok`、`~/.codex`、`~/.config/opencode` 或 `~/.gemini` 等全局客户端配置；已有不同的 `milestack` 条目保持不变，不会被覆盖。写入后需要重新打开对应客户端会话。Codex 项目配置只在已信任的仓库中生效，Claude 的 `.mcp.json` 仍需用户批准。
 
 `init` 必须可以安全重复执行，不覆盖已有数据库、无关项目文件、Agent 指令或已有不同的客户端配置；显式 `--client` 只补充缺失的项目级 `milestack` 条目。
 

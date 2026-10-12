@@ -240,12 +240,14 @@ V0 必须提供一个低成本的旧项目接入入口。初始化操作应：
 - 在项目中创建本地 MileStack 数据库；
 - 创建初始项目记录；
 - 默认只输出通用 MCP JSON 和手动执行 Codex/AGY 注册命令，不创建客户端项目配置文件；
-- 显式传入 `--client` 时（支持 `claude`、`cursor`、`grok`、`codex`、`agy`，可重复或使用逗号分隔）：
-  - 项目级文件客户端：`claude` 写 `.mcp.json`，`cursor` 写 `.cursor/mcp.json`，`grok` 写 `.grok/config.toml`，`codex` 写 `.codex/config.toml`；
+- 显式传入 `--client` 时（支持 `claude`、`cursor`、`grok`、`codex`、`opencode`、`agy`，可重复或使用逗号分隔）：
+  - 项目级文件客户端：`claude` 写 `.mcp.json`，`cursor` 写 `.cursor/mcp.json`，`grok` 写 `.grok/config.toml`，`codex` 写 `.codex/config.toml`，`opencode` 写项目根目录的 `opencode.json`；
   - 用户级全局客户端：`agy` 跳过文件写入，输出推荐的 `agy mcp add milestack -- milestack mcp --discover` 注册命令、验证命令及手动配置说明（指向 `~/.gemini/config/mcp_config.json`）；
+- `opencode` 的 `milestack` 条目写入项目根目录 `opencode.json` 的 `mcp.milestack`，为本地 stdio 服务，绑定当前 checkout 的绝对路径，不使用 `--discover`；
+- `opencode` 项目配置与全局 `~/.config/opencode/opencode.json` 合并，同名 MCP 服务以项目条目为准，因此项目级条目无需写入全局配置；
 - 输出可加入 `AGENTS.md` 或其他 AI 指令文件的接入规则；
 - `--project` 使用当前 checkout 的绝对路径，执行或提交前由开发者确认路径无误；
-- **严格遵守安全约束**：绝不自动修改 `~/.claude.json`、`~/.cursor`、`~/.grok`、`~/.codex` 或 `~/.gemini` 等用户全局客户端配置文件；
+- **严格遵守安全约束**：绝不自动修改 `~/.claude.json`、`~/.cursor`、`~/.grok`、`~/.codex`、`~/.config/opencode` 或 `~/.gemini` 等用户全局客户端配置文件；`opencode` 只写项目级文件，不执行 `opencode mcp add`；
 - 初始化必须幂等，不覆盖无关项目文件、Agent 指令或已有不同的 `milestack` 条目；
 - 写入项目配置后需要重新打开对应客户端会话。Codex 项目配置只在已信任的仓库中生效，
   Claude 的 `.mcp.json` 仍需用户批准；
