@@ -57,7 +57,7 @@ describe("CLI entry point", () => {
     expect(exitCode).toBe(0);
     expect(capture.stdout.join("")).toBe(helpText);
     expect(helpText).toContain("--client <name>");
-    expect(helpText).toContain("claude, cursor, grok, codex, agy");
+    expect(helpText).toContain("claude, cursor, grok, codex, opencode, agy");
     expect(helpText).toContain("Project-only MCP config for init");
     expect(capture.stderr).toHaveLength(0);
   });
@@ -390,12 +390,20 @@ describe("project MCP configuration", () => {
     const projectRoot = createTemporaryProject();
     const absoluteProjectRoot = path.resolve(projectRoot);
 
-    expect(projectMcpClientNames).toEqual(["claude", "cursor", "grok", "codex", "agy"]);
+    expect(projectMcpClientNames).toEqual([
+      "claude",
+      "cursor",
+      "grok",
+      "codex",
+      "opencode",
+      "agy",
+    ]);
     const fileClients = projectMcpClientNames.filter((name) => name !== "agy");
     const firstResults = configureProjectMcpClients(projectRoot, projectMcpClientNames);
     const fileResults = firstResults.filter((item) => item.client !== "agy");
     const agyResult = firstResults.find((item) => item.client === "agy");
     expect(fileResults.map((item) => item.action)).toEqual([
+      "created",
       "created",
       "created",
       "created",
@@ -406,6 +414,7 @@ describe("project MCP configuration", () => {
       ".cursor/mcp.json",
       ".grok/config.toml",
       ".codex/config.toml",
+      "opencode.json",
     ]);
     expect(fileResults.every((item) => item.detail.startsWith("已写入 "))).toBe(true);
     expect(agyResult?.action).toBe("skipped");
@@ -427,10 +436,21 @@ describe("project MCP configuration", () => {
     expect(snapshots[1]).toContain(`"--project",\n        "${absoluteProjectRoot}"`);
     expect(snapshots[2]).toContain(`[mcp_servers.milestack]`);
     expect(snapshots[3]).toContain(`"${absoluteProjectRoot}"`);
+    expect(JSON.parse(snapshots[4] ?? "{}")).toMatchObject({
+      $schema: "https://opencode.ai/config.json",
+      mcp: {
+        milestack: {
+          type: "local",
+          command: ["milestack", "mcp", "--project", absoluteProjectRoot],
+          enabled: true,
+        },
+      },
+    });
 
     const secondResults = configureProjectMcpClients(projectRoot, projectMcpClientNames);
     const secondFileResults = secondResults.filter((item) => item.client !== "agy");
     expect(secondFileResults.map((item) => item.action)).toEqual([
+      "unchanged",
       "unchanged",
       "unchanged",
       "unchanged",
@@ -506,6 +526,153 @@ describe("project MCP configuration", () => {
       expect(skipped?.action).toBe("skipped");
       expect(readFileSync(jsonPath, "utf8")).toBe(invalidBytes);
     }
+  });
+
+  it("creates and merges OpenCode JSON configs without replacing existing entries", () => {
+    const projectRoot = createTemporaryProject();
+    const absoluteProjectRoot = path.resolve(projectRoot);
+    const opencodePath = path.join(projectRoot, "opencode.json");
+
+    const [created] = configureProjectMcpClients(projectRoot, ["opencode"]);
+    expect(created).toMatchObject({
+      client: "opencode",
+      relativePath: "opencode.json",
+      action: "created",
+    });
+    const createdBytes = readFileSync(opencodePath, "utf8");
+    expect(JSON.parse(createdBytes)).toEqual({
+      $schema: "https://opencode.ai/config.json",
+      mcp: {
+        milestack: {
+          type: "local",
+          command: ["milestack", "mcp", "--project", absoluteProjectRoot],
+          enabled: true,
+        },
+      },
+    });
+
+    const [unchanged] = configureProjectMcpClients(projectRoot, ["opencode"]);
+    expect(unchanged?.action).toBe("unchanged");
+    expect(readFileSync(opencodePath, "utf8")).toBe(createdBytes);
+
+    writeFileSync(
+      opencodePath,
+      JSON.stringify(
+        {
+          $schema: "https://example.test/opencode.json",
+          model: "keep-me",
+          mcp: {
+            other: { type: "local", command: ["other"] },
+          },
+        },
+        null,
+        2,
+      ),
+      "utf8",
+    );
+    const [updated] = configureProjectMcpClients(projectRoot, ["opencode"]);
+    expect(updated?.action).toBe("updated");
+    expect(JSON.parse(readFileSync(opencodePath, "utf8"))).toMatchObject({
+      $schema: "https://example.test/opencode.json",
+      model: "keep-me",
+      mcp: {
+        other: { type: "local", command: ["other"] },
+        milestack: {
+          type: "local",
+          command: ["milestack", "mcp", "--project", absoluteProjectRoot],
+          enabled: true,
+        },
+      },
+    });
+
+    const matching = JSON.stringify(
+      {
+        mcp: {
+          milestack: {
+            type: "local",
+            command: ["milestack", "mcp", "--project", absoluteProjectRoot],
+            enabled: true,
+            timeout: 10000,
+          },
+        },
+      },
+      null,
+      2,
+    );
+    writeFileSync(opencodePath, matching, "utf8");
+    const matchingBytes = readFileSync(opencodePath, "utf8");
+    const [matchingResult] = configureProjectMcpClients(projectRoot, ["opencode"]);
+    expect(matchingResult?.action).toBe("unchanged");
+    expect(readFileSync(opencodePath, "utf8")).toBe(matchingBytes);
+
+    const conflicting = JSON.stringify(
+      {
+        mcp: {
+          milestack: {
+            type: "remote",
+            url: "https://example.test/mcp",
+          },
+        },
+      },
+      null,
+      2,
+    );
+    writeFileSync(opencodePath, conflicting, "utf8");
+    const conflictingBytes = readFileSync(opencodePath, "utf8");
+    const [conflict] = configureProjectMcpClients(projectRoot, ["opencode"]);
+    expect(conflict?.action).toBe("skipped");
+    expect(readFileSync(opencodePath, "utf8")).toBe(conflictingBytes);
+
+    for (const invalid of ["{ invalid", "[]", JSON.stringify({ mcp: [] })]) {
+      writeFileSync(opencodePath, invalid, "utf8");
+      const invalidBytes = readFileSync(opencodePath, "utf8");
+      const [skipped] = configureProjectMcpClients(projectRoot, ["opencode"]);
+      expect(skipped?.action).toBe("skipped");
+      expect(readFileSync(opencodePath, "utf8")).toBe(invalidBytes);
+    }
+  });
+
+  it("leaves opencode.jsonc alone and explains the manual configuration path", () => {
+    const projectRoot = createTemporaryProject();
+    const jsoncPath = path.join(projectRoot, "opencode.jsonc");
+    const jsoncBytes = "// keep comments\n{\n  \"model\": \"keep-me\"\n}\n";
+    writeFileSync(jsoncPath, jsoncBytes, "utf8");
+
+    const [jsoncOnly] = configureProjectMcpClients(projectRoot, ["opencode"]);
+    expect(jsoncOnly?.action).toBe("skipped");
+    expect(jsoncOnly?.detail).toContain("opencode.jsonc");
+    expect(jsoncOnly?.detail).toContain("手写");
+    expect(existsSync(path.join(projectRoot, "opencode.json"))).toBe(false);
+    expect(readFileSync(jsoncPath, "utf8")).toBe(jsoncBytes);
+
+    const opencodePath = path.join(projectRoot, "opencode.json");
+    writeFileSync(
+      opencodePath,
+      JSON.stringify({ mcp: { other: { type: "local", command: ["other"] } } }, null, 2),
+      "utf8",
+    );
+    const [updated] = configureProjectMcpClients(projectRoot, ["opencode"]);
+    expect(updated?.action).toBe("updated");
+    expect(updated?.detail).toContain("opencode.jsonc");
+    expect(updated?.detail).toContain("未修改");
+    expect(readFileSync(jsoncPath, "utf8")).toBe(jsoncBytes);
+  });
+
+  it("accepts opencode through init and writes only the project config", async () => {
+    const projectRoot = createTemporaryProject();
+    const capture = outputCapture();
+
+    expect(await runCli(["init", "--project", projectRoot, "--client", "opencode"], capture.output)).toBe(0);
+    expect(capture.stdout.join(" ")).toContain("opencode.json");
+    expect(JSON.parse(readFileSync(path.join(projectRoot, "opencode.json"), "utf8"))).toMatchObject({
+      mcp: {
+        milestack: {
+          type: "local",
+          command: ["milestack", "mcp", "--project", path.resolve(projectRoot)],
+          enabled: true,
+        },
+      },
+    });
   });
 
   it("appends TOML configs without rewriting existing content and skips conflicts", () => {

@@ -8,7 +8,14 @@ import {
 } from "node:fs";
 import path from "node:path";
 
-export const projectMcpClientNames = ["claude", "cursor", "grok", "codex", "agy"] as const;
+export const projectMcpClientNames = [
+  "claude",
+  "cursor",
+  "grok",
+  "codex",
+  "opencode",
+  "agy",
+] as const;
 
 export type ProjectMcpClientName = (typeof projectMcpClientNames)[number];
 export type ProjectMcpConfigAction = "created" | "updated" | "unchanged" | "skipped";
@@ -25,9 +32,15 @@ type McpEntry = {
   args: string[];
 };
 
+type OpenCodeMcpEntry = {
+  type: "local";
+  command: string[];
+  enabled: true;
+};
+
 type ClientDefinition = {
   relativePath: string;
-  format: "json" | "toml";
+  format: "json" | "toml" | "opencode-json";
 };
 
 type SafeTarget = {
@@ -40,6 +53,7 @@ const clientDefinitions: Record<Exclude<ProjectMcpClientName, "agy">, ClientDefi
   cursor: { relativePath: ".cursor/mcp.json", format: "json" },
   grok: { relativePath: ".grok/config.toml", format: "toml" },
   codex: { relativePath: ".codex/config.toml", format: "toml" },
+  opencode: { relativePath: "opencode.json", format: "opencode-json" },
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -203,6 +217,146 @@ function configureJsonFile(
   servers.milestack = entry;
   writeFileSync(target.filePath, `${JSON.stringify(parsed, null, 2)}\n`, "utf8");
   return result(client, relativePath, "updated", `已加入 ${relativePath}，并保留原有其他配置`);
+}
+
+function matchesOpenCodeMcpEntry(value: unknown, expected: OpenCodeMcpEntry): boolean {
+  if (
+    !isRecord(value) ||
+    value.type !== expected.type ||
+    value.enabled !== expected.enabled ||
+    !Array.isArray(value.command)
+  ) {
+    return false;
+  }
+  if (value.command.length !== expected.command.length) {
+    return false;
+  }
+  return value.command.every(
+    (argument, index) =>
+      typeof argument === "string" && argument === expected.command[index],
+  );
+}
+
+function withOpenCodeJsoncNote(detail: string, hasJsonc: boolean): string {
+  return hasJsonc ? `${detail}（检测到 opencode.jsonc，未修改该文件）` : detail;
+}
+
+function createOpenCodeJsonContent(entry: OpenCodeMcpEntry): string {
+  return `${JSON.stringify(
+    {
+      $schema: "https://opencode.ai/config.json",
+      mcp: { milestack: entry },
+    },
+    null,
+    2,
+  )}\n`;
+}
+
+function configureOpenCodeJsonFile(
+  client: ProjectMcpClientName,
+  relativePath: string,
+  target: SafeTarget,
+  entry: OpenCodeMcpEntry,
+  hasJsonc: boolean,
+): ProjectMcpConfigResult {
+  if (!target.exists) {
+    if (hasJsonc) {
+      const manualEntry = JSON.stringify({ mcp: { milestack: entry } }, null, 2);
+      return result(
+        client,
+        relativePath,
+        "skipped",
+        `未创建 ${relativePath}：检测到 opencode.jsonc，请在该文件中手写以下条目（路径为 mcp.milestack）：\n${manualEntry}`,
+      );
+    }
+    createParentDirectory(target.filePath);
+    writeFileSync(target.filePath, createOpenCodeJsonContent(entry), "utf8");
+    return result(client, relativePath, "created", `已写入 ${relativePath}`);
+  }
+
+  let original: string;
+  let parsed: unknown;
+  try {
+    original = readFileSync(target.filePath, "utf8");
+    parsed = JSON.parse(original) as unknown;
+  } catch {
+    return result(
+      client,
+      relativePath,
+      "skipped",
+      withOpenCodeJsoncNote(
+        `未覆盖 ${relativePath}：JSON 无法解析，已保留原文件`,
+        hasJsonc,
+      ),
+    );
+  }
+
+  if (!isRecord(parsed)) {
+    return result(
+      client,
+      relativePath,
+      "skipped",
+      withOpenCodeJsoncNote(
+        `未覆盖 ${relativePath}：配置根值不是对象，已保留原文件`,
+        hasJsonc,
+      ),
+    );
+  }
+
+  let mcp: Record<string, unknown>;
+  if (Object.prototype.hasOwnProperty.call(parsed, "mcp")) {
+    const existingMcp = parsed.mcp;
+    if (!isRecord(existingMcp)) {
+      return result(
+        client,
+        relativePath,
+        "skipped",
+        withOpenCodeJsoncNote(
+          `未覆盖 ${relativePath}：mcp 不是对象，已保留原文件`,
+          hasJsonc,
+        ),
+      );
+    }
+    mcp = existingMcp;
+  } else {
+    mcp = {};
+    parsed.mcp = mcp;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(mcp, "milestack")) {
+    if (matchesOpenCodeMcpEntry(mcp.milestack, entry)) {
+      return result(
+        client,
+        relativePath,
+        "unchanged",
+        withOpenCodeJsoncNote(
+          `已有相同的 ${relativePath} 配置，未修改`,
+          hasJsonc,
+        ),
+      );
+    }
+    return result(
+      client,
+      relativePath,
+      "skipped",
+      withOpenCodeJsoncNote(
+        `未覆盖 ${relativePath}：已有不同的 mcp.milestack 配置，已保留原文件`,
+        hasJsonc,
+      ),
+    );
+  }
+
+  mcp.milestack = entry;
+  writeFileSync(target.filePath, `${JSON.stringify(parsed, null, 2)}\n`, "utf8");
+  return result(
+    client,
+    relativePath,
+    "updated",
+    withOpenCodeJsoncNote(
+      `已加入 ${relativePath}，并保留原有其他配置`,
+      hasJsonc,
+    ),
+  );
 }
 
 function tomlString(value: string): string {
@@ -549,6 +703,11 @@ export function configureProjectMcpClients(
     command: "milestack",
     args: ["mcp", "--project", absoluteProjectRoot],
   };
+  const openCodeEntry: OpenCodeMcpEntry = {
+    type: "local",
+    command: ["milestack", "mcp", "--project", absoluteProjectRoot],
+    enabled: true,
+  };
 
   return clients.map((client) => {
     if (client === "agy") {
@@ -570,15 +729,39 @@ export function configureProjectMcpClients(
     if (!definition) {
       throw new Error(`不支持的 MCP 客户端：${String(client)}`);
     }
-    const target = realProjectRoot === undefined
-      ? undefined
-      : resolveSafeTarget(absoluteProjectRoot, realProjectRoot, definition.relativePath);
+    if (realProjectRoot === undefined) {
+      return result(
+        client,
+        definition.relativePath,
+        "skipped",
+        `未覆盖 ${definition.relativePath}：目标路径无法安全解析到项目根内，已保留原内容`,
+      );
+    }
+    const target = resolveSafeTarget(
+      absoluteProjectRoot,
+      realProjectRoot,
+      definition.relativePath,
+    );
     if (target === undefined) {
       return result(
         client,
         definition.relativePath,
         "skipped",
         `未覆盖 ${definition.relativePath}：目标路径无法安全解析到项目根内，已保留原内容`,
+      );
+    }
+    if (definition.format === "opencode-json") {
+      const jsoncTarget = resolveSafeTarget(
+        absoluteProjectRoot,
+        realProjectRoot,
+        "opencode.jsonc",
+      );
+      return configureOpenCodeJsonFile(
+        client,
+        definition.relativePath,
+        target,
+        openCodeEntry,
+        jsoncTarget?.exists === true,
       );
     }
     return definition.format === "json"

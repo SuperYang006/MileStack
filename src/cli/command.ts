@@ -33,7 +33,7 @@ Options:
   --discover           Auto-discover the project by walking up from cwd (for mcp/status)
   --json               Output JSON format (for status command)
   --port <port>        Server port (for serve command)
-  --client <name>      Project-only MCP config for init; repeatable or comma-separated (claude, cursor, grok, codex, agy)
+  --client <name>      Project-only MCP config for init; repeatable or comma-separated (claude, cursor, grok, codex, opencode, agy)
   -h, --help           Show this help message
 `;
 
