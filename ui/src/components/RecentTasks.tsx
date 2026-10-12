@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import { ChevronDown, ChevronRight, ArrowUpRight, RotateCcw, Archive } from "lucide-react";
 import { EmptyState } from "./EmptyState";
 import type { TaskSummary } from "../types";
@@ -31,12 +31,30 @@ export const RecentTasks: React.FC<RecentTasksProps> = ({
   onSelectTask,
   onReopenTask,
 }) => {
+  const listRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isExpanded || !hasMore) return;
+
+    const handleWindowScroll = () => {
+      // Wide screens scroll this list element; narrow screens scroll the page.
+      if (window.innerWidth >= 1024 || isLoadingMore) return;
+      const list = listRef.current;
+      if (!list) return;
+      const distanceToViewportBottom = list.getBoundingClientRect().bottom - window.innerHeight;
+      if (distanceToViewportBottom <= 48) onLoadMore();
+    };
+
+    window.addEventListener("scroll", handleWindowScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleWindowScroll);
+  }, [hasMore, isExpanded, isLoadingMore, onLoadMore]);
+
   return (
-    <section className="rounded-lg border border-zinc-800/80 bg-zinc-900/30 overflow-hidden">
+    <section className="rounded-lg border border-zinc-800/80 bg-zinc-900/30 overflow-hidden lg:h-full lg:min-h-0 lg:flex lg:flex-col">
       <button
         type="button"
         onClick={onToggleExpanded}
-        className="w-full px-4 py-2 bg-zinc-900/50 hover:bg-zinc-900 flex items-center justify-between text-left transition-colors"
+        className="w-full shrink-0 px-4 py-2 bg-zinc-900/50 hover:bg-zinc-900 flex items-center justify-between text-left transition-colors"
       >
         <div className="flex items-center space-x-2">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500/80" />
@@ -52,7 +70,7 @@ export const RecentTasks: React.FC<RecentTasksProps> = ({
       </button>
 
       {isExpanded && (
-        <div className="p-3">
+        <div className="p-3 lg:min-h-0 lg:flex-1">
           {isLoading ? (
             <div className="py-6 text-center text-[11px] font-mono text-zinc-600">
               正在加载已完成归档...
@@ -72,7 +90,8 @@ export const RecentTasks: React.FC<RecentTasksProps> = ({
             />
           ) : (
             <div
-              className="max-h-80 overflow-y-auto pr-1"
+              ref={listRef}
+              className="overflow-visible pr-1 lg:h-full lg:overflow-y-auto"
               onScroll={(event) => {
                 const target = event.currentTarget;
                 const distanceToBottom =
@@ -93,7 +112,7 @@ export const RecentTasks: React.FC<RecentTasksProps> = ({
                       onClick={() => onSelectTask(task.id)}
                     >
                       <TaskIdBadge taskId={task.id} variant="muted" />
-                      <span className="text-zinc-400 truncate group-hover:text-zinc-200 transition-colors">
+                      <span className="flex-1 min-w-0 text-zinc-400 line-clamp-2 break-words group-hover:text-zinc-200 transition-colors">
                         {task.title}
                       </span>
                     </div>

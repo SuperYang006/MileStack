@@ -178,7 +178,7 @@ export const DashboardPage: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-zinc-950 text-zinc-100 pb-16 selection:bg-cyan-500/30 selection:text-cyan-200">
+    <div className="min-h-screen flex flex-col bg-zinc-950 text-zinc-100 pb-16 lg:pb-0 selection:bg-cyan-500/30 selection:text-cyan-200">
       {/* Header */}
       <Header
         project={status.project}
@@ -197,7 +197,7 @@ export const DashboardPage: React.FC = () => {
       />
 
       {/* Main Content Area */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 w-full space-y-6">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 w-full space-y-6 lg:flex lg:h-[calc(100vh-4rem)] lg:min-h-0 lg:flex-col lg:space-y-3 lg:overflow-hidden">
         {/* Blocked Section (Top priority when tasks are blocked) */}
         <BlockedTasks
           tasks={status.blocked}
@@ -210,10 +210,10 @@ export const DashboardPage: React.FC = () => {
           onSelectTask={(id) => setSelectedTaskId(id)}
         />
 
-        {/* Current & Next Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-          {/* Left Column: Currently running */}
-          <div className="space-y-6">
+        {/* Four queue regions: wide screens use a fixed 2x2 viewport grid; narrow screens flow normally. */}
+        <div className="grid grid-cols-1 gap-6 lg:flex-1 lg:min-h-0 lg:grid-cols-2 lg:grid-rows-2 lg:items-stretch lg:gap-3">
+          {/* Top-left: review status and currently running tasks share one scroll region. */}
+          <div className="space-y-3 lg:min-h-0 lg:overflow-y-auto">
             <ReviewTasks
               tasks={status.inReview}
               onApprove={(id) => approveTaskMutation.mutate(id)}
@@ -228,8 +228,23 @@ export const DashboardPage: React.FC = () => {
               onSelectTask={(id) => setSelectedTaskId(id)}
               onReleaseTask={(id) => releaseTaskMutation.mutate(id)}
             />
+          </div>
 
-            {/* Inbox Section */}
+          {/* Top-right: ready queue. */}
+          <div className="lg:min-h-0 lg:overflow-y-auto">
+            <NextTasks
+              tasks={status.next}
+              allTasks={allTasks}
+              onReorder={(id, dir) => reorderTaskMutation.mutate({ taskId: id, direction: dir })}
+              onReturnToInbox={(id) => returnReadyMutation.mutate(id)}
+              onDeleteTask={(id) => deleteReadyMutation.mutate(id)}
+              onSelectTask={(id) => setSelectedTaskId(id)}
+              onOpenBriefing={(task) => setBriefingTask(task)}
+            />
+          </div>
+
+          {/* Bottom-left: inbox. */}
+          <div className="lg:min-h-0 lg:overflow-y-auto">
             <InboxTasks
               tasks={status.inbox}
               allTasks={allTasks}
@@ -241,19 +256,8 @@ export const DashboardPage: React.FC = () => {
             />
           </div>
 
-          {/* Right Column: Next Tasks (Ready queue) */}
-          <div className="space-y-6">
-            <NextTasks
-              tasks={status.next}
-              allTasks={allTasks}
-              onReorder={(id, dir) => reorderTaskMutation.mutate({ taskId: id, direction: dir })}
-              onReturnToInbox={(id) => returnReadyMutation.mutate(id)}
-              onDeleteTask={(id) => deleteReadyMutation.mutate(id)}
-              onSelectTask={(id) => setSelectedTaskId(id)}
-              onOpenBriefing={(task) => setBriefingTask(task)}
-            />
-
-            {/* Recently Completed */}
+          {/* Bottom-right: completed archive keeps its own paged scroll region. */}
+          <div className="lg:min-h-0">
             <RecentTasks
               tasks={completedTasks}
               totalCount={status.counts.completed}

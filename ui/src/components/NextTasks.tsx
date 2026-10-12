@@ -142,7 +142,7 @@ export const NextTasks: React.FC<NextTasksProps> = ({
                     className="flex-1 min-w-0 cursor-pointer"
                     onClick={() => onSelectTask(task.id)}
                   >
-                    <div className="flex items-center space-x-2 truncate">
+                    <div className="flex items-start space-x-2 min-w-0">
                       {/* Status indicator dot */}
                       <span
                         className={`w-1.5 h-1.5 rounded-full shrink-0 ${
@@ -155,7 +155,7 @@ export const NextTasks: React.FC<NextTasksProps> = ({
 
                       <TaskIdBadge taskId={task.id} variant="muted" />
 
-                      <h3 className="text-xs font-mono font-medium text-zinc-200 truncate group-hover:text-indigo-300 transition-colors">
+                      <h3 className="flex-1 min-w-0 text-xs font-mono font-medium text-zinc-200 line-clamp-2 break-words group-hover:text-indigo-300 transition-colors">
                         {task.title}
                       </h3>
 

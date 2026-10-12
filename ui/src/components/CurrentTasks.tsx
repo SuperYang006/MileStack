@@ -93,7 +93,7 @@ export const CurrentTasks: React.FC<CurrentTasksProps> = ({
                       className="flex-1 min-w-0 cursor-pointer group/title"
                       onClick={() => onSelectTask(task.id)}
                     >
-                      <h3 className="text-xs font-mono font-semibold text-zinc-100 group-hover/title:text-cyan-400 transition-colors leading-relaxed">
+                      <h3 className="text-xs font-mono font-semibold text-zinc-100 line-clamp-2 break-words group-hover/title:text-cyan-400 transition-colors leading-relaxed">
                         {task.title}
                       </h3>
                     </div>

@@ -14,7 +14,6 @@ import {
   Terminal,
   GitBranch,
 } from "lucide-react";
-import { EmptyState } from "./EmptyState";
 import type { TaskSummary, TaskDetails } from "../types";
 import { TaskIdBadge } from "./CopyTaskIdButton";
 import { apiClient } from "../api/client";
@@ -107,9 +106,9 @@ const ReviewTaskItem: React.FC<{
       {/* Top Header Bar */}
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0 cursor-pointer" onClick={() => onSelectTask(task.id)}>
-          <div className="flex items-center space-x-2 truncate">
+          <div className="flex items-start space-x-2 min-w-0">
             <TaskIdBadge taskId={task.id} variant="muted" />
-            <h3 className="text-xs font-medium text-zinc-100 truncate hover:text-violet-300 transition-colors">
+            <h3 className="flex-1 min-w-0 text-xs font-medium text-zinc-100 line-clamp-2 break-words hover:text-violet-300 transition-colors">
               {task.title}
             </h3>
             {riskBadge}
@@ -346,13 +345,10 @@ export const ReviewTasks: React.FC<ReviewTasksProps> = ({
 
       <div className="p-3">
         {tasks.length === 0 ? (
-          <EmptyState
-            icon={CheckCircle2}
-            title="暂无待审核成果"
-            description="当前所有阶段性输出已完成验收，等待新的任务提交审核"
-            tag="全部已验收"
-            variant="violet"
-          />
+          <div className="flex items-center gap-2 rounded border border-dashed border-violet-900/40 bg-violet-950/10 px-3 py-2 text-[11px] font-mono text-violet-300/70">
+            <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-violet-400/80" />
+            <span>暂无待审核任务 · 所有阶段性输出已完成验收</span>
+          </div>
         ) : (
           <div className="space-y-2.5">
             {tasks.map((task) => (

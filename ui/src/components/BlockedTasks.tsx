@@ -12,8 +12,8 @@ export const BlockedTasks: React.FC<BlockedTasksProps> = ({ tasks, onSelectTask 
   if (tasks.length === 0) return null;
 
   return (
-    <section className="rounded-lg border border-rose-900/40 bg-rose-950/20 backdrop-blur-xs overflow-hidden">
-      <div className="px-4 py-2.5 border-b border-rose-900/30 flex items-center justify-between">
+    <section className="rounded-lg border border-rose-900/40 bg-rose-950/20 backdrop-blur-xs overflow-hidden lg:flex lg:max-h-[20vh] lg:min-h-0 lg:shrink-0 lg:flex-col">
+      <div className="px-4 py-2.5 border-b border-rose-900/30 flex items-center justify-between shrink-0">
         <div className="flex items-center space-x-2">
           <span className="w-2 h-2 rounded-full bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.9)] animate-pulse" />
           <h2 className="text-xs font-mono font-bold tracking-wider text-rose-300 uppercase">
@@ -25,7 +25,7 @@ export const BlockedTasks: React.FC<BlockedTasksProps> = ({ tasks, onSelectTask 
         </span>
       </div>
 
-      <div className="p-3 space-y-2.5">
+      <div className="p-3 space-y-2.5 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
         {tasks.map((task) => (
           <div
             key={task.id}
@@ -36,7 +36,7 @@ export const BlockedTasks: React.FC<BlockedTasksProps> = ({ tasks, onSelectTask 
               <div className="flex-1 min-w-0">
                 <div className="flex items-center space-x-2.5 mb-1.5">
                   <TaskIdBadge taskId={task.id} variant="rose" />
-                  <h3 className="text-xs font-mono font-semibold text-zinc-100 group-hover:text-rose-300 transition-colors truncate">
+                  <h3 className="flex-1 min-w-0 text-xs font-mono font-semibold text-zinc-100 group-hover:text-rose-300 transition-colors line-clamp-2 break-words">
                     {task.title}
                   </h3>
                 </div>

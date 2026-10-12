@@ -93,11 +93,11 @@ export const ExecutionFlowView: React.FC<ExecutionFlowViewProps> = ({
   }
 
   return (
-    <section className="rounded-lg border border-zinc-800/90 bg-zinc-900/40 backdrop-blur-xs overflow-hidden">
+    <section className="rounded-lg border border-zinc-800/90 bg-zinc-900/40 backdrop-blur-xs overflow-hidden lg:flex lg:max-h-[30vh] lg:min-h-0 lg:shrink-0 lg:flex-col">
       <button
         type="button"
         onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full px-4 py-2.5 bg-zinc-900/60 hover:bg-zinc-900 flex items-center justify-between text-left transition-colors cursor-pointer"
+        className="w-full shrink-0 px-4 py-2.5 bg-zinc-900/60 hover:bg-zinc-900 flex items-center justify-between text-left transition-colors cursor-pointer"
       >
         <div className="flex items-center space-x-2">
           <GitFork className="w-3.5 h-3.5 text-indigo-400" />
@@ -121,7 +121,7 @@ export const ExecutionFlowView: React.FC<ExecutionFlowViewProps> = ({
       </button>
 
       {isExpanded && (
-        <div className="p-4 space-y-6">
+        <div className="p-4 space-y-6 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
           {graphs.map((graph: ConnectedDagGraph) => (
             <div
               key={graph.id}

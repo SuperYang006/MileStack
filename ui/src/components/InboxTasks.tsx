@@ -76,9 +76,9 @@ export const InboxTasks: React.FC<InboxTasksProps> = ({
                     className="flex-1 min-w-0 cursor-pointer"
                     onClick={() => onSelectTask(task.id)}
                   >
-                    <div className="flex items-center space-x-2 truncate">
+                    <div className="flex items-start space-x-2 min-w-0">
                       <TaskIdBadge taskId={task.id} variant="muted" />
-                      <h3 className="text-xs font-mono text-zinc-300 group-hover:text-amber-300 transition-colors truncate">
+                      <h3 className="flex-1 min-w-0 text-xs font-mono text-zinc-300 line-clamp-2 break-words group-hover:text-amber-300 transition-colors">
                         {task.title}
                       </h3>
                       <span
