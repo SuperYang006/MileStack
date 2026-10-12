@@ -229,6 +229,15 @@ describe("TaskService", () => {
 
     const status = service.getProjectStatus({ projectId: "project-1" });
     expect(status.project.name).toBe("MileStack");
+    expect(status.counts).toEqual({
+      inbox: 1,
+      ready: 2,
+      running: 1,
+      blocked: 1,
+      inReview: 0,
+      completed: 3,
+      total: 8,
+    });
     expect(status.current.map((task) => task.id)).toEqual(["running-task"]);
     expect(status.next.map((task) => task.id)).toEqual([
       "ready-first",

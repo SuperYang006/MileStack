@@ -4,6 +4,8 @@ import type {
   CreateTaskPayload,
   TaskSummary,
   EditInboxTaskPayload,
+  TaskPage,
+  TaskStatus,
 } from "../types.js";
 import { initialProjectStatus, sampleTaskDetails } from "./mock-data.js";
 
@@ -15,7 +17,33 @@ function loadStoredStatus(): ProjectStatus {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const stored = JSON.parse(raw) as ProjectStatus;
-      return { ...stored, inReview: stored.inReview ?? [] };
+      const normalized = {
+        ...stored,
+        current: stored.current ?? [],
+        next: stored.next ?? [],
+        blocked: stored.blocked ?? [],
+        inReview: stored.inReview ?? [],
+        inbox: stored.inbox ?? [],
+        recentlyCompleted: stored.recentlyCompleted ?? [],
+      };
+      return {
+        ...normalized,
+        counts: {
+          inbox: normalized.inbox.length,
+          ready: normalized.next.length,
+          running: normalized.current.length,
+          blocked: normalized.blocked.length,
+          inReview: normalized.inReview.length,
+          completed: normalized.recentlyCompleted.length,
+          total:
+            normalized.current.length +
+            normalized.next.length +
+            normalized.blocked.length +
+            normalized.inReview.length +
+            normalized.inbox.length +
+            normalized.recentlyCompleted.length,
+        },
+      };
     }
   } catch {
     // fallback
@@ -78,6 +106,55 @@ export const apiClient = {
 
     // Mock fallback
     return loadStoredStatus();
+  },
+
+  async listTasks(
+    status: TaskStatus,
+    limit = 100,
+    cursor?: string,
+    projectId?: string,
+  ): Promise<TaskPage> {
+    const pageSize = Number.isFinite(limit)
+      ? Math.min(Math.max(Math.trunc(limit), 1), 100)
+      : 100;
+    const params = new URLSearchParams({ status, limit: String(pageSize) });
+    if (cursor) params.set("cursor", cursor);
+    if (projectId) params.set("projectId", projectId);
+
+    try {
+      const res = await fetch(`/api/tasks?${params.toString()}`, {
+        signal: AbortSignal.timeout(2000),
+      });
+      if (res.ok) {
+        backendAvailable = true;
+        return (await res.json()) as TaskPage;
+      }
+    } catch {
+      backendAvailable = false;
+    }
+
+    const stored = loadStoredStatus();
+    const tasksByStatus: Record<TaskStatus, TaskSummary[]> = {
+      inbox: stored.inbox,
+      ready: stored.next,
+      running: stored.current,
+      blocked: stored.blocked,
+      in_review: stored.inReview,
+      completed: stored.recentlyCompleted,
+    };
+    const allTasks = tasksByStatus[status];
+    const offset = cursor?.startsWith("mock:")
+      ? Number.parseInt(cursor.slice("mock:".length), 10)
+      : 0;
+    const startIndex = Number.isFinite(offset) && offset >= 0 ? offset : 0;
+    const tasks = allTasks.slice(startIndex, startIndex + pageSize);
+    const hasMore = startIndex + tasks.length < allTasks.length;
+    return {
+      status,
+      tasks,
+      nextCursor: hasMore ? `mock:${startIndex + tasks.length}` : null,
+      hasMore,
+    };
   },
 
   async getTaskDetails(taskId: string, projectId?: string): Promise<TaskDetails> {

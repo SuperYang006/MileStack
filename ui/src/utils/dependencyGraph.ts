@@ -71,7 +71,10 @@ export interface ConnectedDagGraph {
 /**
  * 汇总项目所有板块任务形成 ID 映射表
  */
-export function buildTaskIndex(status: ProjectStatus): Map<string, TaskSummary> {
+export function buildTaskIndex(
+  status: ProjectStatus,
+  additionalTasks: TaskSummary[] = [],
+): Map<string, TaskSummary> {
   const map = new Map<string, TaskSummary>();
   const all = [
     ...status.current,
@@ -80,6 +83,7 @@ export function buildTaskIndex(status: ProjectStatus): Map<string, TaskSummary> 
     ...status.blocked,
     ...status.inbox,
     ...status.recentlyCompleted,
+    ...additionalTasks,
   ];
   for (const t of all) {
     map.set(t.id, t);
@@ -254,8 +258,11 @@ export function computeTransitiveReduction(
  * 4. 忽略传递依赖造成的冗余边；
  * 5. 多个互不相连的子图分别输出独立的连通拓扑，互不混淆。
  */
-export function buildConnectedDagGraphs(status: ProjectStatus): ConnectedDagGraph[] {
-  const allTasks = buildTaskIndex(status);
+export function buildConnectedDagGraphs(
+  status: ProjectStatus,
+  additionalCompletedTasks: TaskSummary[] = [],
+): ConnectedDagGraph[] {
+  const allTasks = buildTaskIndex(status, additionalCompletedTasks);
 
   // 1. 提取活跃任务集合
   const activeTasks = [
@@ -275,7 +282,15 @@ export function buildConnectedDagGraphs(status: ProjectStatus): ConnectedDagGrap
   }
 
   // 若已完成任务作为分叉源（在活跃任务中拥有 >= 2 个下游分支），将其作为根输入纳入候选拓扑
-  const forkCompletedRoots = status.recentlyCompleted.filter((t) => {
+  const completedTasks = Array.from(
+    new Map(
+      [...status.recentlyCompleted, ...additionalCompletedTasks].map((task) => [
+        task.id,
+        task,
+      ]),
+    ).values(),
+  );
+  const forkCompletedRoots = completedTasks.filter((t) => {
     return (activeDownstreamCount.get(t.id) || 0) >= 2;
   });
 

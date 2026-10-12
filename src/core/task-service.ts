@@ -1347,20 +1347,21 @@ export class TaskService {
     );
     const recentlyCompleted = completedSummaries
       .slice(0, this.recentlyCompletedLimit);
+    const counts = {
+      inbox: inboxTasks.length,
+      ready: nextTasks.length,
+      running: currentTasks.length,
+      blocked: blockedTasks.length,
+      inReview: inReviewTasks.length,
+      completed: completedTasks.length,
+      total: tasks.length,
+    };
 
     if (parsed.view === "compact") {
       const compact = {
         view: "compact" as const,
         project: projectToSummary(project),
-        counts: {
-          inbox: inboxTasks.length,
-          ready: nextTasks.length,
-          running: currentTasks.length,
-          blocked: blockedTasks.length,
-          inReview: inReviewTasks.length,
-          completed: completedTasks.length,
-          total: tasks.length,
-        },
+        counts,
         current: current.slice(0, compactProjectStatusLimits.current),
         next: next.slice(0, compactProjectStatusLimits.next),
         nextRunnable:
@@ -1387,6 +1388,7 @@ export class TaskService {
 
     return projectStatusSchema.parse({
       project: projectToSummary(project),
+      counts,
       current,
       next,
       blocked,

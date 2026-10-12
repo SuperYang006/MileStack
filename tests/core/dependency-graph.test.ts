@@ -30,7 +30,48 @@ function makeSummary(
   };
 }
 
+const testCounts = {
+  inbox: 0,
+  ready: 0,
+  running: 0,
+  blocked: 0,
+  inReview: 0,
+  completed: 0,
+  total: 0,
+};
+
 describe("dependencyGraph calculation utils", () => {
+  it("merges paged completed tasks into the dependency index", () => {
+    const archived = makeSummary({
+      id: "archived-task",
+      title: "已归档前置任务",
+      status: "completed",
+    });
+    const nextTask = makeSummary({
+      id: "next-task",
+      title: "依赖归档任务的待办",
+      status: "ready",
+      dependencyIds: [archived.id],
+    });
+    const status: ProjectStatus = {
+      project: { id: "proj-1", name: "Test", goal: null },
+      counts: testCounts,
+      current: [],
+      next: [nextTask],
+      inReview: [],
+      blocked: [],
+      inbox: [],
+      recentlyCompleted: [],
+    };
+
+    const taskIndex = buildTaskIndex(status, [archived]);
+    const detail = computeTaskDependencyDetail(nextTask, taskIndex);
+
+    expect(taskIndex.get(archived.id)).toEqual(archived);
+    expect(detail.areAllDependenciesMet).toBe(true);
+    expect(detail.isRunnable).toBe(true);
+  });
+
   it("correctly identifies runnable tasks and downstream unblocks", () => {
     const taskA = makeSummary({ id: "task-a", title: "前置任务 A", status: "completed" });
     const taskB = makeSummary({
@@ -48,6 +89,7 @@ describe("dependencyGraph calculation utils", () => {
 
     const status: ProjectStatus = {
       project: { id: "proj-1", name: "Test", goal: null },
+      counts: testCounts,
       current: [],
       next: [taskB, taskC],
       inReview: [],
@@ -86,6 +128,7 @@ describe("dependencyGraph calculation utils", () => {
 
     const status: ProjectStatus = {
       project: { id: "proj-1", name: "Test", goal: null },
+      counts: testCounts,
       current: [],
       next: [],
       inReview: [],
@@ -113,6 +156,7 @@ describe("dependencyGraph calculation utils", () => {
 
     const status: ProjectStatus = {
       project: { id: "proj-1", name: "Test", goal: null },
+      counts: testCounts,
       current: [],
       next: [ready1, ready2, ready3Waiting],
       inReview: [],
@@ -148,6 +192,7 @@ describe("dependencyGraph calculation utils", () => {
   it("handles empty graph deterministically", () => {
     const status: ProjectStatus = {
       project: { id: "proj-1", name: "Test", goal: null },
+      counts: testCounts,
       current: [],
       next: [],
       inReview: [],
@@ -166,6 +211,7 @@ describe("dependencyGraph calculation utils", () => {
 
     const status: ProjectStatus = {
       project: { id: "proj-1", name: "Test", goal: null },
+      counts: testCounts,
       current: [],
       next: [taskA],
       inReview: [],
@@ -201,6 +247,7 @@ describe("dependencyGraph calculation utils", () => {
 
     const status: ProjectStatus = {
       project: { id: "proj-1", name: "Test", goal: null },
+      counts: testCounts,
       current: [],
       next: [root],
       inReview: [],
@@ -235,6 +282,7 @@ describe("dependencyGraph calculation utils", () => {
 
     const status: ProjectStatus = {
       project: { id: "proj-1", name: "Test", goal: null },
+      counts: testCounts,
       current: [],
       next: [taskX, taskM],
       inReview: [],
@@ -310,6 +358,7 @@ describe("dependencyGraph calculation utils", () => {
 
     const status: ProjectStatus = {
       project: { id: "proj-1", name: "MileStack", goal: null },
+      counts: testCounts,
       current: [],
       next: [mcpTools, httpUi, isolatedTask],
       inReview: [],

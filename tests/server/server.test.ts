@@ -229,7 +229,9 @@ describe("HTTP API Server", () => {
       url: "/api/status?view=full",
     });
     expect(full.statusCode).toBe(200);
-    expect(JSON.parse(full.payload).next).toHaveLength(7);
+    const fullBody = JSON.parse(full.payload);
+    expect(fullBody.next).toHaveLength(7);
+    expect(fullBody.counts).toMatchObject({ ready: 7, completed: 0, total: 7 });
 
     const firstPage = await serverInstance.app.inject({
       method: "GET",

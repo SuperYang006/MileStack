@@ -54,6 +54,16 @@ export interface TaskSummary {
 
 export type RiskLevel = "low" | "medium" | "high";
 
+export interface TaskStatusCounts {
+  inbox: number;
+  ready: number;
+  running: number;
+  blocked: number;
+  inReview: number;
+  completed: number;
+  total: number;
+}
+
 export interface ReviewFinding {
   issue: string;
   suggestion: string;
@@ -131,12 +141,20 @@ export interface TaskEvent {
 
 export interface ProjectStatus {
   project: ProjectSummary;
+  counts: TaskStatusCounts;
   current: TaskSummary[];
   next: TaskSummary[];
   blocked: TaskSummary[];
   inReview: TaskSummary[];
   inbox: TaskSummary[];
   recentlyCompleted: TaskSummary[];
+}
+
+export interface TaskPage {
+  status: TaskStatus;
+  tasks: TaskSummary[];
+  nextCursor: string | null;
+  hasMore: boolean;
 }
 
 export interface TaskDetails {

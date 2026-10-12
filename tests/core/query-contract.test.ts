@@ -75,6 +75,15 @@ describe("core query contract", () => {
     expect(
       projectStatusSchema.parse({
         project: { id: "project-1", name: "MileStack", goal: null },
+        counts: {
+          inbox: 0,
+          ready: 1,
+          running: 0,
+          blocked: 0,
+          inReview: 0,
+          completed: 0,
+          total: 1,
+        },
         current: [],
         next: [summary],
         blocked: [],

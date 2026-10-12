@@ -150,18 +150,6 @@ export const taskEventSchema = z
   })
   .strict();
 
-export const projectStatusSchema = z
-  .object({
-    project: projectSummarySchema,
-    current: z.array(taskSummarySchema),
-    next: z.array(taskSummarySchema),
-    blocked: z.array(taskSummarySchema),
-    inReview: z.array(taskSummarySchema),
-    inbox: z.array(taskSummarySchema),
-    recentlyCompleted: z.array(taskSummarySchema),
-  })
-  .strict();
-
 const taskStatusCountSchema = z
   .object({
     inbox: z.number().int().nonnegative(),
@@ -171,6 +159,19 @@ const taskStatusCountSchema = z
     inReview: z.number().int().nonnegative(),
     completed: z.number().int().nonnegative(),
     total: z.number().int().nonnegative(),
+  })
+  .strict();
+
+export const projectStatusSchema = z
+  .object({
+    project: projectSummarySchema,
+    counts: taskStatusCountSchema,
+    current: z.array(taskSummarySchema),
+    next: z.array(taskSummarySchema),
+    blocked: z.array(taskSummarySchema),
+    inReview: z.array(taskSummarySchema),
+    inbox: z.array(taskSummarySchema),
+    recentlyCompleted: z.array(taskSummarySchema),
   })
   .strict();
 

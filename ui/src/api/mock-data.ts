@@ -6,6 +6,15 @@ export const initialProjectStatus: ProjectStatus = {
     name: "MileStack",
     goal: "本地优先的项目进度与任务上下文数据库，提供开发者与 AI 协同事实源。",
   },
+  counts: {
+    inbox: 2,
+    ready: 3,
+    running: 1,
+    blocked: 1,
+    inReview: 0,
+    completed: 2,
+    total: 9,
+  },
   current: [
     {
       id: "task-004",

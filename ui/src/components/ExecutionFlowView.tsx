@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { GitFork, GitMerge, ArrowDown, ArrowRight, Zap, ChevronDown, ChevronRight, CheckCircle2, Clock } from "lucide-react";
-import type { ProjectStatus, TaskStatus } from "../types";
+import type { ProjectStatus, TaskStatus, TaskSummary } from "../types";
 import {
   buildConnectedDagGraphs,
   type ConnectedDagGraph,
@@ -10,6 +10,7 @@ import { TaskIdBadge } from "./CopyTaskIdButton";
 
 interface ExecutionFlowViewProps {
   status: ProjectStatus;
+  additionalCompletedTasks?: TaskSummary[];
   onSelectTask: (taskId: string) => void;
 }
 
@@ -79,9 +80,13 @@ function getCardStyle(task: DagStageTask) {
   return "bg-zinc-900/80 border-zinc-800 hover:border-zinc-700";
 }
 
-export const ExecutionFlowView: React.FC<ExecutionFlowViewProps> = ({ status, onSelectTask }) => {
+export const ExecutionFlowView: React.FC<ExecutionFlowViewProps> = ({
+  status,
+  additionalCompletedTasks = [],
+  onSelectTask,
+}) => {
   const [isExpanded, setIsExpanded] = useState(true);
-  const graphs = buildConnectedDagGraphs(status);
+  const graphs = buildConnectedDagGraphs(status, additionalCompletedTasks);
 
   if (graphs.length === 0) {
     return null;

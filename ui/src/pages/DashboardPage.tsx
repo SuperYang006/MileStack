@@ -1,5 +1,10 @@
 import React, { useState, useMemo } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  useQuery,
+  useInfiniteQuery,
+  useMutation,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { apiClient } from "../api/client";
 import { Header } from "../components/Header";
 import { CurrentTasks } from "../components/CurrentTasks";
@@ -24,6 +29,7 @@ export const DashboardPage: React.FC = () => {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [briefingTask, setBriefingTask] = useState<TaskSummary | null>(null);
   const [editingInboxTask, setEditingInboxTask] = useState<TaskSummary | TaskDetails | null>(null);
+  const [isArchiveExpanded, setIsArchiveExpanded] = useState(false);
 
   // Queries
   const {
@@ -43,6 +49,26 @@ export const DashboardPage: React.FC = () => {
     refetchInterval: 10000,
   });
 
+  const completedTasksQuery = useInfiniteQuery({
+    queryKey: ["completedTasks"],
+    queryFn: ({ pageParam }) =>
+      apiClient.listTasks("completed", 100, pageParam ?? undefined),
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) =>
+      lastPage.hasMore ? lastPage.nextCursor ?? undefined : undefined,
+    enabled: isArchiveExpanded,
+  });
+
+  const completedTasks = useMemo(() => {
+    const loaded = completedTasksQuery.data?.pages.flatMap((page) => page.tasks) ?? [];
+    return Array.from(new Map(loaded.map((task) => [task.id, task])).values());
+  }, [completedTasksQuery.data]);
+
+  const invalidateProjectQueries = () => {
+    void queryClient.invalidateQueries({ queryKey: ["projectStatus"] });
+    void queryClient.invalidateQueries({ queryKey: ["completedTasks"] });
+  };
+
   const { data: selectedDetails, isLoading: isDetailsLoading, isError: isDetailsError } = useQuery({
     queryKey: ["taskDetails", selectedTaskId],
     queryFn: () => (selectedTaskId ? apiClient.getTaskDetails(selectedTaskId) : null),
@@ -53,24 +79,24 @@ export const DashboardPage: React.FC = () => {
   // Mutations
   const createTaskMutation = useMutation({
     mutationFn: (payload: CreateTaskPayload) => apiClient.createTask(payload),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["projectStatus"] }),
+    onSuccess: invalidateProjectQueries,
   });
 
   const createTasksBatchMutation = useMutation({
     mutationFn: (payloads: CreateTaskPayload[]) => apiClient.createTasks(payloads),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["projectStatus"] }),
+    onSuccess: invalidateProjectQueries,
   });
   const confirmInboxMutation = useMutation({
     mutationFn: ({ taskId, riskLevel }: { taskId: string; riskLevel?: RiskLevel }) =>
       apiClient.confirmInboxTask(taskId, riskLevel),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["projectStatus"] }),
+    onSuccess: invalidateProjectQueries,
   });
 
   const editInboxTaskMutation = useMutation({
     mutationFn: ({ taskId, payload }: { taskId: string; payload: EditInboxTaskPayload }) =>
       apiClient.editInboxTask(taskId, payload),
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ["projectStatus"] });
+      invalidateProjectQueries();
       queryClient.invalidateQueries({ queryKey: ["taskDetails", variables.taskId] });
     },
   });
@@ -79,7 +105,7 @@ export const DashboardPage: React.FC = () => {
   const deleteInboxMutation = useMutation({
     mutationFn: (taskId: string) => apiClient.deleteInboxTask(taskId),
     onSuccess: (_, taskId) => {
-      queryClient.invalidateQueries({ queryKey: ["projectStatus"] });
+      invalidateProjectQueries();
       queryClient.invalidateQueries({ queryKey: ["taskDetails", taskId] });
       if (selectedTaskId === taskId) setSelectedTaskId(null);
     },
@@ -88,7 +114,7 @@ export const DashboardPage: React.FC = () => {
   const returnReadyMutation = useMutation({
     mutationFn: (taskId: string) => apiClient.returnReadyTaskToInbox(taskId),
     onSuccess: (_, taskId) => {
-      queryClient.invalidateQueries({ queryKey: ["projectStatus"] });
+      invalidateProjectQueries();
       queryClient.invalidateQueries({ queryKey: ["taskDetails", taskId] });
     },
   });
@@ -96,7 +122,7 @@ export const DashboardPage: React.FC = () => {
   const deleteReadyMutation = useMutation({
     mutationFn: (taskId: string) => apiClient.deleteReadyTask(taskId),
     onSuccess: (_, taskId) => {
-      queryClient.invalidateQueries({ queryKey: ["projectStatus"] });
+      invalidateProjectQueries();
       queryClient.invalidateQueries({ queryKey: ["taskDetails", taskId] });
       if (selectedTaskId === taskId) setSelectedTaskId(null);
     },
@@ -105,18 +131,18 @@ export const DashboardPage: React.FC = () => {
   const reorderTaskMutation = useMutation({
     mutationFn: ({ taskId, direction }: { taskId: string; direction: "up" | "down" }) =>
       apiClient.reorderReadyTask(taskId, direction),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["projectStatus"] }),
+    onSuccess: invalidateProjectQueries,
   });
 
   const releaseTaskMutation = useMutation({
     mutationFn: (taskId: string) => apiClient.releaseTask(taskId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["projectStatus"] }),
+    onSuccess: invalidateProjectQueries,
   });
 
   const approveTaskMutation = useMutation({
     mutationFn: (taskId: string) => apiClient.approveTask(taskId),
     onSuccess: (_, taskId) => {
-      queryClient.invalidateQueries({ queryKey: ["projectStatus"] });
+      invalidateProjectQueries();
       queryClient.invalidateQueries({ queryKey: ["taskDetails", taskId] });
     },
   });
@@ -125,7 +151,7 @@ export const DashboardPage: React.FC = () => {
     mutationFn: ({ taskId, feedback }: { taskId: string; feedback: string }) =>
       apiClient.requestTaskChanges(taskId, feedback),
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ["projectStatus"] });
+      invalidateProjectQueries();
       queryClient.invalidateQueries({ queryKey: ["taskDetails", variables.taskId] });
     },
   });
@@ -134,11 +160,14 @@ export const DashboardPage: React.FC = () => {
     mutationFn: ({ taskId, reason }: { taskId: string; reason: string }) =>
       apiClient.reopenCompletedTask(taskId, reason),
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ["projectStatus"] });
+      invalidateProjectQueries();
       queryClient.invalidateQueries({ queryKey: ["taskDetails", variables.taskId] });
     },
   });
-  const allTasks = useMemo(() => (status ? buildTaskIndex(status) : new Map()), [status]);
+  const allTasks = useMemo(
+    () => (status ? buildTaskIndex(status, completedTasks) : new Map()),
+    [status, completedTasks],
+  );
 
   if (isStatusLoading || !status) {
     return (
@@ -156,6 +185,9 @@ export const DashboardPage: React.FC = () => {
         isBackendConnected={backendConnected}
         onRefresh={() => {
           refetch();
+          if (isArchiveExpanded) {
+            void completedTasksQuery.refetch();
+          }
           if (selectedTaskId) {
             queryClient.invalidateQueries({ queryKey: ["taskDetails", selectedTaskId] });
           }
@@ -174,6 +206,7 @@ export const DashboardPage: React.FC = () => {
         {/* Execution Flow View (Compact topology for branches and dependencies) */}
         <ExecutionFlowView
           status={status}
+          additionalCompletedTasks={completedTasks}
           onSelectTask={(id) => setSelectedTaskId(id)}
         />
 
@@ -222,7 +255,22 @@ export const DashboardPage: React.FC = () => {
 
             {/* Recently Completed */}
             <RecentTasks
-              tasks={status.recentlyCompleted}
+              tasks={completedTasks}
+              totalCount={status.counts.completed}
+              isExpanded={isArchiveExpanded}
+              onToggleExpanded={() => setIsArchiveExpanded((expanded) => !expanded)}
+              isLoading={completedTasksQuery.isLoading}
+              isError={completedTasksQuery.isError}
+              hasMore={completedTasksQuery.hasNextPage ?? false}
+              isLoadingMore={completedTasksQuery.isFetchingNextPage}
+              onLoadMore={() => {
+                if (
+                  completedTasksQuery.hasNextPage &&
+                  !completedTasksQuery.isFetchingNextPage
+                ) {
+                  void completedTasksQuery.fetchNextPage();
+                }
+              }}
               onSelectTask={(id) => setSelectedTaskId(id)}
               onReopenTask={(taskId, reason) => reopenTaskMutation.mutate({ taskId, reason })}
             />

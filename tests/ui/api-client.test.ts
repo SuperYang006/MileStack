@@ -6,7 +6,31 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("UI task details API", () => {
+describe("UI API client", () => {
+  it("loads completed task pages with the requested cursor and page size", async () => {
+    const page = {
+      status: "completed",
+      tasks: [],
+      nextCursor: "next-page",
+      hasMore: true,
+    };
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify(page), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      apiClient.listTasks("completed", 100, "cursor-value"),
+    ).resolves.toEqual(page);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/tasks?status=completed&limit=100&cursor=cursor-value",
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+  });
+
   it("rejects when the authoritative details request cannot reach the service", async () => {
     const networkError = new TypeError("network unavailable");
     const fetchMock = vi.fn<typeof fetch>().mockRejectedValue(networkError);

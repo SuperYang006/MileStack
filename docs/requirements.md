@@ -129,6 +129,16 @@ type ProjectStatus = {
     goal?: string
   }
 
+  counts: {
+    inbox: number
+    ready: number
+    running: number
+    blocked: number
+    inReview: number
+    completed: number
+    total: number
+  }
+
   current: TaskSummary[]
   next: TaskSummary[]
   blocked: TaskSummary[]
@@ -164,7 +174,8 @@ type TaskSummary = {
 - `blocked`：当前无法推进的任务；
 - `inReview`：Agent 已提交实现、等待开发者审核的任务；
 - `inbox`：尚未整理的新任务；
-- `recentlyCompleted`：最近完成的任务。
+- `recentlyCompleted`：最近完成的任务窗口；完整视图默认最多返回最近 10 条，compact 视图默认最多返回最近 3 条；
+- `counts.completed`：全部已完成任务数，不受 `recentlyCompleted` 窗口限制。
 
 ### 6.2 任务管理
 
@@ -528,7 +539,7 @@ V0 只需要一个项目状态页面，按照行动意义展示：
 3. **需要处理**：展示被阻塞的任务及所需行动；
 4. **待审核**：展示 `in_review` 任务，支持批准或填写反馈退回返工；
 5. **待整理**：展示 `inbox` 任务，支持确认、编辑或删除；
-6. **最近完成**：展示已批准完成的任务，并支持填写原因重新打开。
+6. **最近完成**：展示已批准完成的任务，并支持填写原因重新打开。完整归档在展开时通过已有的 `GET /api/tasks?status=completed` 分页接口按需加载，每次加载一页（优先使用 `limit=100`），滚动到底部且仍有下一页时自动追加；收起时不请求归档。
 
 页面还应支持：
 
@@ -536,6 +547,7 @@ V0 只需要一个项目状态页面，按照行动意义展示：
 - 展示任务依赖、等待原因以及“可执行/可并行”提示；
 - 复制任务简报；
 - 展开任务详情和语义更新时间线；
+- 归档标题使用全部完成任务数；已加载归档任务参与任务索引和依赖关系展示；
 - 必要时手动释放任务。
 
 V0 可以使用简单轮询更新页面，不要求实时推送。
