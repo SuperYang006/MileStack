@@ -130,6 +130,7 @@ interface TaskDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
   isLoading?: boolean;
+  isError?: boolean;
   onEditInboxTask?: (task: TaskDetails) => void;
   allTasks?: Map<string, TaskSummary>;
   onSelectTask?: (taskId: string) => void;
@@ -142,6 +143,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
   isOpen,
   onClose,
   isLoading = false,
+  isError = false,
   onEditInboxTask,
   allTasks = new Map(),
   onSelectTask,
@@ -262,8 +264,16 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
 
         {/* Content */}
         <div className="p-5 overflow-y-auto flex-1 space-y-5 font-mono text-xs">
-          {isLoading || !details ? (
-            <div className="py-12 text-center text-zinc-600">正在获取任务完整记录...</div>
+          {isLoading ? (
+            <div className="py-12 text-center text-zinc-500 flex flex-col items-center justify-center space-y-2">
+              <Clock className="w-5 h-5 text-zinc-500 animate-spin" />
+              <span>正在获取任务完整记录...</span>
+            </div>
+          ) : isError || !details ? (
+            <div className="py-12 text-center text-rose-400 flex flex-col items-center justify-center space-y-2">
+              <ShieldAlert className="w-5 h-5 text-rose-400" />
+              <span>获取任务详情失败，请检查服务连接并重试</span>
+            </div>
           ) : (
             <>
               {/* Title & Objective */}

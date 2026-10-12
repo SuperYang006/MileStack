@@ -1,7 +1,9 @@
 import React, { useState } from "react";
-import { X, Copy, Check, Terminal } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { X, Copy, Check, Terminal, ShieldAlert, Clock } from "lucide-react";
 import { formatKnownTaskBriefInstructions } from "../../../src/core/agent-instructions.js";
-import type { TaskSummary, ProjectSummary } from "../types";
+import { apiClient } from "../api/client";
+import type { TaskSummary, ProjectSummary, TaskDetails } from "../types";
 
 interface BriefingModalProps {
   task: TaskSummary | null;
@@ -18,20 +20,35 @@ export const BriefingModal: React.FC<BriefingModalProps> = ({
 }) => {
   const [copied, setCopied] = useState(false);
 
+  const { data: details, isLoading, isError } = useQuery<TaskDetails>({
+    queryKey: ["taskDetails", task?.id],
+    queryFn: () => (task?.id ? apiClient.getTaskDetails(task.id) : Promise.reject(new Error("No task id"))),
+    enabled: isOpen && !!task?.id,
+  });
+
   if (!isOpen || !task) return null;
 
   const waitingDeps = task.waitingFor.map((w) => `- ${w.title} (${w.status})`).join("\n");
+
+  const objectiveText = details?.task.objective || "（未提供详细目标说明）";
+  const criteriaText =
+    details?.task.acceptanceCriteria && details.task.acceptanceCriteria.length > 0
+      ? details.task.acceptanceCriteria.map((c, i) => `  ${i + 1}. ${c}`).join("\n")
+      : "  （未指定具体验收条件）";
 
   const briefingText = `# MileStack 任务简报
 
 ## 1. 项目概览
 - **项目名称**: ${project.name}
- - **项目目标**: ${project.goal || "纵览项目全局，推进每个里程碑。"}
+- **项目目标**: ${project.goal || "纵览项目全局，推进每个里程碑。"}
 
 ## 2. 目标任务
 - **Task ID**: \`${task.id}\`
 - **任务标题**: ${task.title}
 - **当前状态**: \`${task.status}\` (队列序号: #${task.queuePosition || 1})
+- **核心目标**: ${objectiveText}
+- **验收条件**:
+${criteriaText}
 - **可执行性**: ${task.runnable ? "就绪可立即执行 (无未完成前置依赖)" : "等待前置依赖"}
 ${
   task.waitingFor.length > 0
@@ -46,6 +63,7 @@ ${formatKnownTaskBriefInstructions(task.id)}
 `;
 
   const handleCopy = async () => {
+    if (isLoading || isError || !details) return;
     try {
       await navigator.clipboard.writeText(briefingText);
       setCopied(true);
@@ -74,12 +92,26 @@ ${formatKnownTaskBriefInstructions(task.id)}
         </div>
 
         <div className="p-5 overflow-y-auto flex-1 text-xs">
-          <div className="text-[11px] text-zinc-500 mb-2">
-            可直接将以下简报复制粘贴给 AI 编程助手会话：
-          </div>
-          <pre className="p-3.5 bg-zinc-900/90 border border-zinc-850 text-zinc-200 rounded text-xs overflow-x-auto whitespace-pre-wrap leading-relaxed selection:bg-cyan-500/30">
-            {briefingText}
-          </pre>
+          {isLoading ? (
+            <div className="py-12 text-center text-zinc-500 flex flex-col items-center justify-center space-y-2">
+              <Clock className="w-5 h-5 text-zinc-500 animate-spin" />
+              <span>正在获取权威任务定义（目标与验收条件）...</span>
+            </div>
+          ) : isError || !details ? (
+            <div className="py-12 text-center text-rose-400 flex flex-col items-center justify-center space-y-2">
+              <ShieldAlert className="w-5 h-5 text-rose-400" />
+              <span>获取权威任务详情失败，请检查服务连接并重试</span>
+            </div>
+          ) : (
+            <>
+              <div className="text-[11px] text-zinc-500 mb-2">
+                可直接将以下包含完整任务目标与验收条件的简报复制粘贴给 AI 编程助手：
+              </div>
+              <pre className="p-3.5 bg-zinc-900/90 border border-zinc-850 text-zinc-200 rounded text-xs overflow-x-auto whitespace-pre-wrap leading-relaxed selection:bg-cyan-500/30">
+                {briefingText}
+              </pre>
+            </>
+          )}
         </div>
 
         <div className="px-5 py-2.5 border-t border-zinc-800 bg-zinc-900/40 flex items-center justify-between">
@@ -93,10 +125,13 @@ ${formatKnownTaskBriefInstructions(task.id)}
             </button>
             <button
               onClick={handleCopy}
+              disabled={isLoading || isError || !details}
               className={`inline-flex items-center space-x-1.5 px-3 py-1 text-xs font-semibold rounded transition-colors ${
-                copied
+                isLoading || isError || !details
+                  ? "bg-zinc-800 text-zinc-500 cursor-not-allowed opacity-50"
+                  : copied
                   ? "bg-emerald-500 text-zinc-950"
-                  : "bg-zinc-100 hover:bg-white text-zinc-950 shadow-xs"
+                  : "bg-zinc-100 hover:bg-white text-zinc-950 shadow-xs cursor-pointer"
               }`}
             >
               {copied ? (

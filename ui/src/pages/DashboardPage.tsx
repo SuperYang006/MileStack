@@ -43,7 +43,7 @@ export const DashboardPage: React.FC = () => {
     refetchInterval: 10000,
   });
 
-  const { data: selectedDetails, isLoading: isDetailsLoading } = useQuery({
+  const { data: selectedDetails, isLoading: isDetailsLoading, isError: isDetailsError } = useQuery({
     queryKey: ["taskDetails", selectedTaskId],
     queryFn: () => (selectedTaskId ? apiClient.getTaskDetails(selectedTaskId) : null),
     enabled: !!selectedTaskId,
@@ -236,6 +236,7 @@ export const DashboardPage: React.FC = () => {
         isOpen={!!selectedTaskId}
         onClose={() => setSelectedTaskId(null)}
         isLoading={isDetailsLoading}
+        isError={isDetailsError}
         onEditInboxTask={(task) => setEditingInboxTask(task)}
         allTasks={allTasks}
         onSelectTask={(id) => setSelectedTaskId(id)}

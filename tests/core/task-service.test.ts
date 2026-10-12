@@ -1221,4 +1221,92 @@ describe("TaskService", () => {
     ]);
     database.close();
   });
+  it("preserves authoritative objective and acceptanceCriteria through ready -> review -> changes_requested -> ready -> re-claim -> re-submit lifecycle", async () => {
+    const projectRoot = createTemporaryProject();
+    const { database, service } = await createService(projectRoot);
+    const task = service.createTask({
+      projectId: "project-1",
+      title: "Roundtrip lifecycle task",
+      objective: "Keep objective intact across review states",
+      acceptanceCriteria: ["Criteria 1", "Criteria 2"],
+      createdBy: "developer",
+      status: "ready",
+      queuePosition: 1,
+    });
+
+    // 1. Ready state has authoritative definition
+    const initialDetails = service.getTask({ projectId: "project-1", taskId: task.task.id });
+    expect(initialDetails.task.objective).toBe("Keep objective intact across review states");
+    expect(initialDetails.task.acceptanceCriteria).toEqual(["Criteria 1", "Criteria 2"]);
+
+    // 2. Claim and run
+    const run1 = service.startTask({ projectId: "project-1", taskId: task.task.id, actorLabel: "agent-1" });
+    const runningDetails = service.getTask({ projectId: "project-1", taskId: task.task.id });
+    expect(runningDetails.task.status).toBe("running");
+    expect(runningDetails.task.objective).toBe("Keep objective intact across review states");
+    expect(runningDetails.task.acceptanceCriteria).toEqual(["Criteria 1", "Criteria 2"]);
+
+    // 3. Submit for review round 1
+    service.submitForReview({
+      projectId: "project-1",
+      taskId: task.task.id,
+      runId: run1.runId,
+      commitSha: "1111111111111111111111111111111111111111",
+      branch: "main",
+      summary: "First implementation ready for review.",
+    });
+    const inReviewDetails = service.getTask({ projectId: "project-1", taskId: task.task.id });
+    expect(inReviewDetails.task.status).toBe("in_review");
+    expect(inReviewDetails.task.objective).toBe("Keep objective intact across review states");
+    expect(inReviewDetails.task.acceptanceCriteria).toEqual(["Criteria 1", "Criteria 2"]);
+
+    // 4. Start review and request changes
+    const review1 = service.startReview({ projectId: "project-1", taskId: task.task.id });
+    const returned = service.completeReview({
+      projectId: "project-1",
+      taskId: task.task.id,
+      reviewRunId: review1.reviewRunId,
+      decision: "changes_requested",
+      summary: "Needs fixes.",
+      findings: [{ issue: "Defect found", suggestion: "Fix defect", severity: "high" }],
+    });
+    expect(returned.task.status).toBe("ready");
+    expect(returned.task.objective).toBe("Keep objective intact across review states");
+    expect(returned.task.acceptanceCriteria).toEqual(["Criteria 1", "Criteria 2"]);
+
+    // 5. Querying task after returning to ready retains authoritative definition
+    const returnedDetails = service.getTask({ projectId: "project-1", taskId: task.task.id });
+    expect(returnedDetails.task.status).toBe("ready");
+    expect(returnedDetails.task.objective).toBe("Keep objective intact across review states");
+    expect(returnedDetails.task.acceptanceCriteria).toEqual(["Criteria 1", "Criteria 2"]);
+    expect(returnedDetails.reviews).toHaveLength(1);
+    expect(returnedDetails.reviews[0]?.status).toBe("changes_requested");
+
+    // 6. Re-claim task (run 2)
+    const run2 = service.startTask({ projectId: "project-1", taskId: task.task.id, actorLabel: "agent-2" });
+    expect(run2.runId).not.toBe(run1.runId);
+    const reClaimedDetails = service.getTask({ projectId: "project-1", taskId: task.task.id });
+    expect(reClaimedDetails.task.status).toBe("running");
+    expect(reClaimedDetails.task.objective).toBe("Keep objective intact across review states");
+    expect(reClaimedDetails.task.acceptanceCriteria).toEqual(["Criteria 1", "Criteria 2"]);
+
+    // 7. Re-submit for review round 2
+    service.submitForReview({
+      projectId: "project-1",
+      taskId: task.task.id,
+      runId: run2.runId,
+      commitSha: "2222222222222222222222222222222222222222",
+      branch: "main",
+      summary: "Fixed defect in round 2.",
+    });
+    const reSubmittedDetails = service.getTask({ projectId: "project-1", taskId: task.task.id });
+    expect(reSubmittedDetails.task.status).toBe("in_review");
+    expect(reSubmittedDetails.task.objective).toBe("Keep objective intact across review states");
+    expect(reSubmittedDetails.task.acceptanceCriteria).toEqual(["Criteria 1", "Criteria 2"]);
+    expect(reSubmittedDetails.reviews).toHaveLength(2);
+    expect(reSubmittedDetails.reviews[1]?.reviewRound).toBe(2);
+    expect(reSubmittedDetails.reviews[1]?.status).toBe("pending");
+
+    database.close();
+  });
 });
