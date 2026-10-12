@@ -10,6 +10,10 @@ import {
   formatKnownTaskBriefInstructions,
   formatMcpInstructions,
 } from "../src/core/agent-instructions.js";
+import {
+  configureProjectMcpClients,
+  projectMcpClientNames,
+} from "../src/cli/project-mcp-config.js";
 import { openProjectContext } from "../src/project/project-context.js";
 
 const temporaryProjects: string[] = [];
@@ -242,5 +246,156 @@ describe("CLI entry point", () => {
         process.env.NO_COLOR = originalNoColor;
       }
     }
+  });
+});
+
+describe("project MCP configuration", () => {
+  it("creates project files for all supported clients and is idempotent", () => {
+    const projectRoot = createTemporaryProject();
+    const absoluteProjectRoot = path.resolve(projectRoot);
+
+    expect(projectMcpClientNames).toEqual(["claude", "cursor", "grok", "codex"]);
+    const firstResults = configureProjectMcpClients(projectRoot, projectMcpClientNames);
+    expect(firstResults.map((item) => item.action)).toEqual([
+      "created",
+      "created",
+      "created",
+      "created",
+    ]);
+    expect(firstResults.map((item) => item.relativePath)).toEqual([
+      ".mcp.json",
+      ".cursor/mcp.json",
+      ".grok/config.toml",
+      ".codex/config.toml",
+    ]);
+    expect(firstResults.every((item) => item.detail.startsWith("已写入 "))).toBe(true);
+
+    const snapshots = firstResults.map((item) => readFileSync(path.join(projectRoot, item.relativePath), "utf8"));
+    expect(JSON.parse(snapshots[0] ?? "{}")).toMatchObject({
+      mcpServers: {
+        milestack: {
+          command: "milestack",
+          args: ["mcp", "--project", absoluteProjectRoot],
+        },
+      },
+    });
+    expect(snapshots[1]).toContain(`"--project",\n        "${absoluteProjectRoot}"`);
+    expect(snapshots[2]).toContain(`[mcp_servers.milestack]`);
+    expect(snapshots[3]).toContain(`"${absoluteProjectRoot}"`);
+
+    const secondResults = configureProjectMcpClients(projectRoot, projectMcpClientNames);
+    expect(secondResults.map((item) => item.action)).toEqual([
+      "unchanged",
+      "unchanged",
+      "unchanged",
+      "unchanged",
+    ]);
+    expect(secondResults.every((item, index) => {
+      const relativePath = firstResults[index]?.relativePath;
+      return relativePath !== undefined && readFileSync(path.join(projectRoot, relativePath), "utf8") === snapshots[index];
+    })).toBe(true);
+  });
+
+  it("merges JSON configs, preserves matching bytes, and skips invalid or conflicting files", () => {
+    const projectRoot = createTemporaryProject();
+    const jsonPath = path.join(projectRoot, ".mcp.json");
+    const existing = JSON.stringify({
+      custom: "preserve",
+      mcpServers: {
+        other: { command: "other-tool", args: [] },
+      },
+    }, null, 2);
+    writeFileSync(jsonPath, existing, "utf8");
+
+    const [updated] = configureProjectMcpClients(projectRoot, ["claude"]);
+    expect(updated).toMatchObject({
+      client: "claude",
+      relativePath: ".mcp.json",
+      action: "updated",
+    });
+    expect(updated?.detail).toContain("保留原有其他配置");
+    expect(JSON.parse(readFileSync(jsonPath, "utf8"))).toMatchObject({
+      custom: "preserve",
+      mcpServers: {
+        other: { command: "other-tool", args: [] },
+        milestack: {
+          command: "milestack",
+          args: ["mcp", "--project", path.resolve(projectRoot)],
+        },
+      },
+    });
+
+    const matching = JSON.stringify({
+      mcpServers: {
+        milestack: {
+          command: "milestack",
+          args: ["mcp", "--project", path.resolve(projectRoot)],
+          env: { KEEP: "1" },
+          cwd: "/tmp/keep",
+          enabled: false,
+        },
+      },
+    }, null, 2);
+    writeFileSync(jsonPath, matching, "utf8");
+    const matchingBytes = readFileSync(jsonPath, "utf8");
+    const [unchanged] = configureProjectMcpClients(projectRoot, ["claude"]);
+    expect(unchanged?.action).toBe("unchanged");
+    expect(readFileSync(jsonPath, "utf8")).toBe(matchingBytes);
+
+    const conflicting = JSON.stringify({
+      mcpServers: {
+        milestack: { command: "different", args: [] },
+      },
+    }, null, 2);
+    writeFileSync(jsonPath, conflicting, "utf8");
+    const conflictingBytes = readFileSync(jsonPath, "utf8");
+    const [conflict] = configureProjectMcpClients(projectRoot, ["claude"]);
+    expect(conflict?.action).toBe("skipped");
+    expect(readFileSync(jsonPath, "utf8")).toBe(conflictingBytes);
+
+    for (const invalid of ["{ invalid", "[]", JSON.stringify({ mcpServers: [] })]) {
+      writeFileSync(jsonPath, invalid, "utf8");
+      const invalidBytes = readFileSync(jsonPath, "utf8");
+      const [skipped] = configureProjectMcpClients(projectRoot, ["claude"]);
+      expect(skipped?.action).toBe("skipped");
+      expect(readFileSync(jsonPath, "utf8")).toBe(invalidBytes);
+    }
+  });
+
+  it("appends TOML configs without rewriting existing content and skips conflicts", () => {
+    const projectRoot = createTemporaryProject();
+    const tomlPath = path.join(projectRoot, ".grok", "config.toml");
+    const existing = "# keep this comment\n[other]\nvalue = 1\n";
+    mkdirSync(path.dirname(tomlPath), { recursive: true });
+    writeFileSync(tomlPath, existing, "utf8");
+
+    const [updated] = configureProjectMcpClients(projectRoot, ["grok"]);
+    const appended = readFileSync(tomlPath, "utf8");
+    expect(updated?.action).toBe("updated");
+    expect(appended.startsWith(existing)).toBe(true);
+    expect(appended).toContain("[mcp_servers.milestack]");
+    expect(appended).toContain(`args = ["mcp", "--project", "${path.resolve(projectRoot)}"]`);
+
+    const matching = [
+      "[mcp_servers.milestack]",
+      "command = \"milestack\"",
+      `args = ["mcp", "--project", "${path.resolve(projectRoot)}"]`,
+      "enabled = false",
+      "",
+    ].join("\n");
+    const codexPath = path.join(projectRoot, ".codex", "config.toml");
+    mkdirSync(path.dirname(codexPath), { recursive: true });
+    writeFileSync(codexPath, matching, "utf8");
+    const matchingBytes = readFileSync(codexPath, "utf8");
+    const [unchanged] = configureProjectMcpClients(projectRoot, ["codex"]);
+    expect(unchanged?.action).toBe("unchanged");
+    expect(readFileSync(codexPath, "utf8")).toBe(matchingBytes);
+
+    const conflicting = matching.replace('command = "milestack"', 'command = "different"');
+    writeFileSync(codexPath, conflicting, "utf8");
+    const conflictingBytes = readFileSync(codexPath, "utf8");
+    const [conflict] = configureProjectMcpClients(projectRoot, ["codex"]);
+    expect(conflict?.action).toBe("skipped");
+    expect(readFileSync(codexPath, "utf8")).toBe(conflictingBytes);
   });
 });
