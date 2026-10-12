@@ -329,8 +329,29 @@ export const ReviewTasks: React.FC<ReviewTasksProps> = ({
   onRequestChanges,
   onSelectTask,
 }) => {
+  if (tasks.length === 0) {
+    return (
+      <section className="rounded-lg border border-violet-900/50 bg-violet-950/15 backdrop-blur-xs overflow-hidden shrink-0">
+        <div className="px-4 py-2 flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            <span className="w-2 h-2 rounded-full bg-violet-400" />
+            <h2 className="text-xs font-mono font-bold tracking-wider text-violet-200 uppercase">
+              待审核队列 (0)
+            </h2>
+            <span className="text-[11px] font-mono text-violet-400/80">
+              · 暂无待审核任务
+            </span>
+          </div>
+          <span className="text-[11px] font-mono text-violet-300/70 hidden sm:inline">
+            所有阶段性输出已完成验收
+          </span>
+        </div>
+      </section>
+    );
+  }
+
   return (
-    <section className="rounded-lg border border-violet-900/50 bg-violet-950/15 backdrop-blur-xs overflow-hidden">
+    <section className="rounded-lg border border-violet-900/50 bg-violet-950/15 backdrop-blur-xs overflow-hidden shrink-0">
       <div className="px-4 py-2.5 border-b border-violet-900/40 flex items-center justify-between">
         <div className="flex items-center space-x-2">
           <span className="w-2 h-2 rounded-full bg-violet-400" />
@@ -343,25 +364,16 @@ export const ReviewTasks: React.FC<ReviewTasksProps> = ({
         </span>
       </div>
 
-      <div className="p-3">
-        {tasks.length === 0 ? (
-          <div className="flex items-center gap-2 rounded border border-dashed border-violet-900/40 bg-violet-950/10 px-3 py-2 text-[11px] font-mono text-violet-300/70">
-            <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-violet-400/80" />
-            <span>暂无待审核任务 · 所有阶段性输出已完成验收</span>
-          </div>
-        ) : (
-          <div className="space-y-2.5">
-            {tasks.map((task) => (
-              <ReviewTaskItem
-                key={task.id}
-                task={task}
-                onApprove={onApprove}
-                onRequestChanges={onRequestChanges}
-                onSelectTask={onSelectTask}
-              />
-            ))}
-          </div>
-        )}
+      <div className="p-3 space-y-2.5">
+        {tasks.map((task) => (
+          <ReviewTaskItem
+            key={task.id}
+            task={task}
+            onApprove={onApprove}
+            onRequestChanges={onRequestChanges}
+            onSelectTask={onSelectTask}
+          />
+        ))}
       </div>
     </section>
   );
