@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -52,6 +52,9 @@ describe("CLI entry point", () => {
 
     expect(exitCode).toBe(0);
     expect(capture.stdout.join("")).toBe(helpText);
+    expect(helpText).toContain("--client <name>");
+    expect(helpText).toContain("claude, cursor, grok, codex");
+    expect(helpText).toContain("Project-only MCP config for init");
     expect(capture.stderr).toHaveLength(0);
   });
 
@@ -81,6 +84,14 @@ describe("CLI entry point", () => {
       "Before working on tasks, read and follow .milestack/agent-instructions.md",
     );
     expect(firstOutput).toContain("Agent instructions:");
+    for (const relativePath of [
+      ".mcp.json",
+      ".cursor/mcp.json",
+      ".grok/config.toml",
+      ".codex/config.toml",
+    ]) {
+      expect(existsSync(path.join(projectRoot, relativePath))).toBe(false);
+    }
 
     const agentInstructionsPath = path.join(
       projectRoot,
@@ -152,6 +163,72 @@ describe("CLI entry point", () => {
     expect(second.stdout.join("")).toContain("Already initialized");
     expect(readFileSync(agentInstructionsPath, "utf8")).toBe(generatedInstructions);
     expect(readFileSync(path.join(projectRoot, "AGENTS.md"), "utf8")).toBe(rootAgentsContent);
+  });
+
+  it("writes only selected project MCP clients and preserves their order", async () => {
+    const projectRoot = createTemporaryProject();
+    const capture = outputCapture();
+
+    expect(
+      await runCli(
+        [
+          "init",
+          "--project",
+          projectRoot,
+          "--client",
+          "codex,claude",
+          "--client",
+          "codex,claude",
+        ],
+        capture.output,
+      ),
+    ).toBe(0);
+
+    const output = capture.stdout.join("");
+    expect(output).toContain("  codex: 已写入 .codex/config.toml");
+    expect(output).toContain("  claude: 已写入 .mcp.json");
+    expect(output.indexOf("  codex: 已写入 .codex/config.toml")).toBeLessThan(
+      output.indexOf("  claude: 已写入 .mcp.json"),
+    );
+    expect(output).not.toContain("codex mcp add");
+    expect(output).not.toContain("~/.codex/config.toml");
+    expect(output).toContain("上述文件只写入当前项目目录，不会修改用户主目录中的全局配置。");
+    expect(output).toContain(`--project 使用当前 checkout 的绝对路径：${path.resolve(projectRoot)}`);
+    expect(output).toContain("写入后请重新打开对应客户端会话。");
+
+    expect(existsSync(path.join(projectRoot, ".codex", "config.toml"))).toBe(true);
+    expect(existsSync(path.join(projectRoot, ".mcp.json"))).toBe(true);
+    expect(existsSync(path.join(projectRoot, ".cursor", "mcp.json"))).toBe(false);
+    expect(existsSync(path.join(projectRoot, ".grok", "config.toml"))).toBe(false);
+  });
+
+  it("rejects invalid or misplaced --client before initialization side effects", async () => {
+    const invalidCases: readonly (readonly string[])[] = [
+      ["init", "--project", createTemporaryProject(), "--client", "unknown"],
+      ["init", "--project", createTemporaryProject(), "--client"],
+      ["status", "--project", createTemporaryProject(), "--client", "claude"],
+      ["mcp", "--project", createTemporaryProject(), "--client", "claude"],
+      ["serve", "--project", createTemporaryProject(), "--client", "claude"],
+    ];
+
+    for (const args of invalidCases) {
+      const capture = outputCapture();
+      expect(await runCli(args, capture.output)).toBe(1);
+      expect(capture.stderr.join("")).toContain("Error:");
+      const projectRoot = args[args.indexOf("--project") + 1];
+      if (projectRoot === undefined) {
+        throw new Error("test case must include a project path");
+      }
+      expect(existsSync(path.join(projectRoot, ".milestack"))).toBe(false);
+      for (const relativePath of [
+        ".mcp.json",
+        ".cursor/mcp.json",
+        ".grok/config.toml",
+        ".codex/config.toml",
+      ]) {
+        expect(existsSync(path.join(projectRoot, relativePath))).toBe(false);
+      }
+    }
   });
 
   it("renders every generated agent prompt in English", () => {

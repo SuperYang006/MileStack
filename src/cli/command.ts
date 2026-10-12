@@ -14,6 +14,11 @@ import {
   openProjectContext,
   resolveProjectRoot,
 } from "../project/project-context.js";
+import {
+  configureProjectMcpClients,
+  projectMcpClientNames,
+  type ProjectMcpClientName,
+} from "./project-mcp-config.js";
 
 export const helpText = `Usage: milestack <command> [options]
 
@@ -26,6 +31,7 @@ Options:
   --project <path>     Project root (defaults to the current directory)
   --json               Output JSON format (for status command)
   --port <port>        Server port (for serve command)
+  --client <name>      Project-only MCP config for init; repeatable or comma-separated (claude, cursor, grok, codex)
   -h, --help           Show this help message
 `;
 
@@ -44,7 +50,32 @@ type ParsedCommand = {
   projectPath?: string | undefined;
   port?: number | undefined;
   json?: boolean | undefined;
+  clients?: ProjectMcpClientName[] | undefined;
 };
+
+function isProjectMcpClientName(value: string): value is ProjectMcpClientName {
+  return (projectMcpClientNames as readonly string[]).includes(value);
+}
+
+function parseClientNames(value: string): ProjectMcpClientName[] {
+  const names = value.split(",").map((name) => name.trim());
+  if (names.some((name) => name.length === 0)) {
+    throw new Error("--client requires one or more client names.");
+  }
+
+  const clients: ProjectMcpClientName[] = [];
+  for (const name of names) {
+    if (!isProjectMcpClientName(name)) {
+      throw new Error(
+        `Unknown MCP client '${name}'. Supported clients: ${projectMcpClientNames.join(", ")}.`,
+      );
+    }
+    if (!clients.includes(name)) {
+      clients.push(name);
+    }
+  }
+  return clients;
+}
 
 function parseCommand(args: readonly string[]): ParsedCommand {
   const [command, ...options] = args;
@@ -55,6 +86,7 @@ function parseCommand(args: readonly string[]): ParsedCommand {
   let projectPath: string | undefined;
   let port: number | undefined;
   let json: boolean | undefined;
+  let clients: ProjectMcpClientName[] | undefined;
   for (let index = 0; index < options.length; index += 1) {
     const option = options[index];
     if (option === "--project") {
@@ -70,6 +102,34 @@ function parseCommand(args: readonly string[]): ParsedCommand {
       const value = option.slice("--project=".length);
       if (!value) {
         throw new Error("--project requires a directory path.");
+      }
+      projectPath = value;
+      continue;
+    }
+    if (option === "--client") {
+      const value = options[index + 1];
+      if (!value || value.startsWith("-")) {
+        throw new Error("--client requires one or more client names.");
+      }
+      clients ??= [];
+      for (const client of parseClientNames(value)) {
+        if (!clients.includes(client)) {
+          clients.push(client);
+        }
+      }
+      index += 1;
+      continue;
+    }
+    if (option?.startsWith("--client=")) {
+      const value = option.slice("--client=".length);
+      if (!value) {
+        throw new Error("--client requires one or more client names.");
+      }
+      clients ??= [];
+      for (const client of parseClientNames(value)) {
+        if (!clients.includes(client)) {
+          clients.push(client);
+        }
       }
       continue;
     }
@@ -101,7 +161,11 @@ function parseCommand(args: readonly string[]): ParsedCommand {
     throw new Error(`Unknown option '${option}'.`);
   }
 
-  return { command, projectPath, port, json };
+  if (clients !== undefined && command !== "init") {
+    throw new Error("--client is only supported for the init command.");
+  }
+
+  return { command, projectPath, port, json, clients };
 }
 
 function ensureGitignoreEntry(projectRoot: string): void {
@@ -224,7 +288,26 @@ function codexMcpInstructions(projectRoot: string): string {
   ].join("\n");
 }
 
-async function runInit(projectPath: string | undefined, output: CliOutput): Promise<void> {
+function projectMcpInstructions(
+  projectRoot: string,
+  clients: readonly ProjectMcpClientName[],
+): string {
+  const results = configureProjectMcpClients(projectRoot, clients);
+  return [
+    "项目级 MCP 配置（仅当前项目）：",
+    ...results.map((configuration) => `  ${configuration.client}: ${configuration.detail}`),
+    "",
+    "上述文件只写入当前项目目录，不会修改用户主目录中的全局配置。",
+    `--project 使用当前 checkout 的绝对路径：${projectRoot}`,
+    "写入后请重新打开对应客户端会话。",
+  ].join("\n");
+}
+
+async function runInit(
+  projectPath: string | undefined,
+  clients: readonly ProjectMcpClientName[] | undefined,
+  output: CliOutput,
+): Promise<void> {
   const projectRoot = resolveProjectRoot(projectPath);
   const context = await initializeProject(projectRoot);
   try {
@@ -239,12 +322,14 @@ async function runInit(projectPath: string | undefined, output: CliOutput): Prom
         },
       },
     };
+    const mcpOutput = clients === undefined
+      ? `MCP configuration:\n${JSON.stringify(configuration, null, 2)}\n\n${codexMcpInstructions(projectRoot)}`
+      : projectMcpInstructions(projectRoot, clients);
     output.writeStdout(
       `${context.created ? "Initialized" : "Already initialized"} ${projectRoot}\n` +
         `Database: ${context.database.databasePath}\n\n` +
         `Agent instructions: ${agentInstructionsPath}\n\n` +
-        `MCP configuration:\n${JSON.stringify(configuration, null, 2)}\n\n` +
-        `${codexMcpInstructions(projectRoot)}\n\n` +
+        `${mcpOutput}\n\n` +
         `AI integration instructions:\n${formatAgentIntegrationInstructions()}\n`,
     );
   } finally {
@@ -286,7 +371,7 @@ export async function runCli(
   try {
     const parsed = parseCommand(args);
     if (parsed.command === "init") {
-      await runInit(parsed.projectPath, output);
+      await runInit(parsed.projectPath, parsed.clients, output);
       return 0;
     }
     if (parsed.command === "status") {
