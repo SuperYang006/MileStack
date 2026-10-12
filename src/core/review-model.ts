@@ -6,6 +6,7 @@ export const reviewStatuses = [
   "in_progress",
   "passed",
   "changes_requested",
+  "waived",
 ] as const;
 export type ReviewStatus = (typeof reviewStatuses)[number];
 

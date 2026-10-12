@@ -9,6 +9,7 @@ import {
   Bot,
   Clock,
   GitBranch,
+  ShieldCheck,
 } from "lucide-react";
 import type { TaskSummary } from "../types";
 import { TaskIdBadge } from "./CopyTaskIdButton";
@@ -16,6 +17,7 @@ import { TaskIdBadge } from "./CopyTaskIdButton";
 interface ReviewTasksProps {
   tasks: TaskSummary[];
   onApprove: (taskId: string) => void;
+  onWaiveApproval: (taskId: string, reason: string) => void;
   onRequestChanges: (taskId: string, feedback: string) => void;
   onSelectTask: (taskId: string) => void;
 }
@@ -23,9 +25,10 @@ interface ReviewTasksProps {
 const ReviewTaskItem: React.FC<{
   task: TaskSummary;
   onApprove: (taskId: string) => void;
+  onWaiveApproval: (taskId: string, reason: string) => void;
   onRequestChanges: (taskId: string, feedback: string) => void;
   onSelectTask: (taskId: string) => void;
-}> = ({ task, onApprove, onRequestChanges, onSelectTask }) => {
+}> = ({ task, onApprove, onWaiveApproval, onRequestChanges, onSelectTask }) => {
   const digest = task.latestReview;
   const reviewStatus = digest?.status ?? "pending";
   const reviewerLabel = digest?.reviewerActorLabel;
@@ -37,6 +40,7 @@ const ReviewTaskItem: React.FC<{
   // 4. changes_requested: AI 退回返工
   const isPassed = reviewStatus === "passed";
   const isPending = !digest || reviewStatus === "pending";
+  const canWaiveApproval = reviewStatus === "pending" || reviewStatus === "in_progress";
 
   const getStatusBadge = () => {
     if (isPending) {
@@ -182,6 +186,23 @@ const ReviewTaskItem: React.FC<{
             <span>批准</span>
           </button>
 
+          {canWaiveApproval && (
+            <button
+              onClick={() => {
+                const reason = window.prompt(
+                  "请输入直接验收该任务的原因（审核尚未通过，验收原因将记入任务事件）：",
+                  "",
+                );
+                if (reason?.trim()) onWaiveApproval(task.id, reason.trim());
+              }}
+              className="inline-flex items-center space-x-1 px-2.5 py-1 text-[11px] text-violet-300 hover:text-violet-200 bg-violet-950/40 hover:bg-violet-900/80 border border-violet-800/70 rounded transition-colors"
+              title="跳过 AI 审核结论直接验收，并记录验收原因"
+            >
+              <ShieldCheck className="w-3 h-3" />
+              <span>直接验收</span>
+            </button>
+          )}
+
           <button
             onClick={() => {
               const feedback = window.prompt("请输入退回返工的审核反馈意见：", "");
@@ -222,6 +243,7 @@ const ReviewTaskItem: React.FC<{
 export const ReviewTasks: React.FC<ReviewTasksProps> = ({
   tasks,
   onApprove,
+  onWaiveApproval,
   onRequestChanges,
   onSelectTask,
 }) => {
@@ -266,6 +288,7 @@ export const ReviewTasks: React.FC<ReviewTasksProps> = ({
             key={task.id}
             task={task}
             onApprove={onApprove}
+            onWaiveApproval={onWaiveApproval}
             onRequestChanges={onRequestChanges}
             onSelectTask={onSelectTask}
           />

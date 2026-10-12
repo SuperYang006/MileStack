@@ -29,6 +29,7 @@ export type RunExecutionStatus =
   | "incomplete"
   | "review_passed"
   | "changes_requested"
+  | "waived"
   | "reviewing";
 
 export interface RunExecution {
@@ -91,6 +92,7 @@ export function computeRunExecutions(
       const isPassed = matchingReview?.status === "passed" || Boolean(reviewPassedEvent);
       const isChangesRequested =
         matchingReview?.status === "changes_requested" || Boolean(changesRequestedEvent);
+      const isWaived = matchingReview?.status === "waived";
 
       const startIso = matchingReview?.startedAt || reviewStartedEvent?.createdAt;
       const startMs = startIso ? new Date(startIso).getTime() : NaN;
@@ -115,7 +117,7 @@ export function computeRunExecutions(
         runEvts[0]?.actorLabel ??
         null;
 
-      if (isPassed || isChangesRequested) {
+      if (isPassed || isChangesRequested || isWaived) {
         const endIso =
           matchingReview?.concludedAt ||
           (isPassed ? reviewPassedEvent?.createdAt : undefined) ||
@@ -129,7 +131,11 @@ export function computeRunExecutions(
           actorLabel,
           startedAt: new Date(startMs),
           endedAt: isValidEnd ? new Date(endMs) : undefined,
-          status: isPassed ? "review_passed" : "changes_requested",
+          status: isPassed
+            ? "review_passed"
+            : isChangesRequested
+              ? "changes_requested"
+              : "waived",
           durationMs: isValidEnd ? Math.max(0, endMs - startMs) : null,
         });
       } else if (

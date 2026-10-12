@@ -567,4 +567,108 @@ describe("SQLite database foundation", () => {
     ).toEqual(["submitted_for_review", "progress"]);
     recovered.close();
   });
+
+  it("adds the waived review status through a forward migration and keeps existing reviews", async () => {
+    const projectRoot = createTemporaryProject();
+    const migrationsAt0004 = path.join(projectRoot, "migrations-at-0004");
+    cpSync(migrationsFolder, migrationsAt0004, { recursive: true });
+    rmSync(path.join(migrationsAt0004, "0005_review_waived_status.sql"));
+    rmSync(path.join(migrationsAt0004, "meta", "0005_snapshot.json"));
+    const journalPath = path.join(migrationsAt0004, "meta", "_journal.json");
+    const journal = JSON.parse(readFileSync(journalPath, "utf8")) as {
+      entries: Array<Record<string, boolean | number | string>>;
+    };
+    journal.entries = journal.entries.slice(0, 5);
+    writeFileSync(journalPath, `${JSON.stringify(journal, null, 2)}\n`);
+
+    const databaseAt0004 = await ensureDatabase(projectRoot, {
+      migrationsFolder: migrationsAt0004,
+    });
+    databaseAt0004.db
+      .insert(projects)
+      .values({
+        id: "project-1",
+        name: "MileStack",
+        rootPath: projectRoot,
+        goal: "Support developer waivers",
+        createdAt: "2026-10-12T02:00:00.000Z",
+        updatedAt: "2026-10-12T02:00:00.000Z",
+      })
+      .run();
+    databaseAt0004.db
+      .insert(tasks)
+      .values({
+        id: "task-waived-review",
+        projectId: "project-1",
+        title: "Review before waiver status existed",
+        status: "in_review",
+        createdBy: "developer",
+        createdAt: "2026-10-12T02:01:00.000Z",
+        updatedAt: "2026-10-12T02:01:00.000Z",
+      })
+      .run();
+    databaseAt0004.db
+      .insert(taskReviews)
+      .values({
+        id: "review-before-0005",
+        projectId: "project-1",
+        taskId: "task-waived-review",
+        reviewRound: 1,
+        commitSha: "6666666666666666666666666666666666666666",
+        branch: "main",
+        worktree: null,
+        reviewRunId: null,
+        status: "pending",
+        reviewerActorLabel: null,
+        summary: null,
+        findings: [],
+        verificationEvidence: [],
+        createdAt: "2026-10-12T02:02:00.000Z",
+        startedAt: null,
+        concludedAt: null,
+        updatedAt: "2026-10-12T02:02:00.000Z",
+      })
+      .run();
+    expect(() =>
+      databaseAt0004.sqlite
+        .prepare("UPDATE task_reviews SET status = 'waived' WHERE id = ?")
+        .run("review-before-0005"),
+    ).toThrow();
+    databaseAt0004.close();
+
+    const migrated = await ensureDatabase(projectRoot, {
+      now: () => new Date("2026-10-12T03:00:00.000Z"),
+    });
+    expect(migrated.db.select().from(taskReviews).all()).toEqual([
+      expect.objectContaining({
+        id: "review-before-0005",
+        status: "pending",
+        commitSha: "6666666666666666666666666666666666666666",
+        verificationEvidence: [],
+      }),
+    ]);
+
+    migrated.db
+      .update(taskReviews)
+      .set({
+        status: "waived",
+        reviewerActorLabel: "developer",
+        concludedAt: "2026-10-12T03:00:00.000Z",
+      })
+      .where(eq(taskReviews.id, "review-before-0005"))
+      .run();
+    expect(
+      migrated.db
+        .select()
+        .from(taskReviews)
+        .where(eq(taskReviews.id, "review-before-0005"))
+        .get(),
+    ).toMatchObject({ status: "waived", reviewerActorLabel: "developer" });
+    expect(() =>
+      migrated.sqlite
+        .prepare("UPDATE task_reviews SET status = 'skipped' WHERE id = ?")
+        .run("review-before-0005"),
+    ).toThrow();
+    migrated.close();
+  });
 });

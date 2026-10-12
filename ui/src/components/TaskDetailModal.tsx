@@ -20,6 +20,7 @@ interface TaskDetailModalProps {
   allTasks?: Map<string, TaskSummary>;
   onSelectTask?: (taskId: string) => void;
   onApprove?: (taskId: string) => void;
+  onWaiveApproval?: (taskId: string, reason: string) => void;
   onRequestChanges?: (taskId: string, feedback: string) => void;
 }
 
@@ -33,6 +34,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
   allTasks = new Map(),
   onSelectTask,
   onApprove,
+  onWaiveApproval,
   onRequestChanges,
 }) => {
   const [now, setNow] = useState(() => Date.now());
@@ -201,6 +203,9 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
               {details.task.status === "in_review" && (() => {
                 const latestRev = details.reviews?.at(-1);
                 const isPassed = latestRev?.status === "passed";
+                const canWaiveApproval =
+                  latestRev?.status === "pending" ||
+                  latestRev?.status === "in_progress";
                 return (
                   <div className="p-3 rounded bg-violet-950/40 border border-violet-800/60 text-xs space-y-2">
                     <div className="flex items-center justify-between">
@@ -217,7 +222,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                     <div className="text-[11px] text-zinc-400 leading-relaxed">
                       {isPassed
                         ? "AI 审核已通过并提供完整验证证据。请核对提交产物与验证结果后执行最终批准或填写反馈退回。"
-                        : "AI 审核尚未出具通过结论。中高风险任务必须在 AI 审核通过后方可执行最终批准。"}
+                        : "AI 审核尚未出具通过结论。可等待 AI 结论、填写反馈退回，或在核对提交产物后填写原因直接验收。"}
                     </div>
                     <div className="flex items-center space-x-2 pt-1">
                       {onApprove && (
@@ -232,6 +237,23 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                         >
                           <Check className="w-3.5 h-3.5" />
                           <span>批准并通过任务</span>
+                        </button>
+                      )}
+                      {canWaiveApproval && onWaiveApproval && (
+                        <button
+                          onClick={() => {
+                            const reason = window.prompt(
+                              "请输入直接验收该任务的原因：",
+                              "",
+                            );
+                            if (reason?.trim())
+                              onWaiveApproval(details.task.id, reason.trim());
+                          }}
+                          className="inline-flex items-center space-x-1.5 px-3 py-1 rounded text-xs font-semibold bg-violet-900/60 hover:bg-violet-800/80 border border-violet-700 text-violet-100 transition-colors"
+                          title="跳过 AI 审核结论直接验收，验收原因记入任务事件"
+                        >
+                          <ShieldCheck className="w-3.5 h-3.5" />
+                          <span>直接验收</span>
                         </button>
                       )}
                       {onRequestChanges && (
@@ -505,6 +527,8 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                                 ? "审核通过"
                                 : r.status === "changes_requested"
                                 ? "已退回"
+                                : r.status === "waived"
+                                ? "开发者直接验收"
                                 : r.status === "reviewing"
                                 ? "审核中"
                                 : r.status === "in_review"
@@ -561,6 +585,8 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                                   ? "bg-cyan-950/80 border border-cyan-800 text-cyan-300"
                                   : rev.status === "changes_requested"
                                   ? "bg-rose-950/80 border border-rose-800 text-rose-300"
+                                  : rev.status === "waived"
+                                  ? "bg-violet-950/80 border border-violet-800 text-violet-300 font-bold"
                                   : "bg-zinc-800 border border-zinc-700 text-zinc-400"
                               }`}
                             >
@@ -570,6 +596,8 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                                 ? "审核中 (IN_PROGRESS)"
                                 : rev.status === "changes_requested"
                                 ? "要求修改 (CHANGES_REQUESTED)"
+                                : rev.status === "waived"
+                                ? "开发者直接验收 (WAIVED)"
                                 : "未领取 (PENDING)"}
                             </span>
                             {rev.reviewerActorLabel && (

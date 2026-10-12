@@ -739,4 +739,71 @@ describe("HTTP API Server", () => {
     expect(autoCompleted.reviews[0]?.verificationEvidence[0]?.command).toBe("pnpm test");
     expect(autoCompleted.reviews[0]?.reviewerActorLabel).toBe("agent/ai-reviewer");
   });
+
+  it("lets the developer waive an unfinished review over HTTP", async () => {
+    const createdRes = await serverInstance.app.inject({
+      method: "POST",
+      url: "/api/tasks",
+      payload: { title: "Waive over HTTP", status: "ready" },
+    });
+    const created = JSON.parse(createdRes.payload).task;
+    const run = serverInstance.context.service.startTask({
+      projectId: serverInstance.context.project.id,
+      taskId: created.id,
+    });
+    serverInstance.context.service.submitForReview({
+      projectId: serverInstance.context.project.id,
+      taskId: created.id,
+      runId: run.runId,
+      commitSha: "7777777777777777777777777777777777777777",
+      summary: "Ready for review",
+    });
+
+    const missingReason = await serverInstance.app.inject({
+      method: "POST",
+      url: `/api/tasks/${created.id}/waive-approval`,
+      payload: {},
+    });
+    expect(missingReason.statusCode).toBe(400);
+
+    const waived = await serverInstance.app.inject({
+      method: "POST",
+      url: `/api/tasks/${created.id}/waive-approval`,
+      payload: { reason: "Reviewed the artifact directly." },
+    });
+    expect(waived.statusCode).toBe(200);
+
+    const details = serverInstance.context.service.getTask({
+      projectId: serverInstance.context.project.id,
+      taskId: created.id,
+    });
+    expect(details.task.status).toBe("completed");
+    expect(details.task.activeReviewRunId).toBeNull();
+    expect(details.reviews[0]).toMatchObject({
+      status: "waived",
+      reviewerActorLabel: "developer",
+    });
+    expect(details.reviews[0]?.verificationEvidence).toEqual([]);
+    expect(details.events.at(-1)).toMatchObject({ type: "approved" });
+    expect(details.events.at(-1)?.summary).toContain("Reviewed the artifact directly.");
+
+    const statusAfterWaiver = JSON.parse(
+      (await serverInstance.app.inject({ method: "GET", url: "/api/status" })).payload,
+    );
+    expect(
+      statusAfterWaiver.recentlyCompleted.some(
+        (task: { id: string }) => task.id === created.id,
+      ),
+    ).toBe(true);
+    expect(
+      statusAfterWaiver.inReview.some((task: { id: string }) => task.id === created.id),
+    ).toBe(false);
+
+    const secondWaiver = await serverInstance.app.inject({
+      method: "POST",
+      url: `/api/tasks/${created.id}/waive-approval`,
+      payload: { reason: "Already completed." },
+    });
+    expect(secondWaiver.statusCode).toBe(400);
+  });
 });

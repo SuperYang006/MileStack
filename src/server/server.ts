@@ -337,6 +337,39 @@ export async function createHttpServer(
     }
   });
 
+  // Developer waiver: complete an in-review task without an AI passed conclusion.
+  app.post("/api/tasks/:id/waive-approval", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const body = (request.body || {}) as {
+      reason?: string;
+      projectId?: string;
+    };
+    const projectId = body.projectId || context.project.id;
+
+    try {
+      context.service.waiveTaskApproval({
+        projectId,
+        taskId: id,
+        reason: body.reason ?? "",
+        actorLabel: "developer",
+      });
+      return { success: true };
+    } catch (err) {
+      if (err instanceof TaskNotFoundError) {
+        return reply.status(404).send({ error: err.message });
+      }
+      if (
+        err instanceof InvalidTaskStateError ||
+        err instanceof z.ZodError
+      ) {
+        return reply
+          .status(400)
+          .send({ error: err instanceof z.ZodError ? err.issues : err.message });
+      }
+      throw err;
+    }
+  });
+
   // Request changes In-review Task -> Ready
   app.post("/api/tasks/:id/request-changes", async (request, reply) => {
     const { id } = request.params as { id: string };

@@ -1357,4 +1357,189 @@ describe("TaskService", () => {
 
     database.close();
   });
+
+  it("lets a developer waive an unfinished review and invalidates the in-flight review run", async () => {
+    const projectRoot = createTemporaryProject();
+    const { database, service } = await createService(projectRoot);
+    const task = service.createTask({
+      projectId: "project-1",
+      title: "Waivable review",
+      createdBy: "developer",
+      status: "ready",
+    });
+    const run = service.startTask({
+      projectId: "project-1",
+      taskId: task.task.id,
+      actorLabel: "gpt-5-codex",
+    });
+    service.submitForReview({
+      projectId: "project-1",
+      taskId: task.task.id,
+      runId: run.runId,
+      commitSha: "3333333333333333333333333333333333333333",
+      summary: "Implementation complete.",
+    });
+
+    expect(() =>
+      service.waiveTaskApproval({
+        projectId: "project-1",
+        taskId: task.task.id,
+        reason: "   ",
+        actorLabel: "developer",
+      }),
+    ).toThrow();
+
+    expect(() =>
+      service.waiveTaskApproval({
+        projectId: "project-1",
+        taskId: task.task.id,
+        reason: "Verified the artifact manually.",
+        actorLabel: "developer",
+      }),
+    ).not.toThrow();
+
+    const waived = service.getTask({ projectId: "project-1", taskId: task.task.id });
+    expect(waived.task.status).toBe("completed");
+    expect(waived.task.completedAt).toBeTruthy();
+    expect(waived.task.activeReviewRunId).toBeNull();
+    expect(waived.reviews[0]).toMatchObject({
+      status: "waived",
+      reviewerActorLabel: "developer",
+    });
+    expect(waived.reviews[0]?.concludedAt).toBeTruthy();
+    expect(waived.reviews[0]?.verificationEvidence).toEqual([]);
+    expect(waived.events.at(-1)).toMatchObject({
+      type: "approved",
+      actorLabel: "developer",
+    });
+    expect(waived.events.at(-1)?.summary).toContain("Verified the artifact manually.");
+
+    database.close();
+  });
+
+  it("revokes an in-flight review run when the developer waives the review", async () => {
+    const projectRoot = createTemporaryProject();
+    const { database, service } = await createService(projectRoot);
+    const task = service.createTask({
+      projectId: "project-1",
+      title: "Waived while reviewing",
+      createdBy: "developer",
+      status: "ready",
+    });
+    const run = service.startTask({ projectId: "project-1", taskId: task.task.id });
+    service.submitForReview({
+      projectId: "project-1",
+      taskId: task.task.id,
+      runId: run.runId,
+      commitSha: "4444444444444444444444444444444444444444",
+      summary: "Implementation complete.",
+    });
+    const reviewRun = service.startReview({
+      projectId: "project-1",
+      taskId: task.task.id,
+      actorLabel: "review-agent",
+    });
+
+    service.waiveTaskApproval({
+      projectId: "project-1",
+      taskId: task.task.id,
+      reason: "Reviewed the artifact directly.",
+      actorLabel: "developer",
+    });
+
+    const claimed = service.getTask({ projectId: "project-1", taskId: task.task.id });
+    expect(claimed.reviews[0]?.status).toBe("waived");
+
+    expect(() =>
+      service.completeReview({
+        projectId: "project-1",
+        taskId: task.task.id,
+        reviewRunId: reviewRun.reviewRunId,
+        decision: "passed",
+        summary: "Late review conclusion.",
+        verificationEvidence: [{ command: "pnpm test", result: "passed" }],
+      }),
+    ).toThrow(InvalidTaskStateError);
+
+    database.close();
+  });
+
+  it("keeps the passed-review approval path separate from developer waivers", async () => {
+    const projectRoot = createTemporaryProject();
+    const { database, service } = await createService(projectRoot);
+    const task = service.createTask({
+      projectId: "project-1",
+      title: "Passed review",
+      createdBy: "developer",
+      status: "ready",
+    });
+    const run = service.startTask({ projectId: "project-1", taskId: task.task.id });
+    service.submitForReview({
+      projectId: "project-1",
+      taskId: task.task.id,
+      runId: run.runId,
+      commitSha: "5555555555555555555555555555555555555555",
+      summary: "Implementation complete.",
+    });
+    const reviewRun = service.startReview({
+      projectId: "project-1",
+      taskId: task.task.id,
+    });
+    service.completeReview({
+      projectId: "project-1",
+      taskId: task.task.id,
+      reviewRunId: reviewRun.reviewRunId,
+      decision: "passed",
+      summary: "Review passed.",
+      verificationEvidence: [{ command: "pnpm test", result: "passed" }],
+    });
+
+    expect(() =>
+      service.waiveTaskApproval({
+        projectId: "project-1",
+        taskId: task.task.id,
+        reason: "Should not apply to a passed review.",
+      }),
+    ).toThrow(InvalidTaskStateError);
+
+    const approved = service.approveTask({
+      projectId: "project-1",
+      taskId: task.task.id,
+      actorLabel: "developer",
+    });
+    expect(approved.task.status).toBe("completed");
+    expect(approved.reviews[0]?.status).toBe("passed");
+
+    database.close();
+  });
+
+  it("rejects developer waivers outside in_review", async () => {
+    const projectRoot = createTemporaryProject();
+    const { database, service } = await createService(projectRoot);
+    const ready = service.createTask({
+      projectId: "project-1",
+      title: "Ready task",
+      createdBy: "developer",
+      status: "ready",
+    });
+    expect(() =>
+      service.waiveTaskApproval({
+        projectId: "project-1",
+        taskId: ready.task.id,
+        reason: "Not submitted yet.",
+      }),
+    ).toThrow(InvalidTaskStateError);
+
+    const run = service.startTask({ projectId: "project-1", taskId: ready.task.id });
+    expect(() =>
+      service.waiveTaskApproval({
+        projectId: "project-1",
+        taskId: ready.task.id,
+        reason: "Still running.",
+      }),
+    ).toThrow(InvalidTaskStateError);
+    expect(run.runId).toBeTruthy();
+
+    database.close();
+  });
 });

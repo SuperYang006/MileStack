@@ -185,6 +185,15 @@ export const DashboardPage: React.FC = () => {
     },
   });
 
+  const waiveTaskApprovalMutation = useMutation({
+    mutationFn: ({ taskId, reason }: { taskId: string; reason: string }) =>
+      apiClient.waiveTaskApproval(taskId, reason),
+    onSuccess: (_, variables) => {
+      invalidateProjectQueries();
+      queryClient.invalidateQueries({ queryKey: ["taskDetails", variables.taskId] });
+    },
+  });
+
   const requestChangesMutation = useMutation({
     mutationFn: ({ taskId, feedback }: { taskId: string; feedback: string }) =>
       apiClient.requestTaskChanges(taskId, feedback),
@@ -256,6 +265,9 @@ export const DashboardPage: React.FC = () => {
             <ReviewTasks
               tasks={status.inReview}
               onApprove={(id) => approveTaskMutation.mutate(id)}
+              onWaiveApproval={(taskId, reason) =>
+                waiveTaskApprovalMutation.mutate({ taskId, reason })
+              }
               onRequestChanges={(taskId, feedback) =>
                 requestChangesMutation.mutate({ taskId, feedback })
               }
@@ -332,6 +344,9 @@ export const DashboardPage: React.FC = () => {
         allTasks={allTasks}
         onSelectTask={(id) => setSelectedTaskId(id)}
         onApprove={(id) => approveTaskMutation.mutate(id)}
+        onWaiveApproval={(taskId, reason) =>
+          waiveTaskApprovalMutation.mutate({ taskId, reason })
+        }
         onRequestChanges={(taskId, feedback) =>
           requestChangesMutation.mutate({ taskId, feedback })
         }

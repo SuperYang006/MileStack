@@ -14,6 +14,7 @@ import {
   projectStatusSchema,
   compactProjectStatusSchema,
   approveTaskInputSchema,
+  waiveTaskApprovalInputSchema,
   requestTaskChangesInputSchema,
   reopenTaskInputSchema,
   returnTaskToInboxInputSchema,
@@ -43,6 +44,7 @@ import {
   type ReorderTaskInput,
   type ReviewDigest,
   type ApproveTaskInput,
+  type WaiveTaskApprovalInput,
   type RequestTaskChangesInput,
   type ReopenTaskInput,
   type ReturnTaskToInboxInput,
@@ -1129,6 +1131,72 @@ export class TaskService {
         runId: null,
         type: "approved",
         summary: "Task approved by developer.",
+        completedWork: null,
+        currentStep: null,
+        nextStep: null,
+        blocker: null,
+        requiredAction: null,
+        handoffNote: task.handoffNote,
+        actorLabel: parsed.actorLabel ?? "developer",
+        createdAt: now,
+      });
+    });
+    return this.getTask({ projectId: project.id, taskId: parsed.taskId });
+  }
+
+  /**
+   * Developer-only completion path: accept a submitted review that has no AI
+   * conclusion. The review round is recorded as `waived` instead of `passed`,
+   * and any in-flight review run loses ownership so its conclusion is rejected.
+   */
+  waiveTaskApproval(input: WaiveTaskApprovalInput): TaskDetails {
+    const parsed = waiveTaskApprovalInputSchema.parse(input);
+    const project = this.requireProject(parsed.projectId);
+    this.repository.transaction((transaction) => {
+      const task = transaction.findTaskById(parsed.taskId);
+      if (!task || task.projectId !== project.id) {
+        throw new TaskNotFoundError(parsed.taskId);
+      }
+      if (task.status !== "in_review") {
+        throw new InvalidTaskStateError(task.id, "in_review", task.status);
+      }
+      const review = transaction.listReviewsByTaskId(task.id).at(-1);
+      if (!review) {
+        throw new InvalidTaskStateError(task.id, "a submitted review record", "missing");
+      }
+      if (review.status !== "pending" && review.status !== "in_progress") {
+        throw new InvalidTaskStateError(
+          task.id,
+          "a pending or in-progress review",
+          review.status,
+        );
+      }
+      const now = this.now().toISOString();
+      transaction.updateReview(review.id, {
+        status: "waived",
+        reviewerActorLabel: parsed.actorLabel ?? "developer",
+        concludedAt: now,
+        updatedAt: now,
+      });
+      transaction.updateTask(task.id, {
+        status: "completed",
+        queuePosition: null,
+        activeRunId: null,
+        activeReviewRunId: null,
+        currentStep: null,
+        nextStep: null,
+        blocker: null,
+        requiredAction: null,
+        completedAt: now,
+        updatedAt: now,
+      });
+      transaction.insertTaskEvent({
+        id: this.generateId(),
+        projectId: task.projectId,
+        taskId: task.id,
+        runId: null,
+        type: "approved",
+        summary: `Task approved by developer without an AI review conclusion: ${parsed.reason}`,
         completedWork: null,
         currentStep: null,
         nextStep: null,

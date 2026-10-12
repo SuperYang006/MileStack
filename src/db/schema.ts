@@ -160,7 +160,7 @@ export const taskReviews = sqliteTable(
   (table) => [
     check(
       "task_reviews_status_check",
-      sql`${table.status} in ('pending', 'in_progress', 'passed', 'changes_requested')`,
+      sql`${table.status} in ('pending', 'in_progress', 'passed', 'changes_requested', 'waived')`,
     ),
     check("task_reviews_round_check", sql`${table.reviewRound} > 0`),
     index("task_reviews_task_round_idx").on(table.taskId, table.reviewRound),

@@ -379,6 +379,15 @@ export const approveTaskInputSchema = z
   })
   .strict();
 
+export const waiveTaskApprovalInputSchema = z
+  .object({
+    projectId: identifierSchema,
+    taskId: identifierSchema,
+    reason: z.string().trim().min(1),
+    actorLabel: z.string().trim().min(1).optional(),
+  })
+  .strict();
+
 export const requestTaskChangesInputSchema = z
   .object({
     projectId: identifierSchema,
@@ -494,6 +503,7 @@ export type ReturnTaskToInboxInput = z.input<
   typeof returnTaskToInboxInputSchema
 >;
 export type ApproveTaskInput = z.input<typeof approveTaskInputSchema>;
+export type WaiveTaskApprovalInput = z.input<typeof waiveTaskApprovalInputSchema>;
 export type RequestTaskChangesInput = z.input<
   typeof requestTaskChangesInputSchema
 >;

@@ -255,6 +255,7 @@ MCP Tool ------/
 - 固定提交审核的 commit SHA 和 branch/worktree 元数据；
 - 原子领取独立的 AI 审核会话，保存结构化结论和验证证据；
 - 按风险策略自动完成低风险任务，或将中高风险任务留在 `in_review` 等待开发者最终批准；
+- 接受开发者在审核无结论时的直接验收，把审核记为 `waived` 并完成任务；
 - `request_changes` 记录 findings、清除旧凭证并将任务返回 `ready`；
 - 生成项目状态和任务简报；
 - 批量创建用于旧项目基线的 inbox 任务。
@@ -310,6 +311,12 @@ input.runId == task.activeRunId
 
 审核者的 actor label、摘要、结构化 finding（问题、建议、严重度）和验证证据都属于审计数据；actor label 只是展示和审计信息，不能替代 `reviewRunId` 的并发所有权。
 
+### 6.3.1 开发者直接验收（waived）
+
+开发者可以在 AI 审核尚无结论时直接验收：`in_review` 任务必须带有提交时的 commit，最新审核为 `pending` 或 `in_progress`，且开发者提供非空验收原因。业务核心在同一个事务内把该轮审核置为 `waived`（写入 `concludedAt` 与开发者标识，不改成 `passed`，不补写验证证据），清除 `activeReviewRunId` 使原 `reviewRunId` 无法再提交结论，并把任务置为 `completed`；任务事件仍为 `approved`，摘要记下验收原因。审核状态约束通过前向迁移 `0005_review_waived_status` 增加 `waived`，已有数据库升级后仍能读取原有审核记录。
+
+该操作只通过开发者侧 HTTP `POST /api/tasks/:id/waive-approval` 与页面暴露，不进入 MCP。`ready` 与 `running` 任务不能使用它，缺少验收原因同样拒绝。AI 审核通过后的风险策略不变：低风险仍自动完成，中高风险仍在 `passed` 后等待开发者一键批准。
+
 ### 6.4 V0 并发边界
 
 V0 不实现通用乐观锁和请求幂等键。所有写事务应保持短小，不在事务中执行文件、网络或 AI 操作。如果真实验证中出现重复请求或更复杂的并发编辑，再增加 `requestId` 和版本字段。
@@ -324,7 +331,7 @@ React V0 页面只包含一个项目状态视图：
 - 需要处理的阻塞；
 - 待整理的 inbox；
 - 最近完成。
-- 审核操作只通过开发者侧 HTTP/UI 暴露：批准、填写反馈退回返工，以及将已完成任务重新打开。
+- 审核操作只通过开发者侧 HTTP/UI 暴露：批准、填写反馈退回返工、在 AI 审核无结论时填写原因直接验收，以及将已完成任务重新打开。
 
 完整项目状态返回按状态统计的 `counts`，其中 `counts.completed` 是全部已完成任务数；`recentlyCompleted` 仍是有限窗口（完整视图默认 10 条，compact 视图默认 3 条）。Web 页面展开归档后复用现有 `GET /api/tasks?status=completed` 分页查询，单页 `limit` 使用 1–100（优先 100），滚动到底部并且 `hasMore` 时携带 `nextCursor` 加载下一页。归档收起时保持分页查询禁用，已加载任务合并到前端任务索引和依赖拓扑。
 

@@ -87,7 +87,7 @@ export interface TaskReview {
   branch: string | null;
   worktree: string | null;
   reviewRunId: string | null;
-  status: "pending" | "in_progress" | "passed" | "changes_requested";
+  status: "pending" | "in_progress" | "passed" | "changes_requested" | "waived";
   reviewerActorLabel: string | null;
   summary: string | null;
   findings: ReviewFinding[];
@@ -100,7 +100,7 @@ export interface TaskReview {
 
 /** Compact review facts carried by project status for collapsed queue cards. */
 export interface ReviewDigest {
-  status: "pending" | "in_progress" | "passed" | "changes_requested";
+  status: "pending" | "in_progress" | "passed" | "changes_requested" | "waived";
   reviewRound: number;
   commitSha: string;
   reviewerActorLabel: string | null;

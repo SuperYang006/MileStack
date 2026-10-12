@@ -626,6 +626,27 @@ export const apiClient = {
     }
   },
 
+  async waiveTaskApproval(
+    taskId: string,
+    reason: string,
+    projectId?: string,
+  ): Promise<void> {
+    const res = await fetch(
+      `/api/tasks/${encodeURIComponent(taskId)}/waive-approval`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(projectId ? { reason, projectId } : { reason }),
+      },
+    );
+    if (res.ok) return;
+    backendAvailable = true;
+    const error = await res.json().catch(() => ({}));
+    throw new Error(
+      typeof error.error === "string" ? error.error : `HTTP ${res.status}`,
+    );
+  },
+
   async requestTaskChanges(
     taskId: string,
     feedback: string,
