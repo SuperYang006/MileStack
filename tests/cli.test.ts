@@ -200,16 +200,6 @@ describe("CLI entry point", () => {
     expect(status.stdout.join("")).toContain("Waiting task");
   });
 
-  it("reports how to build the UI when serving without UI output", async () => {
-    const projectRoot = createTemporaryProject();
-    const capture = outputCapture();
-
-    expect(await runCli(["serve", "--project", projectRoot], capture.output)).toBe(1);
-    expect(capture.stderr.join("")).toContain("UI build output is missing");
-    expect(capture.stderr.join("")).toContain("pnpm build");
-    expect(capture.stderr.join("")).toContain("pnpm build:ui");
-  });
-
   it("outputs structured JSON format when --json is provided", async () => {
     const projectRoot = createTemporaryProject();
     const init = outputCapture();

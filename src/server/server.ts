@@ -3,6 +3,7 @@ import cors from "@fastify/cors";
 import fastifyStatic from "@fastify/static";
 import { existsSync } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { z } from "zod";
 
 import {
@@ -35,6 +36,20 @@ export type HttpServerOptions = {
   staticDir?: string | undefined;
 };
 
+function resolveDefaultStaticPath(): string {
+  const moduleDir = path.dirname(fileURLToPath(import.meta.url));
+  // The compiled CLI keeps the Vite output beside its entrypoint.
+  const compiledPath = path.resolve(moduleDir, "ui");
+  if (existsSync(path.join(compiledPath, "index.html"))) {
+    return compiledPath;
+  }
+
+  // Source-based execution (for example, tests) resolves back to the
+  // repository's build output.
+  const sourcePath = path.resolve(moduleDir, "../../dist/ui");
+  return existsSync(path.join(sourcePath, "index.html")) ? sourcePath : compiledPath;
+}
+
 export async function createHttpServer(
   options: HttpServerOptions = {},
 ): Promise<{ app: FastifyInstance; context: ProjectContext; port: number; host: string }> {
@@ -42,7 +57,7 @@ export async function createHttpServer(
 
   const staticPath = options.staticDir
     ? path.resolve(options.staticDir)
-    : path.resolve(rootPath, "dist/ui");
+    : resolveDefaultStaticPath();
   const staticIndexPath = path.join(staticPath, "index.html");
   if (!existsSync(staticIndexPath)) {
     throw new Error(

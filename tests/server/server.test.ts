@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createHttpServer } from "../../src/server/server.js";
@@ -52,6 +52,82 @@ describe("HTTP API Server", () => {
     expect(res.statusCode).toBe(200);
     expect(res.headers["content-type"]).toContain("text/html");
     expect(res.payload).toContain("MileStack test UI");
+  });
+
+  it("reports how to build the UI when an explicit static directory is missing", async () => {
+    const missingStaticDir = path.join(tempDir, "missing-ui");
+
+    await expect(
+      createHttpServer({
+        projectRoot: tempDir,
+        staticDir: missingStaticDir,
+      }),
+    ).rejects.toThrow(
+      `UI build output is missing at '${missingStaticDir}'. Run 'pnpm build' before 'pnpm serve', or run 'pnpm build:ui' if the backend is already built.`,
+    );
+  });
+
+  it("serves MileStack UI for an external project without mixing project data", async () => {
+    const externalProjectRoot = mkdtempSync(path.join(tmpdir(), "milestack-external-http-test-"));
+    const packageUiDir = path.resolve(import.meta.dirname, "../../dist/ui");
+    const packageUiIndex = path.join(packageUiDir, "index.html");
+    const hadPackageUiDir = existsSync(packageUiDir);
+    const hadPackageUi = existsSync(packageUiIndex);
+    if (!hadPackageUi) {
+      mkdirSync(packageUiDir, { recursive: true });
+      writeFileSync(packageUiIndex, "<h1>MileStack bundled UI fixture</h1>\n");
+    }
+    let externalServer: Awaited<ReturnType<typeof createHttpServer>> | undefined;
+
+    try {
+      externalServer = await createHttpServer({ projectRoot: externalProjectRoot });
+
+      const uiRes = await externalServer.app.inject({
+        method: "GET",
+        url: "/",
+      });
+      expect(uiRes.statusCode).toBe(200);
+      expect(uiRes.headers["content-type"]).toContain("text/html");
+
+      const projectRes = await externalServer.app.inject({
+        method: "GET",
+        url: "/api/project",
+      });
+      expect(projectRes.statusCode).toBe(200);
+      expect(JSON.parse(projectRes.payload).rootPath).toBe(externalProjectRoot);
+
+      const taskRes = await externalServer.app.inject({
+        method: "POST",
+        url: "/api/tasks",
+        payload: {
+          title: "External project task",
+          status: "inbox",
+        },
+      });
+      expect(taskRes.statusCode).toBe(201);
+
+      const statusRes = await externalServer.app.inject({
+        method: "GET",
+        url: "/api/status",
+      });
+      expect(statusRes.statusCode).toBe(200);
+      expect(JSON.parse(statusRes.payload).inbox).toEqual([
+        expect.objectContaining({ title: "External project task" }),
+      ]);
+    } finally {
+      if (externalServer) {
+        externalServer.context.database.close();
+        await externalServer.app.close();
+      }
+      rmSync(externalProjectRoot, { recursive: true, force: true });
+      if (!hadPackageUi) {
+        if (hadPackageUiDir) {
+          rmSync(packageUiIndex, { force: true });
+        } else {
+          rmSync(packageUiDir, { recursive: true, force: true });
+        }
+      }
+    }
   });
 
   it("creates tasks via POST /api/tasks and queries status via GET /api/status", async () => {
