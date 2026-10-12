@@ -208,6 +208,59 @@ describe("CLI entry point", () => {
     expect(existsSync(path.join(projectRoot, ".grok", "config.toml"))).toBe(false);
   });
 
+  it("formats user-level AGY guidance separately without project-level footer when --client agy is specified", async () => {
+    const projectRoot = createTemporaryProject();
+    const capture = outputCapture();
+
+    expect(
+      await runCli(
+        [
+          "init",
+          "--project",
+          projectRoot,
+          "--client",
+          "agy",
+        ],
+        capture.output,
+      ),
+    ).toBe(0);
+
+    const output = capture.stdout.join("");
+    expect(output).toContain("用户级 MCP 配置（AGY 全局生效）：");
+    expect(output).toContain("agy mcp add milestack -- milestack mcp --discover");
+    expect(output).toContain("agy mcp list");
+    expect(output).toContain("~/.gemini/config/mcp_config.json");
+    expect(output).not.toContain("项目级 MCP 配置（仅当前项目）：");
+    expect(output).not.toContain("上述文件只写入当前项目目录，不会修改用户主目录中的全局配置。");
+    expect(output).not.toContain("--project 使用当前 checkout 的绝对路径");
+  });
+
+  it("formats both project-level and user-level sections when --client has mixed clients", async () => {
+    const projectRoot = createTemporaryProject();
+    const capture = outputCapture();
+
+    expect(
+      await runCli(
+        [
+          "init",
+          "--project",
+          projectRoot,
+          "--client",
+          "claude,agy",
+        ],
+        capture.output,
+      ),
+    ).toBe(0);
+
+    const output = capture.stdout.join("");
+    expect(output).toContain("项目级 MCP 配置（仅当前项目）：");
+    expect(output).toContain("  claude: 已写入 .mcp.json");
+    expect(output).toContain("上述文件只写入当前项目目录，不会修改用户主目录中的全局配置。");
+    expect(output).toContain("用户级 MCP 配置（AGY 全局生效）：");
+    expect(output).toContain("agy mcp add milestack -- milestack mcp --discover");
+    expect(output).toContain("agy mcp list");
+  });
+
   it("rejects invalid or misplaced --client before initialization side effects", async () => {
     const invalidCases: readonly (readonly string[])[] = [
       ["init", "--project", createTemporaryProject(), "--client", "unknown"],
@@ -356,8 +409,11 @@ describe("project MCP configuration", () => {
     ]);
     expect(fileResults.every((item) => item.detail.startsWith("已写入 "))).toBe(true);
     expect(agyResult?.action).toBe("skipped");
+    expect(agyResult?.relativePath).toBe("~/.gemini/config/mcp_config.json");
     expect(agyResult?.detail).toContain("--discover");
-    expect(agyResult?.detail).toContain("~/.gemini/settings.json");
+    expect(agyResult?.detail).toContain("~/.gemini/config/mcp_config.json");
+    expect(agyResult?.detail).toContain("agy mcp add milestack -- milestack mcp --discover");
+    expect(agyResult?.detail).toContain("agy mcp list");
 
     const snapshots = fileResults.map((item) => readFileSync(path.join(projectRoot, item.relativePath), "utf8"));
     expect(JSON.parse(snapshots[0] ?? "{}")).toMatchObject({

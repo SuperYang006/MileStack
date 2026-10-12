@@ -554,14 +554,16 @@ export function configureProjectMcpClients(
     if (client === "agy") {
       return result(
         client,
-        "~/.gemini/settings.json",
+        "~/.gemini/config/mcp_config.json",
         "skipped",
-        `AGY（Gemini CLI）使用用户级配置，milestack init 不会自动修改 ~/.gemini/settings.json。\n` +
-          `  请手动将以下 MCP 配置加入 ~/.gemini/settings.json 的 mcpServers 中：\n` +
+        `AGY（Gemini CLI）使用用户级全局配置，milestack init 不会自动修改用户主目录配置。\n` +
+          `  推荐直接运行以下命令完成注册或更新（会自动替换旧项目的固定路径条目）：\n` +
+          `    agy mcp add milestack -- milestack mcp --discover\n` +
+          `  验证配置：\n` +
+          `    agy mcp list\n` +
+          `  若需手动配置，请在 ~/.gemini/config/mcp_config.json 的 mcpServers 中添加或更新：\n` +
           `    "milestack": { "command": "milestack", "args": ["mcp", "--discover"] }\n` +
-          `  此配置使用 --discover 模式，会根据 agy 会话的工作目录自动定位当前项目的 .milestack 数据库。\n` +
-          `  同一份注册可在所有已初始化的 MileStack 项目中使用，无需为每个项目修改配置。\n` +
-          `  如已有固定路径的旧条目，请将其替换为上述 --discover 条目。`,
+          `  此配置在所有已初始化的 MileStack 项目中全局生效，按会话工作目录自动定位数据库。`,
       );
     }
     const definition = clientDefinitions[client];

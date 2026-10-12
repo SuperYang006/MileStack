@@ -321,15 +321,36 @@ function projectMcpInstructions(
   projectRoot: string,
   clients: readonly ProjectMcpClientName[],
 ): string {
-  const results = configureProjectMcpClients(projectRoot, clients);
-  return [
-    "项目级 MCP 配置（仅当前项目）：",
-    ...results.map((configuration) => `  ${configuration.client}: ${configuration.detail}`),
-    "",
-    "上述文件只写入当前项目目录，不会修改用户主目录中的全局配置。",
-    `--project 使用当前 checkout 的绝对路径：${projectRoot}`,
-    "写入后请重新打开对应客户端会话。",
-  ].join("\n");
+  const fileClients = clients.filter((c) => c !== "agy");
+  const hasAgy = clients.includes("agy");
+
+  const sections: string[] = [];
+
+  if (fileClients.length > 0) {
+    const results = configureProjectMcpClients(projectRoot, fileClients);
+    sections.push(
+      [
+        "项目级 MCP 配置（仅当前项目）：",
+        ...results.map((configuration) => `  ${configuration.client}: ${configuration.detail}`),
+        "",
+        "上述文件只写入当前项目目录，不会修改用户主目录中的全局配置。",
+        `--project 使用当前 checkout 的绝对路径：${projectRoot}`,
+        "写入后请重新打开对应客户端会话。",
+      ].join("\n"),
+    );
+  }
+
+  if (hasAgy) {
+    const agyResult = configureProjectMcpClients(projectRoot, ["agy"])[0];
+    sections.push(
+      [
+        "用户级 MCP 配置（AGY 全局生效）：",
+        `  agy: ${agyResult?.detail}`,
+      ].join("\n"),
+    );
+  }
+
+  return sections.join("\n\n");
 }
 
 async function runInit(
