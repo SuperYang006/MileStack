@@ -1,5 +1,7 @@
 # MileStack
 
+[English](README.md) | [简体中文](README.zh-CN.md)
+
 MileStack is a local-first project progress and task-context database for developers and coding agents. It keeps task state, dependencies, execution ownership, review artifacts, and semantic progress in one SQLite database instead of scattering them across temporary TODO files and chat handoffs.
 
 MileStack is currently an early V0 intended for local development and agent-assisted workflows.
