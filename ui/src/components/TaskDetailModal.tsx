@@ -269,9 +269,13 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
               {/* Title & Objective */}
               <div>
                 <h2 className="text-sm font-bold text-zinc-100">{details.task.title}</h2>
-                {details.task.objective && (
+                {details.task.objective ? (
                   <p className="mt-2 text-zinc-400 bg-zinc-900/70 p-3 rounded border border-zinc-850 leading-relaxed">
                     {details.task.objective}
+                  </p>
+                ) : (
+                  <p className="mt-2 text-zinc-500 italic bg-zinc-900/30 p-2.5 rounded border border-zinc-850/80 leading-relaxed text-[11px]">
+                    未提供详细目标说明
                   </p>
                 )}
               </div>
@@ -346,12 +350,12 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
               })()}
 
               {/* Acceptance Criteria */}
-              {details.task.acceptanceCriteria && details.task.acceptanceCriteria.length > 0 && (
-                <div>
-                  <h3 className="text-[11px] font-bold text-zinc-500 uppercase tracking-wider mb-2 flex items-center space-x-1.5">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-zinc-400" />
-                    <span>验收条件</span>
-                  </h3>
+              <div>
+                <h3 className="text-[11px] font-bold text-zinc-500 uppercase tracking-wider mb-2 flex items-center space-x-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-zinc-400" />
+                  <span>验收条件</span>
+                </h3>
+                {details.task.acceptanceCriteria && details.task.acceptanceCriteria.length > 0 ? (
                   <div className="space-y-1 bg-zinc-900/40 p-2.5 rounded border border-zinc-850">
                     {details.task.acceptanceCriteria.map((item, idx) => (
                       <div key={idx} className="flex items-start space-x-2 text-zinc-300">
@@ -360,8 +364,12 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                       </div>
                     ))}
                   </div>
-                </div>
-              )}
+                ) : (
+                  <div className="bg-zinc-900/30 p-2.5 rounded border border-zinc-850 text-zinc-500 italic text-[11px]">
+                    未指定具体验收条件
+                  </div>
+                )}
+              </div>
 
               {/* Dependencies & Flow Section */}
               <div>
