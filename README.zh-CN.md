@@ -108,14 +108,14 @@ node /absolute/path/to/MileStack/dist/index.js init \
 - 在不替换现有内容的前提下，将 `.milestack/` 加入 `.gitignore`；
 - 生成 `.milestack/agent-instructions.md`；
 - 输出通用 MCP JSON 以及手动注册 Codex 与 AGY 的说明；
-- 不创建 `.mcp.json`、`.cursor/mcp.json`、`.grok/config.toml` 或 `.codex/config.toml`；
+- 不创建 `.mcp.json`、`.cursor/mcp.json`、`.grok/config.toml`、`.codex/config.toml` 或 `opencode.json`；
 - 不会创建、覆盖或追加项目根目录中的 `AGENTS.md`。
 
 如需配置客户端 MCP 接入，必须为当前 checkout 显式选择客户端。`--client`
-可以重复，也可以使用逗号分隔的列表（支持 `claude`、`cursor`、`grok`、`codex`、`agy`）：
+可以重复，也可以使用逗号分隔的列表（支持 `claude`、`cursor`、`grok`、`codex`、`opencode`、`agy`）：
 
 ```bash
-milestack init --client claude --client cursor --client grok --client codex --client agy \
+milestack init --client claude --client cursor --client grok --client codex --client opencode --client agy \
   --project /absolute/path/to/current/checkout
 ```
 
@@ -127,10 +127,15 @@ milestack init --client claude --client cursor --client grok --client codex --cl
 | `cursor` | 项目级 | `.cursor/mcp.json` | 写入当前项目目录，绑定当前 checkout 绝对路径 |
 | `grok` | 项目级 | `.grok/config.toml` | 写入当前项目目录，绑定当前 checkout 绝对路径 |
 | `codex` | 项目级 | `.codex/config.toml` | 写入当前项目目录，绑定当前 checkout 绝对路径 |
+| `opencode` | 项目级 | `opencode.json` | 写入顶层 `mcp.milestack`：`type` 为 `local`，`command` 为 `milestack mcp --project <当前 checkout 绝对路径>`，`enabled` 为 true，不使用 `--discover` |
 | `agy` | 用户级 | `~/.gemini/config/mcp_config.json` | 不修改用户全局文件；输出推荐的 `agy mcp` 动态发现命令指引 |
 
+新建的 `opencode.json` 会带上 `$schema` `https://opencode.ai/config.json`。若项目中只存在 `opencode.jsonc`，`init` 会打印需要手写的 `mcp.milestack` 条目，并不修改该文件。
+
 执行或提交前请确认 `--project` 是当前 checkout 的绝对路径。MileStack 严格遵守安全边界，**绝不自动修改**
-`~/.claude.json`、`~/.cursor`、`~/.grok`、`~/.codex` 或 `~/.gemini` 等全局客户端配置。
+`~/.claude.json`、`~/.cursor`、`~/.grok`、`~/.codex`、`~/.config/opencode` 或 `~/.gemini` 等全局客户端配置，
+也不会执行 `opencode mcp add`。OpenCode 会把项目级 `opencode.json` 与 `~/.config/opencode/opencode.json`
+合并，同名 MCP 服务以项目条目为准，因此仅项目文件就足够。
 已有不同的 `milestack` 条目会保持不变，不会被覆盖。写入项目文件后，请重新打开
 对应的客户端会话。Codex 项目配置只会在已信任的仓库中生效；Claude 的项目
 `.mcp.json` 配置仍需用户批准。关于 AGY（Gemini CLI）的详细连接、动态寻根与迁移方法，请参见下文专门章节。

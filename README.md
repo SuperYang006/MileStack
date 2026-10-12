@@ -108,14 +108,14 @@ Initialization is idempotent. Without `--client`, it:
 - adds `.milestack/` to `.gitignore` without replacing existing content;
 - generates `.milestack/agent-instructions.md`;
 - prints the generic MCP JSON and manual Codex and AGY registration instructions;
-- does not create `.mcp.json`, `.cursor/mcp.json`, `.grok/config.toml`, or `.codex/config.toml`;
+- does not create `.mcp.json`, `.cursor/mcp.json`, `.grok/config.toml`, `.codex/config.toml`, or `opencode.json`;
 - never creates, overwrites, or appends to the project's root `AGENTS.md`.
 
 To configure client MCP integration, explicitly select the clients for the current
-checkout. `--client` may be repeated or given as a comma-separated list (supports `claude`, `cursor`, `grok`, `codex`, `agy`):
+checkout. `--client` may be repeated or given as a comma-separated list (supports `claude`, `cursor`, `grok`, `codex`, `opencode`, `agy`):
 
 ```bash
-milestack init --client claude --client cursor --client grok --client codex --client agy \
+milestack init --client claude --client cursor --client grok --client codex --client opencode --client agy \
   --project /absolute/path/to/current/checkout
 ```
 
@@ -127,12 +127,17 @@ Client support matrix:
 | `cursor` | Project-level | `.cursor/mcp.json` | Writes to current project directory, bound to checkout absolute path |
 | `grok` | Project-level | `.grok/config.toml` | Writes to current project directory, bound to checkout absolute path |
 | `codex` | Project-level | `.codex/config.toml` | Writes to current project directory, bound to checkout absolute path |
+| `opencode` | Project-level | `opencode.json` | Writes top-level `mcp.milestack`: `type` `local`, `command` `milestack mcp --project <absolute checkout path>`, `enabled` true, no `--discover` |
 | `agy` | User-level | `~/.gemini/config/mcp_config.json` | Skips writing user-global files; outputs recommended `agy mcp` dynamic discovery command guidance |
+
+A newly created `opencode.json` also carries `$schema` `https://opencode.ai/config.json`. If only `opencode.jsonc` exists, `init` prints the `mcp.milestack` entry to add by hand and leaves that file untouched.
 
 Before running or submitting the command, verify that `--project` is the absolute
 path of the current checkout. MileStack strictly enforces safety boundaries and **never modifies**
-global client configuration such as `~/.claude.json`, `~/.cursor`, `~/.grok`, `~/.codex`, or `~/.gemini`.
-An existing different `milestack` entry is preserved and not replaced. After writing a project file,
+global client configuration such as `~/.claude.json`, `~/.cursor`, `~/.grok`, `~/.codex`, `~/.config/opencode`, or `~/.gemini`,
+and it never runs `opencode mcp add`. OpenCode merges the project `opencode.json` with
+`~/.config/opencode/opencode.json` and prefers the project entry for the same MCP service
+name, so the project file alone is enough. An existing different `milestack` entry is preserved and not replaced. After writing a project file,
 reopen the corresponding client session. Codex project configuration takes effect
 only in trusted repositories, and Claude still requires user approval for the
 project `.mcp.json` configuration. See below for detailed AGY (Gemini CLI) connection, dynamic root discovery, and migration instructions.
