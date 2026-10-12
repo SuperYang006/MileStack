@@ -59,9 +59,13 @@ describe("MCP task tools", () => {
     await client.connect(clientTransport);
 
     const instructions = client.getInstructions();
-    expect(instructions).toContain("没有已知 taskId 时，调用 get_project_status");
-    expect(instructions).toContain("已经提供 taskId 时，直接调用 get_task");
-    expect(instructions).toContain("读取任务详情后调用 start_task");
+    expect(instructions).toContain("When no taskId is known, call get_project_status");
+    expect(instructions).toContain("provides a taskId, call get_task directly");
+    expect(instructions).toContain(
+      "After reading the task details and confirming that its status is ready, call start_task",
+    );
+    expect(instructions).toContain("Do not expect get_task to expose runnable");
+    expect(instructions).not.toMatch(/[\u3400-\u9fff]/u);
 
     const listed = await client.listTools();
     const toolNames = listed.tools.map((tool) => tool.name);

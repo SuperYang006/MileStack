@@ -5,6 +5,11 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { helpText, runCli } from "../src/cli/command.js";
+import {
+  formatAgentIntegrationInstructions,
+  formatKnownTaskBriefInstructions,
+  formatMcpInstructions,
+} from "../src/core/agent-instructions.js";
 import { openProjectContext } from "../src/project/project-context.js";
 
 const temporaryProjects: string[] = [];
@@ -84,21 +89,31 @@ describe("CLI entry point", () => {
     );
     expect(generatedInstructions).toContain("create_task");
     expect(generatedInstructions).toContain("create_tasks");
-    expect(generatedInstructions).toContain("可验证的目标、完整验收条件");
+    expect(generatedInstructions).toContain("a verifiable objective, complete acceptance criteria");
     expect(generatedInstructions).toContain("dependencyIds");
-    expect(generatedInstructions).toContain("主要修改范围、明确禁止修改的范围");
-    expect(generatedInstructions).toContain("文件/模块所有权");
-    expect(generatedInstructions).toContain("不重复本文件的通用领取、审核和 Git 规则");
+    expect(generatedInstructions).toContain(
+      "files or modules owned by the task, explicitly excluded areas",
+    );
+    expect(generatedInstructions).toContain("non-overlapping file or module ownership");
+    expect(generatedInstructions).toContain(
+      "Do not copy the general workflow, review, risk, or Git rules",
+    );
     expect(generatedInstructions).toContain("start_task");
     expect(generatedInstructions).toContain(
-      "核对 get_task 返回的任务状态为 ready 后直接调用 start_task",
+      "After reading the task details and confirming that its status is ready, call start_task",
     );
     expect(generatedInstructions).toContain(
-      "可领取性（风险已确认、依赖已完成及并发冲突）由 start_task 在服务端原子校验",
+      "start_task is the final atomic claim boundary",
     );
-    expect(generatedInstructions).toContain("不要从 get_task 读取 runnable");
+    expect(generatedInstructions).toContain("Do not expect get_task to expose runnable");
     expect(generatedInstructions).not.toContain(
       "确认任务状态为 ready 且 runnable=true 后调用 start_task",
+    );
+    expect(generatedInstructions).toContain(
+      "Give every concurrently executing task its own local branch and worktree",
+    );
+    expect(generatedInstructions).toContain(
+      "Never run two writing agents in the same working tree",
     );
     expect(generatedInstructions).toContain("submit_for_review");
     expect(generatedInstructions).toContain("start_review");
@@ -110,14 +125,17 @@ describe("CLI entry point", () => {
     expect(generatedInstructions).toContain("medium");
     expect(generatedInstructions).toContain("high");
     expect(generatedInstructions).toContain("git cat-file -e");
-    expect(generatedInstructions).toContain("完整 40 位 commit SHA");
-    expect(generatedInstructions).toContain("实际运行的验证命令及结果");
-    expect(generatedInstructions).toContain("结构化问题与修改建议");
-    expect(generatedInstructions).toContain("无法取得模型标签时使用 agent");
-    expect(generatedInstructions).toContain("未经开发者明确授权，不得 push、merge");
+    expect(generatedInstructions).toContain("full 40-character commit SHA");
+    expect(generatedInstructions).toContain("commands actually run and their results");
+    expect(generatedInstructions).toContain("a concrete issue, an actionable suggestion");
+    expect(generatedInstructions).toContain("Use agent when no model label is available");
+    expect(generatedInstructions).toContain(
+      "Do not push, merge, or modify a shared remote branch",
+    );
     expect(generatedInstructions).toContain(
       "Before working on tasks, read and follow .milestack/agent-instructions.md",
     );
+    expect(generatedInstructions).not.toMatch(/[\u3400-\u9fff]/u);
 
     expect(readFileSync(path.join(projectRoot, "AGENTS.md"), "utf8")).toBe(rootAgentsContent);
 
@@ -130,6 +148,27 @@ describe("CLI entry point", () => {
     expect(second.stdout.join("")).toContain("Already initialized");
     expect(readFileSync(agentInstructionsPath, "utf8")).toBe(generatedInstructions);
     expect(readFileSync(path.join(projectRoot, "AGENTS.md"), "utf8")).toBe(rootAgentsContent);
+  });
+
+  it("renders every generated agent prompt in English", () => {
+    const taskId = "11111111-2222-4333-8444-555555555555";
+    const integrationInstructions = formatAgentIntegrationInstructions();
+    const mcpInstructions = formatMcpInstructions();
+    const knownTaskInstructions = formatKnownTaskBriefInstructions(taskId);
+
+    for (const prompt of [
+      integrationInstructions,
+      mcpInstructions,
+      knownTaskInstructions,
+    ]) {
+      expect(prompt).not.toMatch(/[\u3400-\u9fff]/u);
+    }
+    expect(integrationInstructions).toContain("Run milestack init in every local checkout");
+    expect(mcpInstructions).toContain("Task discovery:");
+    expect(mcpInstructions).toContain("Known task:");
+    expect(mcpInstructions).toContain("start_task is the final atomic claim boundary");
+    expect(knownTaskInstructions).toContain(`Call get_task directly with taskId \`${taskId}\``);
+    expect(knownTaskInstructions).toContain("If the claim fails, do not modify the project");
   });
 
   it("prints status through TaskService and distinguishes runnable work", async () => {

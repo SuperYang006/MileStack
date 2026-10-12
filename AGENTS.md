@@ -1,5 +1,7 @@
 # MileStack Agent Instructions
 
+Before working on tasks, read and follow .milestack/agent-instructions.md
+
 ## Project intent
 
 MileStack is a local-first project progress and task context database shared by developers and coding agents.
@@ -9,18 +11,10 @@ Before changing code, read the relevant parts of:
 - `docs/requirements.md` for product scope;
 - `docs/technical-design.md` for architecture and technology decisions;
 
-Before selecting or changing a task, use the configured MileStack MCP server as the
-project's task source:
-
-- call `get_project_status` to read the current work, queue, blockers, inbox, and recent completions;
-- choose a task from `next` only when `runnable` is `true`, then call `get_task`;
-- call `start_task` before implementation and keep the returned `runId`;
-- use `update_task` for meaningful progress;
-- when implementation is ready, submit it for developer review with `submit_for_review`. Submission moves the task to `in_review`; it does not complete or archive the task;
-- treat a task as complete only after a developer approves it and its status becomes `completed`. If review requests changes or a completed task is reopened, read the feedback, claim the returned Ready task with a new `runId`, and continue the same task history;
-- record newly discovered work with `create_task` or `create_tasks`, which places it in `inbox` for developer review.
-
-Do not create documents that duplicate dynamic task state stored in MileStack, such as standalone TODO lists, current-progress reports, next-task lists, or temporary handoff files. Durable documentation is allowed and encouraged when it has lasting value, including product requirements, technical designs, architecture decisions, protocols, migration notes, and operation or user guides. Documents explicitly requested by the user are also allowed.
+Durable documentation is allowed and encouraged when it has lasting value, including
+product requirements, technical designs, architecture decisions, protocols, migration
+notes, and operation or user guides. Documents explicitly requested by the user are
+also allowed.
 
 `docs/bootstrap-tasks.md` is retained as implementation history for the self-bootstrap
 period. Do not use it as a current task list or maintain dynamic progress there; all
@@ -41,13 +35,9 @@ current tasks, progress, blockers, next steps, and handoffs belong in MileStack.
 - Do not add a dependency when a small, clear implementation using the existing stack is sufficient.
 - Delete superseded code after a refactor. Do not leave commented-out code, `old`/`new` duplicates, or temporary compatibility paths without a stated requirement.
 
-## Review and Git delivery
+## Project-specific Git delivery
 
-- Submitting a MileStack task for review does not authorize pushing, merging, or updating shared remote branches.
-- Agents may create local commits in their assigned branch or worktree when that helps produce a reviewable change, but must keep the work isolated until the developer reviews it.
-- Do not push directly to `main`, merge into `main`, or push a task branch unless the developer explicitly requests that exact Git action.
-- Report the local commit or worktree state with the review submission so the developer can inspect it before approval.
-- When review requests changes, add follow-up commits to the same task branch when practical. Do not rewrite published history or bypass the task's new execution run.
+- When review requests changes, add follow-up commits to the same task branch when practical. Do not rewrite published history.
 
 ## Architecture boundaries
 
