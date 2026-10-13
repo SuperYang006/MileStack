@@ -6,6 +6,7 @@ dist/
 ui/dist/
 coverage/
 *.tsbuildinfo
+/milestack-*.tgz
 
 # Local MileStack data
 .milestack/
