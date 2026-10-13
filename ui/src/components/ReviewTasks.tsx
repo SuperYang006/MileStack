@@ -99,8 +99,10 @@ const ReviewTaskItem: React.FC<{
 
   return (
     <div className="p-3.5 rounded-lg bg-zinc-950/80 border border-zinc-800 hover:border-violet-900/60 transition-colors space-y-2 font-mono">
-      {/* Layer 1: identity, review state, risk, and review actions. */}
-      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 lg:grid lg:grid-cols-[minmax(0,7rem)_minmax(0,1fr)_auto] lg:gap-y-0">
+      {/* Layer 1: identity, review state, risk, and review actions. The card only
+          reaches about 550px of content width in the two-column dashboard, so
+          every row wraps instead of relying on a three-column grid. */}
+      <div className="flex flex-wrap items-start gap-x-2 gap-y-2">
         <div
           role="button"
           tabIndex={0}
@@ -111,74 +113,72 @@ const ReviewTaskItem: React.FC<{
               onSelectTask(task.id);
             }
           }}
-          className="flex w-full min-w-0 items-start gap-2 cursor-pointer lg:contents"
+          className="flex min-w-0 flex-1 basis-72 items-start gap-2 cursor-pointer"
           title="查看任务详情与事件记录"
         >
           <span className="w-[7rem] min-w-0 shrink-0">
             <TaskIdBadge taskId={task.id} variant="muted" className="w-full" />
           </span>
-          <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-            <h3 className="min-w-0 text-xs font-medium text-zinc-100 line-clamp-2 break-words hover:text-violet-300 transition-colors">
-              {task.title}
-            </h3>
-
-            <div className="flex flex-wrap items-center gap-1.5">
-              {getStatusBadge()}
-              {riskBadge}
-            </div>
-          </div>
+          <h3 className="min-w-0 flex-1 text-xs font-medium text-zinc-100 line-clamp-2 break-words hover:text-violet-300 transition-colors">
+            {task.title}
+          </h3>
         </div>
 
-        {/* Action Buttons */}
-        <div className="flex flex-wrap items-center gap-1.5 shrink-0 lg:col-start-3 lg:row-start-1">
-          <button
-            onClick={() => {
-              if (!isPassed) {
-                alert("当前 AI 审核尚未通过，仅通过后可由开发者执行最终批准。");
-                return;
-              }
-              onApprove(task.id);
-            }}
-            disabled={!isPassed}
-            className={`inline-flex items-center space-x-1 px-2.5 py-1 text-[11px] rounded border transition-colors ${
-              isPassed
-                ? "text-emerald-300 hover:text-emerald-200 bg-emerald-950/60 hover:bg-emerald-900/80 border-emerald-700/80 cursor-pointer shadow-xs font-bold"
-                : "text-zinc-600 bg-zinc-900/40 border-zinc-850 cursor-not-allowed opacity-50"
-            }`}
-            title={isPassed ? "开发者批准并归档完成" : "需等待 AI 审核通过后方可执行最终批准"}
-          >
-            <Check className="w-3 h-3" />
-            <span>批准</span>
-          </button>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {getStatusBadge()}
+          {riskBadge}
 
-          {canWaiveApproval && (
+          {/* Action Buttons */}
+          <div className="flex flex-wrap items-center gap-1.5">
             <button
               onClick={() => {
-                const reason = window.prompt(
-                  "请输入直接验收该任务的原因（审核尚未通过，验收原因将记入任务事件）：",
-                  "",
-                );
-                if (reason?.trim()) onWaiveApproval(task.id, reason.trim());
+                if (!isPassed) {
+                  alert("当前 AI 审核尚未通过，仅通过后可由开发者执行最终批准。");
+                  return;
+                }
+                onApprove(task.id);
               }}
-              className="inline-flex items-center space-x-1 px-2.5 py-1 text-[11px] text-violet-300 hover:text-violet-200 bg-violet-950/40 hover:bg-violet-900/80 border border-violet-800/70 rounded transition-colors"
-              title="跳过 AI 审核结论直接验收，并记录验收原因"
+              disabled={!isPassed}
+              className={`inline-flex items-center space-x-1 px-2.5 py-1 text-[11px] rounded border transition-colors ${
+                isPassed
+                  ? "text-emerald-300 hover:text-emerald-200 bg-emerald-950/60 hover:bg-emerald-900/80 border-emerald-700/80 cursor-pointer shadow-xs font-bold"
+                  : "text-zinc-600 bg-zinc-900/40 border-zinc-850 cursor-not-allowed opacity-50"
+              }`}
+              title={isPassed ? "开发者批准并归档完成" : "需等待 AI 审核通过后方可执行最终批准"}
             >
-              <ShieldCheck className="w-3 h-3" />
-              <span>直接验收</span>
+              <Check className="w-3 h-3" />
+              <span>批准</span>
             </button>
-          )}
 
-          <button
-            onClick={() => {
-              const feedback = window.prompt("请输入退回返工的审核反馈意见：", "");
-              if (feedback?.trim()) onRequestChanges(task.id, feedback.trim());
-            }}
-            className="inline-flex items-center space-x-1 px-2.5 py-1 text-[11px] text-amber-300 hover:text-amber-200 bg-amber-950/40 hover:bg-amber-950/80 border border-amber-900/60 rounded transition-colors"
-            title="填写审核反馈并退回返工"
-          >
-            <MessageSquare className="w-3 h-3" />
-            <span>退回返工</span>
-          </button>
+            {canWaiveApproval && (
+              <button
+                onClick={() => {
+                  const reason = window.prompt(
+                    "请输入直接验收该任务的原因（审核尚未通过，验收原因将记入任务事件）：",
+                    "",
+                  );
+                  if (reason?.trim()) onWaiveApproval(task.id, reason.trim());
+                }}
+                className="inline-flex items-center space-x-1 px-2.5 py-1 text-[11px] text-violet-300 hover:text-violet-200 bg-violet-950/40 hover:bg-violet-900/80 border border-violet-800/70 rounded transition-colors"
+                title="跳过 AI 审核结论直接验收，并记录验收原因"
+              >
+                <ShieldCheck className="w-3 h-3" />
+                <span>直接验收</span>
+              </button>
+            )}
+
+            <button
+              onClick={() => {
+                const feedback = window.prompt("请输入退回返工的审核反馈意见：", "");
+                if (feedback?.trim()) onRequestChanges(task.id, feedback.trim());
+              }}
+              className="inline-flex items-center space-x-1 px-2.5 py-1 text-[11px] text-amber-300 hover:text-amber-200 bg-amber-950/40 hover:bg-amber-950/80 border border-amber-900/60 rounded transition-colors"
+              title="填写审核反馈并退回返工"
+            >
+              <MessageSquare className="w-3 h-3" />
+              <span>退回返工</span>
+            </button>
+          </div>
         </div>
       </div>
 
