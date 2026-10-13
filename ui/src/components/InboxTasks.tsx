@@ -34,6 +34,7 @@ export const InboxTasks: React.FC<InboxTasksProps> = ({
   const [confirmingTaskId, setConfirmingTaskId] = useState<string | null>(null);
   const [popoverPlacement, setPopoverPlacement] = useState<"down" | "up">("down");
   const activeContainerRef = useRef<HTMLDivElement | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!confirmingTaskId) return;
@@ -62,6 +63,18 @@ export const InboxTasks: React.FC<InboxTasksProps> = ({
     };
   }, [confirmingTaskId]);
 
+  useEffect(() => {
+    if (confirmingTaskId && activeContainerRef.current) {
+      const timer = setTimeout(() => {
+        activeContainerRef.current?.scrollIntoView({
+          block: "nearest",
+          behavior: "smooth",
+        });
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [confirmingTaskId]);
+
   const handleTogglePopover = (
     taskId: string,
     e: React.MouseEvent<HTMLButtonElement>
@@ -72,10 +85,12 @@ export const InboxTasks: React.FC<InboxTasksProps> = ({
       return;
     }
     const rect = e.currentTarget.getBoundingClientRect();
+    const containerRect = scrollContainerRef.current?.getBoundingClientRect();
     const placement = computePopoverPlacement(
       rect.bottom,
       rect.top,
-      window.innerHeight
+      window.innerHeight,
+      containerRect?.top
     );
     setPopoverPlacement(placement);
     setConfirmingTaskId(taskId);
@@ -100,7 +115,7 @@ export const InboxTasks: React.FC<InboxTasksProps> = ({
         </span>
       </div>
 
-      <div className="p-3 lg:flex-1 lg:min-h-0 lg:overflow-y-auto">
+      <div ref={scrollContainerRef} className="p-3 lg:flex-1 lg:min-h-0 lg:overflow-y-auto">
         {tasks.length === 0 ? (
           <EmptyState
             icon={Inbox}

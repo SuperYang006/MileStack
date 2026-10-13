@@ -50,5 +50,17 @@ describe("Risk popover options and placement contracts", () => {
       // window height = 200, button bottom = 120 (80px below, button top = 90)
       expect(computePopoverPlacement(120, 90, 200)).toBe("down");
     });
+
+    it("never places up when space above containerTop would collide with the header", () => {
+      // button is at top of container: containerTop = 300, button top = 320 (only 20px clearance)
+      // window height = 800, button bottom = 720 (tight below window, but tight above container!)
+      expect(computePopoverPlacement(720, 320, 800, 300)).toBe("down");
+    });
+
+    it("allows placing up only when clearance above containerTop is greater than popoverHeight + margin", () => {
+      // containerTop = 200, button top = 450 (250px clearance above containerTop)
+      // window height = 800, button bottom = 720 (tight below window)
+      expect(computePopoverPlacement(720, 450, 800, 200)).toBe("up");
+    });
   });
 });

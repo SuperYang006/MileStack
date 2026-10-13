@@ -57,11 +57,21 @@ export function computePopoverPlacement(
   buttonBottom: number,
   buttonTop: number,
   windowHeight: number,
-  popoverHeight = 170
+  containerTop?: number,
+  popoverHeight = 160
 ): "up" | "down" {
+  // If inside a container with a header, never open upward if it would collide with the container top or header
+  if (containerTop !== undefined && buttonTop - containerTop < popoverHeight + 10) {
+    return "down";
+  }
+
   const spaceBelow = windowHeight - buttonBottom;
-  if (spaceBelow < popoverHeight && buttonTop > popoverHeight) {
+  const spaceAbove = containerTop !== undefined ? buttonTop - containerTop : buttonTop;
+
+  // Only open upward if space below is truly tight AND space above has plenty of clearance
+  if (spaceBelow < popoverHeight && spaceAbove >= popoverHeight + 10) {
     return "up";
   }
+
   return "down";
 }
