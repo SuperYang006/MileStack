@@ -524,7 +524,9 @@ describe("init AGENTS.md instruction reminder", () => {
     expect(output).toContain(copyableInstruction);
     expect(output).toContain("如果不添加，Coding Agent 可能不会读取 MileStack 工作流规则。");
     expect(output).toContain("MileStack 不会自动修改 AGENTS.md，以免覆盖已有内容。");
-    expect(output).toContain("下一步：完成项目指令配置后，重新打开已配置的客户端会话：");
+    expect(output).toContain(
+      "下一步：完成项目指令配置后，重新打开本次已成功配置的客户端会话：",
+    );
     expect(output).toContain("Claude、Cursor、Codex");
     expect(existsSync(rootAgentsPath(projectRoot))).toBe(false);
   });
@@ -545,11 +547,11 @@ describe("init AGENTS.md instruction reminder", () => {
       "请在项目根目录已有的 AGENTS.md 中加入下面这一行，不要覆盖原有内容：",
     );
     expect(output).toContain(copyableInstruction);
-    expect(output).not.toContain("已关联 MileStack instructions");
+    expect(output).not.toContain("已包含 MileStack instructions 路径引用");
     expect(readFileSync(rootAgentsPath(projectRoot), "utf8")).toBe(existing);
   });
 
-  it("reports the linked state without a pending warning when AGENTS.md references the instructions", async () => {
+  it("reports the detected path reference without claiming to validate the wording", async () => {
     const projectRoot = createTemporaryProject();
     writeFileSync(
       rootAgentsPath(projectRoot),
@@ -563,14 +565,34 @@ describe("init AGENTS.md instruction reminder", () => {
     ).toBe(0);
 
     const output = capture.stdout.join("");
-    expect(output).toContain("✓ AGENTS.md 已关联 MileStack instructions");
+    expect(output).toContain("✓ AGENTS.md 已包含 MileStack instructions 路径引用");
+    expect(output).not.toContain("已验证");
+    expect(output).not.toContain("语义有效");
     expect(output).not.toContain("还需手动完成 1 个项目级步骤");
     expect(output).not.toContain(copyableInstruction);
-    expect(output).toContain("下一步：重新打开已配置的客户端会话：");
+    expect(output).toContain("下一步：重新打开本次已成功配置的客户端会话：");
     expect(output).toContain("Claude、Codex");
   });
 
-  it("names only the selected client in the next step", async () => {
+  it("treats any custom wording that contains the instructions path as referenced", async () => {
+    const projectRoot = createTemporaryProject();
+    writeFileSync(
+      rootAgentsPath(projectRoot),
+      "# Project rules\n\n任务开始前请先阅读 .milestack/agent-instructions.md 中的规则。\n",
+      "utf8",
+    );
+    const capture = outputCapture();
+
+    expect(
+      await runCli(["init", "--project", projectRoot, "--client", "claude"], capture.output),
+    ).toBe(0);
+
+    const output = capture.stdout.join("");
+    expect(output).toContain("✓ AGENTS.md 已包含 MileStack instructions 路径引用");
+    expect(output).not.toContain("还需手动完成 1 个项目级步骤");
+  });
+
+  it("names only the successfully configured client in the next step", async () => {
     const projectRoot = createTemporaryProject();
     const capture = outputCapture();
 
@@ -579,7 +601,7 @@ describe("init AGENTS.md instruction reminder", () => {
     ).toBe(0);
 
     const output = capture.stdout.join("");
-    expect(output).toContain("重新打开已配置的客户端会话：\nCursor\n");
+    expect(output).toContain("重新打开本次已成功配置的客户端会话：\nCursor\n");
     expect(output).not.toContain("Claude、Cursor、Codex");
     expect(output).not.toContain("Codex");
   });
@@ -596,7 +618,7 @@ describe("init AGENTS.md instruction reminder", () => {
     expect(output).toContain(
       "下一步：完成项目指令配置后，手动配置 MCP 后重新打开相应的 Coding Agent 会话。",
     );
-    expect(output).not.toContain("重新打开已配置的客户端会话");
+    expect(output).not.toContain("本次已成功配置的客户端会话");
   });
 
   it("does not claim a file write for skipped or unchanged client results", async () => {
@@ -642,6 +664,102 @@ describe("init AGENTS.md instruction reminder", () => {
     expect(secondOutput).toContain("✓ Claude MCP 配置已是最新（.mcp.json 未修改）");
     expect(secondOutput).not.toContain("✓ Claude MCP 配置已写入 .mcp.json");
     expect(secondOutput).toContain("  claude: 已有相同的 .mcp.json 配置，未修改");
+  });
+
+  const writeConflictingEntry = (projectRoot: string, relativePath: string): void => {
+    const filePath = path.join(projectRoot, relativePath);
+    mkdirSync(path.dirname(filePath), { recursive: true });
+    writeFileSync(
+      filePath,
+      `${JSON.stringify(
+        { mcpServers: { milestack: { command: "other", args: ["mcp"] } } },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+  };
+
+  it("reports no configured session when every selected client is skipped", async () => {
+    const projectRoot = createTemporaryProject();
+    writeConflictingEntry(projectRoot, ".mcp.json");
+    writeConflictingEntry(projectRoot, ".cursor/mcp.json");
+    const capture = outputCapture();
+
+    expect(
+      await runCli(
+        ["init", "--project", projectRoot, "--client", "claude,cursor"],
+        capture.output,
+      ),
+    ).toBe(0);
+
+    const output = capture.stdout.join("");
+    expect(output).toContain("⚠ Claude MCP 配置未写入 .mcp.json");
+    expect(output).toContain("⚠ Cursor MCP 配置未写入 .cursor/mcp.json");
+    expect(output).toContain(
+      "下一步：完成项目指令配置后，本次没有已成功配置的项目级客户端会话，请先完成下面的待办。",
+    );
+    expect(output).toContain(
+      "⚠ 以下客户端的 MCP 配置未写入，请先解决冲突或手动完成配置，再重新打开其会话：Claude、Cursor",
+    );
+    expect(output).not.toContain("本次已成功配置的客户端会话：\nClaude");
+  });
+
+  it("groups successful and skipped clients separately in the next step", async () => {
+    const projectRoot = createTemporaryProject();
+    writeConflictingEntry(projectRoot, ".mcp.json");
+    const capture = outputCapture();
+
+    expect(
+      await runCli(
+        ["init", "--project", projectRoot, "--client", "claude,cursor,codex"],
+        capture.output,
+      ),
+    ).toBe(0);
+
+    const output = capture.stdout.join("");
+    expect(output).toContain(
+      "下一步：完成项目指令配置后，重新打开本次已成功配置的客户端会话：\nCursor、Codex",
+    );
+    expect(output).toContain(
+      "⚠ 以下客户端的 MCP 配置未写入，请先解决冲突或手动完成配置，再重新打开其会话：Claude",
+    );
+    expect(output).not.toContain("重新打开本次已成功配置的客户端会话：\nClaude");
+  });
+
+  it("asks for the AGY registration command instead of calling AGY configured", async () => {
+    const projectRoot = createTemporaryProject();
+    const capture = outputCapture();
+
+    expect(
+      await runCli(["init", "--project", projectRoot, "--client", "agy"], capture.output),
+    ).toBe(0);
+
+    const output = capture.stdout.join("");
+    expect(output).toContain("⚠ AGY MCP 配置需手动注册：milestack init 不修改用户级配置");
+    expect(output).toContain(
+      "下一步：完成项目指令配置后，本次没有已成功配置的项目级客户端会话，请先完成下面的待办。",
+    );
+    expect(output).toContain(
+      "⚠ AGY 需要先执行上面给出的注册或更新命令，再重新打开其会话。",
+    );
+    expect(output).not.toContain("已成功配置的客户端会话：\nAGY");
+  });
+
+  it("keeps AGY outside the configured list when it is selected together with a file client", async () => {
+    const projectRoot = createTemporaryProject();
+    const capture = outputCapture();
+
+    expect(
+      await runCli(["init", "--project", projectRoot, "--client", "claude,agy"], capture.output),
+    ).toBe(0);
+
+    const output = capture.stdout.join("");
+    expect(output).toContain("重新打开本次已成功配置的客户端会话：\nClaude");
+    expect(output).toContain(
+      "⚠ AGY 需要先执行上面给出的注册或更新命令，再重新打开其会话。",
+    );
+    expect(output).not.toContain("客户端会话：\nClaude、AGY");
   });
 });
 

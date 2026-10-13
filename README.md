@@ -206,11 +206,14 @@ Before working on tasks, read and follow `.milestack/agent-instructions.md`.
 
 `milestack init` only reads the root `AGENTS.md`. It never creates, appends, or
 overwrites that file, because existing project instructions must not be replaced
-without your review. Every `init` ends with a summary that reports whether the
-reference is already present; when it is missing, the summary prints the exact line
-to paste, explains that a Coding Agent may not read the MileStack workflow rules
-without it, and reminds you to reopen the clients configured in this run rather than
-one fixed client.
+without your review. Every `init` ends with a summary that reports whether the file
+already contains the literal path `.milestack/agent-instructions.md`; this is a path
+presence check only, so your own equivalent wording counts and the summary never
+claims to have verified what the sentence means. When the path is missing, the
+summary prints the exact line to paste, explains that a Coding Agent may not read the
+MileStack workflow rules without it, and lists the clients whose project MCP
+configuration actually succeeded in this run. Clients that were skipped, and AGY,
+which needs a manual registration command, are listed separately as pending work.
 
 Every developer should run `milestack init` in their own checkout because `.milestack/` is intentionally local and ignored.
 

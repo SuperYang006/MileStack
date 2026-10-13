@@ -388,11 +388,79 @@ function mcpSummaryLine(configuration: ProjectMcpConfigResult): string {
   return `✓ ${client} MCP 配置已写入 ${configuration.relativePath}`;
 }
 
+type ReopenAdvice = {
+  configured: ProjectMcpClientName[];
+  skipped: ProjectMcpClientName[];
+  manual: ProjectMcpClientName[];
+};
+
+function planReopenAdvice(
+  results: readonly ProjectMcpConfigResult[] | undefined,
+): ReopenAdvice {
+  const advice: ReopenAdvice = { configured: [], skipped: [], manual: [] };
+  for (const configuration of results ?? []) {
+    if (configuration.client === "agy") {
+      advice.manual.push(configuration.client);
+    } else if (configuration.action === "skipped") {
+      advice.skipped.push(configuration.client);
+    } else {
+      advice.configured.push(configuration.client);
+    }
+  }
+  return advice;
+}
+
+function displayClients(clients: readonly ProjectMcpClientName[]): string {
+  return clients.map((client) => projectMcpClientDisplayNames[client]).join("、");
+}
+
+function formatNextStepLines(
+  results: readonly ProjectMcpConfigResult[] | undefined,
+  hasClients: boolean,
+  linked: boolean,
+): string[] {
+  if (!hasClients) {
+    return [
+      linked
+        ? "下一步：手动配置 MCP 后，重新打开相应的 Coding Agent 会话。"
+        : "下一步：完成项目指令配置后，手动配置 MCP 后重新打开相应的 Coding Agent 会话。",
+    ];
+  }
+
+  const advice = planReopenAdvice(results);
+  const lines: string[] = [];
+  if (advice.configured.length > 0) {
+    lines.push(
+      linked
+        ? "下一步：重新打开本次已成功配置的客户端会话："
+        : "下一步：完成项目指令配置后，重新打开本次已成功配置的客户端会话：",
+    );
+    lines.push(displayClients(advice.configured));
+  } else {
+    lines.push(
+      linked
+        ? "下一步：本次没有已成功配置的项目级客户端会话，请先完成下面的待办。"
+        : "下一步：完成项目指令配置后，本次没有已成功配置的项目级客户端会话，请先完成下面的待办。",
+    );
+  }
+  if (advice.skipped.length > 0) {
+    lines.push(
+      `⚠ 以下客户端的 MCP 配置未写入，请先解决冲突或手动完成配置，再重新打开其会话：${displayClients(advice.skipped)}`,
+    );
+  }
+  if (advice.manual.length > 0) {
+    lines.push(
+      `⚠ ${displayClients(advice.manual)} 需要先执行上面给出的注册或更新命令，再重新打开其会话。`,
+    );
+  }
+  return lines;
+}
+
 function formatInitSummary(
   created: boolean,
   results: readonly ProjectMcpConfigResult[] | undefined,
   agentInstructionLink: RootAgentInstructionLink,
-  clients: readonly ProjectMcpClientName[] | undefined,
+  hasClients: boolean,
   styler: ReturnType<typeof createStyler>,
 ): string {
   const lines: string[] = [styler.bold("MileStack 初始化完成"), ""];
@@ -406,7 +474,11 @@ function formatInitSummary(
 
   const linked = agentInstructionLink === "linked";
   if (linked) {
-    lines.push(styler.green(`✓ ${rootAgentInstructionsFile} 已关联 MileStack instructions`));
+    lines.push(
+      styler.green(
+        `✓ ${rootAgentInstructionsFile} 已包含 MileStack instructions 路径引用`,
+      ),
+    );
   } else {
     lines.push(styler.yellow("⚠ 还需手动完成 1 个项目级步骤"));
     lines.push("");
@@ -423,16 +495,8 @@ function formatInitSummary(
   }
 
   lines.push("");
-  const nextStep = clients === undefined
-    ? linked
-      ? "下一步：手动配置 MCP 后，重新打开相应的 Coding Agent 会话。"
-      : "下一步：完成项目指令配置后，手动配置 MCP 后重新打开相应的 Coding Agent 会话。"
-    : linked
-      ? "下一步：重新打开已配置的客户端会话："
-      : "下一步：完成项目指令配置后，重新打开已配置的客户端会话：";
-  lines.push(nextStep);
-  if (clients !== undefined) {
-    lines.push(clients.map((client) => projectMcpClientDisplayNames[client]).join("、"));
+  for (const line of formatNextStepLines(results, hasClients, linked)) {
+    lines.push(line.startsWith("⚠") ? styler.yellow(line) : line);
   }
 
   return `${lines.join("\n")}\n`;
@@ -484,7 +548,7 @@ async function runInit(
           context.created,
           mcpResults,
           readRootAgentInstructionLink(projectRoot),
-          clients,
+          clients !== undefined,
           createStyler(shouldEnableColor()),
         ),
     );

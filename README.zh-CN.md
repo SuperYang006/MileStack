@@ -199,7 +199,7 @@ JSON 与 TOML 客户端通过 `command` 加 `args` 使用同一回退方式，`i
 Before working on tasks, read and follow `.milestack/agent-instructions.md`.
 ```
 
-`milestack init` 只会读取根 `AGENTS.md`，不会创建、追加或覆盖该文件，因为已有项目指令不应在未经你确认的情况下被替换。每次 `init` 结束时会输出摘要，说明该引用是否已经存在；若尚未引用，摘要会给出可直接复制的原始指令，说明不添加可能导致 Coding Agent 无法读取 MileStack 工作流规则，并提示完成后重新打开本次通过 `--client` 配置的客户端会话，而不是固定某一个客户端。
+`milestack init` 只会读取根 `AGENTS.md`，不会创建、追加或覆盖该文件，因为已有项目指令不应在未经你确认的情况下被替换。每次 `init` 结束时会输出摘要，说明该文件是否已包含字面路径 `.milestack/agent-instructions.md`；这只是路径存在性检测，因此你自行改写但含义等价的提示词同样算作已引用，摘要也不会声称已经理解或验证这句话的含义。若缺少该路径，摘要会给出可直接复制的原始指令，说明不添加可能导致 Coding Agent 无法读取 MileStack 工作流规则，并只列出本次真正写入成功的客户端；被跳过的客户端以及需要手动执行注册命令的 AGY 会单独列为待办。
 
 每位开发者都应在自己的 checkout 中运行 `milestack init`，因为 `.milestack/` 是有意保持本地化并被忽略的目录。
 
