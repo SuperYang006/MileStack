@@ -54,7 +54,7 @@ export const DashboardPage: React.FC = () => {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [briefingTask, setBriefingTask] = useState<TaskSummary | null>(null);
   const [editingInboxTask, setEditingInboxTask] = useState<TaskSummary | TaskDetails | null>(null);
-  const [isArchiveExpanded, setIsArchiveExpanded] = useState(false);
+  const [isArchiveOpen, setIsArchiveOpen] = useState(false);
 
   // Queries
   const {
@@ -93,7 +93,7 @@ export const DashboardPage: React.FC = () => {
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) =>
       lastPage.hasMore ? lastPage.nextCursor ?? undefined : undefined,
-    enabled: isArchiveExpanded && isDocumentVisible,
+    enabled: isArchiveOpen && isDocumentVisible,
   });
 
   const completedTasks = useMemo(() => {
@@ -233,7 +233,7 @@ export const DashboardPage: React.FC = () => {
         onRefresh={() => {
           forceFullStatusRef.current = true;
           void refetch();
-          if (isArchiveExpanded) {
+          if (isArchiveOpen) {
             void completedTasksQuery.refetch();
           }
           if (selectedTaskId) {
@@ -241,6 +241,8 @@ export const DashboardPage: React.FC = () => {
           }
         }}
         onOpenCreateModal={() => setIsCreateModalOpen(true)}
+        onOpenArchive={() => setIsArchiveOpen(true)}
+        completedCount={status.counts.completed}
         isRefreshing={isRefetching}
       />
 
@@ -258,30 +260,9 @@ export const DashboardPage: React.FC = () => {
           onSelectTask={(id) => setSelectedTaskId(id)}
         />
 
-        {/* Four queue regions: wide screens use a fixed 2x2 viewport grid; narrow screens flow normally. */}
+        {/* Four active queue regions: symmetric 2x2 grid on wide screens; natural stack on mobile. */}
         <div className="grid grid-cols-1 gap-6 lg:flex-1 lg:min-h-0 lg:grid-cols-2 lg:grid-rows-2 lg:items-stretch lg:gap-3">
-          {/* Top-left: review status and currently running tasks are two independent cards. */}
-          <div className="space-y-3 lg:h-full lg:min-h-0 lg:flex lg:flex-col lg:space-y-0 lg:gap-3">
-            <ReviewTasks
-              tasks={status.inReview}
-              onApprove={(id) => approveTaskMutation.mutate(id)}
-              onWaiveApproval={(taskId, reason) =>
-                waiveTaskApprovalMutation.mutate({ taskId, reason })
-              }
-              onRequestChanges={(taskId, feedback) =>
-                requestChangesMutation.mutate({ taskId, feedback })
-              }
-              onSelectTask={(id) => setSelectedTaskId(id)}
-            />
-            <CurrentTasks
-              tasks={status.current}
-              allTasks={allTasks}
-              onSelectTask={(id) => setSelectedTaskId(id)}
-              onReleaseTask={(id) => releaseTaskMutation.mutate(id)}
-            />
-          </div>
-
-          {/* Top-right: ready queue. */}
+          {/* Top-left: 已就绪 */}
           <div className="lg:h-full lg:min-h-0">
             <NextTasks
               tasks={status.next}
@@ -294,7 +275,32 @@ export const DashboardPage: React.FC = () => {
             />
           </div>
 
-          {/* Bottom-left: inbox. */}
+          {/* Top-right: 正在进行 */}
+          <div className="lg:h-full lg:min-h-0">
+            <CurrentTasks
+              tasks={status.current}
+              allTasks={allTasks}
+              onSelectTask={(id) => setSelectedTaskId(id)}
+              onReleaseTask={(id) => releaseTaskMutation.mutate(id)}
+            />
+          </div>
+
+          {/* Bottom-left: 待审核 */}
+          <div className="lg:h-full lg:min-h-0">
+            <ReviewTasks
+              tasks={status.inReview}
+              onApprove={(id) => approveTaskMutation.mutate(id)}
+              onWaiveApproval={(taskId, reason) =>
+                waiveTaskApprovalMutation.mutate({ taskId, reason })
+              }
+              onRequestChanges={(taskId, feedback) =>
+                requestChangesMutation.mutate({ taskId, feedback })
+              }
+              onSelectTask={(id) => setSelectedTaskId(id)}
+            />
+          </div>
+
+          {/* Bottom-right: 待整理收件箱 */}
           <div className="lg:h-full lg:min-h-0">
             <InboxTasks
               tasks={status.inbox}
@@ -306,32 +312,30 @@ export const DashboardPage: React.FC = () => {
               onCreateTask={() => setIsCreateModalOpen(true)}
             />
           </div>
-
-          {/* Bottom-right: completed archive keeps its own paged scroll region. */}
-          <div className="lg:h-full lg:min-h-0">
-            <RecentTasks
-              tasks={completedTasks}
-              totalCount={status.counts.completed}
-              isExpanded={isArchiveExpanded}
-              onToggleExpanded={() => setIsArchiveExpanded((expanded) => !expanded)}
-              isLoading={completedTasksQuery.isLoading}
-              isError={completedTasksQuery.isError}
-              hasMore={completedTasksQuery.hasNextPage ?? false}
-              isLoadingMore={completedTasksQuery.isFetchingNextPage}
-              onLoadMore={() => {
-                if (
-                  completedTasksQuery.hasNextPage &&
-                  !completedTasksQuery.isFetchingNextPage
-                ) {
-                  void completedTasksQuery.fetchNextPage();
-                }
-              }}
-              onSelectTask={(id) => setSelectedTaskId(id)}
-              onReopenTask={(taskId, reason) => reopenTaskMutation.mutate({ taskId, reason })}
-            />
-          </div>
         </div>
       </main>
+
+      {/* Archive Slide-over Drawer */}
+      <RecentTasks
+        isOpen={isArchiveOpen}
+        onClose={() => setIsArchiveOpen(false)}
+        tasks={completedTasks}
+        totalCount={status.counts.completed}
+        isLoading={completedTasksQuery.isLoading}
+        isError={completedTasksQuery.isError}
+        hasMore={completedTasksQuery.hasNextPage ?? false}
+        isLoadingMore={completedTasksQuery.isFetchingNextPage}
+        onLoadMore={() => {
+          if (
+            completedTasksQuery.hasNextPage &&
+            !completedTasksQuery.isFetchingNextPage
+          ) {
+            void completedTasksQuery.fetchNextPage();
+          }
+        }}
+        onSelectTask={(id) => setSelectedTaskId(id)}
+        onReopenTask={(taskId, reason) => reopenTaskMutation.mutate({ taskId, reason })}
+      />
 
       {/* Modals */}
       <TaskDetailModal

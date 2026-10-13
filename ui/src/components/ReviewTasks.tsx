@@ -220,7 +220,7 @@ export const ReviewTasks: React.FC<ReviewTasksProps> = ({
   const isEmpty = tasks.length === 0;
 
   return (
-    <section className="rounded-lg border border-violet-900/50 bg-violet-950/15 backdrop-blur-xs overflow-hidden lg:flex-1 lg:min-h-0 lg:flex lg:flex-col">
+    <section className="rounded-lg border border-violet-900/50 bg-violet-950/15 backdrop-blur-xs overflow-hidden lg:h-full lg:min-h-0 lg:flex lg:flex-col">
       <div className="px-4 py-2.5 border-b border-violet-900/40 flex items-center justify-between gap-2 shrink-0">
         <div className="flex min-w-0 items-center space-x-2">
           <span className="w-2 h-2 rounded-full bg-violet-400 shrink-0" />

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Plus, RefreshCw } from "lucide-react";
+import { Plus, RefreshCw, Archive } from "lucide-react";
 import { Logo } from "./Logo";
 import type { ProjectSummary } from "../types";
 
@@ -27,7 +27,7 @@ const TypewriterEgg: React.FC = () => {
     }
 
     // If deleting and reached 0, move to next phrase
-    if (isDeleting && subIdx === 0) {
+    if (!isDeleting && subIdx === 0) {
       setIsDeleting(false);
       setPhraseIdx((prev) => (prev + 1) % TERMINAL_EGG_PHRASES.length);
       return;
@@ -60,6 +60,8 @@ interface HeaderProps {
   isBackendConnected: boolean;
   onRefresh: () => void;
   onOpenCreateModal: () => void;
+  onOpenArchive?: () => void;
+  completedCount?: number;
   isRefreshing?: boolean;
 }
 
@@ -68,6 +70,8 @@ export const Header: React.FC<HeaderProps> = ({
   isBackendConnected,
   onRefresh,
   onOpenCreateModal,
+  onOpenArchive,
+  completedCount,
   isRefreshing = false,
 }) => {
   return (
@@ -112,6 +116,24 @@ export const Header: React.FC<HeaderProps> = ({
                 {isBackendConnected ? "服务在线" : "本地演示"}
               </span>
             </div>
+
+            {/* Archive Drawer Trigger */}
+            {onOpenArchive && (
+              <button
+                type="button"
+                onClick={onOpenArchive}
+                className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs font-mono text-zinc-300 transition-colors"
+                title="查看已完成归档"
+              >
+                <Archive className="w-3.5 h-3.5 text-emerald-400" />
+                <span className="hidden sm:inline">归档</span>
+                {typeof completedCount === "number" && (
+                  <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-zinc-800 border border-zinc-700/60 text-emerald-400 font-medium">
+                    {completedCount}
+                  </span>
+                )}
+              </button>
+            )}
 
             {/* Refresh */}
             <button
