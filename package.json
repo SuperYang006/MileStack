@@ -26,7 +26,6 @@
   },
   "files": [
     "dist/index.js",
-    "dist/index.js.map",
     "dist/migrations",
     "dist/ui"
   ],

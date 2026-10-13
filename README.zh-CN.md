@@ -74,22 +74,32 @@ milestack --help
 该命令需要在每个客户端会话中始终位于 `PATH` 上。
 
 如果某个仓库希望锁定 CLI 版本，也可以把 MileStack 作为项目 devDependency 安装。
-此时 MCP 条目应指向 `node_modules` 中已安装的入口脚本，而不是全局命令：
+安装后通过 `init` 写入客户端配置，这样每个客户端都会得到自己支持的格式：
 
 ```bash
 npm install --save-dev milestack
+./node_modules/.bin/milestack init --client claude --client cursor --client grok --client codex --client opencode \
+  --project /absolute/path/to/project
 ```
+
+`PATH` 上已有 `milestack` 时，`init` 会记录 `milestack` 命令；没有时，它会记录
+正在执行 `init` 的 CLI，也就是该 devDependency 在项目内的入口脚本，
+因此条目会一直使用被锁定的版本：
 
 ```json
 "milestack": {
-  "type": "local",
-  "command": ["<node 绝对路径>", "<项目>/node_modules/milestack/dist/index.js", "mcp", "--project", "<项目绝对路径>"],
-  "enabled": true
+  "command": "<node 绝对路径>",
+  "args": ["<项目>/node_modules/.bin/milestack", "mcp", "--project", "<项目绝对路径>"]
 }
 ```
 
-一次性运行 `npx milestack` 不能作为持久 MCP 配置：npx 缓存可能被清理，
-配置的命令会随之失效，直到再次触发运行。
+Codex 与 Grok 会在各自的 TOML 文件中得到同样的 command 与 args，OpenCode 则得到
+它自己的 `mcp.milestack` 结构。参见[初始化项目](#初始化项目)中的客户端支持矩阵。
+
+请通过项目内的二进制运行 `init`，不要使用 `npx milestack` 或 `npm exec`：
+这两者会把临时的 `milestack` 放到 `PATH` 上，`init` 就会记录裸的
+`milestack` 命令，该缓存在被清理后配置随即失效。一次性运行 `npx milestack`
+同样不能作为持久 MCP 配置。
 
 ## 从源码构建
 

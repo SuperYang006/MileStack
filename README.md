@@ -75,23 +75,34 @@ configuration points at the `milestack` command, so the CLI has to stay on `PATH
 for every client session.
 
 A project devDependency is an optional alternative when a repository wants to pin
-the CLI version. In that case the MCP entry refers to the installed entry script
-in `node_modules` instead of a globally installed command:
+the CLI version. Install it and let `init` write the client configuration, so each
+client receives its own supported format:
 
 ```bash
 npm install --save-dev milestack
+./node_modules/.bin/milestack init --client claude --client cursor --client grok --client codex --client opencode \
+  --project /absolute/path/to/project
 ```
+
+`init` records the `milestack` command when one is already on `PATH`. When none is,
+it records the CLI that is running `init`, which here is the project-local entry
+script of the declared devDependency, so the entry keeps using the pinned version:
 
 ```json
 "milestack": {
-  "type": "local",
-  "command": ["<absolute node path>", "<project>/node_modules/milestack/dist/index.js", "mcp", "--project", "<absolute project path>"],
-  "enabled": true
+  "command": "<absolute node path>",
+  "args": ["<project>/node_modules/.bin/milestack", "mcp", "--project", "<absolute project path>"]
 }
 ```
 
-Running `npx milestack` once is not a valid persistent MCP configuration: the npx
-cache can be cleared, so the configured command stops working until it runs again.
+Codex and Grok receive the same command and arguments in their TOML files, and
+OpenCode receives its own `mcp.milestack` shape. See the client support matrix in
+[Initialize a project](#initialize-a-project).
+
+Run `init` through the project binary, not through `npx milestack` or `npm exec`.
+Those runners put a temporary `milestack` on `PATH`, so `init` would record the
+bare command, which stops working as soon as that cache is cleared. A one-off
+`npx milestack` run is likewise not a valid persistent MCP configuration.
 
 ## Build from source
 
