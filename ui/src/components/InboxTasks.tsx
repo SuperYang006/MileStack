@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { Check, Trash2, Edit3, Inbox, Plus, Zap, CheckCircle2 } from "lucide-react";
+import React, { useState, useRef, useEffect } from "react";
+import { Check, Trash2, Edit3, Inbox, Plus, Zap, CheckCircle2, ChevronDown } from "lucide-react";
 import type { TaskSummary, RiskLevel } from "../types";
 import { TaskIdBadge } from "./CopyTaskIdButton";
 import { EmptyState } from "./EmptyState";
@@ -7,6 +7,10 @@ import {
   computeTaskDependencyDetail,
   type DependencyItem,
 } from "../utils/dependencyGraph";
+import {
+  computePopoverPlacement,
+  RISK_OPTIONS,
+} from "../utils/riskOptions";
 
 interface InboxTasksProps {
   tasks: TaskSummary[];
@@ -28,7 +32,59 @@ export const InboxTasks: React.FC<InboxTasksProps> = ({
   onCreateTask,
 }) => {
   const [confirmingTaskId, setConfirmingTaskId] = useState<string | null>(null);
-  const [confirmRiskLevel, setConfirmRiskLevel] = useState<RiskLevel>("medium");
+  const [popoverPlacement, setPopoverPlacement] = useState<"down" | "up">("down");
+  const activeContainerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!confirmingTaskId) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setConfirmingTaskId(null);
+      }
+    };
+
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        activeContainerRef.current &&
+        !activeContainerRef.current.contains(e.target as Node)
+      ) {
+        setConfirmingTaskId(null);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("mousedown", handleClickOutside);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [confirmingTaskId]);
+
+  const handleTogglePopover = (
+    taskId: string,
+    e: React.MouseEvent<HTMLButtonElement>
+  ) => {
+    e.stopPropagation();
+    if (confirmingTaskId === taskId) {
+      setConfirmingTaskId(null);
+      return;
+    }
+    const rect = e.currentTarget.getBoundingClientRect();
+    const placement = computePopoverPlacement(
+      rect.bottom,
+      rect.top,
+      window.innerHeight
+    );
+    setPopoverPlacement(placement);
+    setConfirmingTaskId(taskId);
+  };
+
+  const handleSelectRiskAndConfirm = (taskId: string, riskLevel: RiskLevel) => {
+    onConfirmTask(taskId, riskLevel);
+    setConfirmingTaskId(null);
+  };
 
   return (
     <section className="rounded-lg border border-zinc-800 bg-zinc-900/50 backdrop-blur-xs overflow-hidden lg:h-full lg:min-h-0 lg:flex lg:flex-col">
@@ -71,7 +127,9 @@ export const InboxTasks: React.FC<InboxTasksProps> = ({
               return (
                 <div
                   key={task.id}
-                  className="py-2.5 first:pt-0 last:pb-0 flex items-start justify-between gap-3 group lg:grid lg:grid-cols-[minmax(0,7rem)_minmax(0,1fr)_auto] lg:items-start lg:gap-x-3"
+                  className={`py-2.5 first:pt-0 last:pb-0 flex items-start justify-between gap-3 group lg:grid lg:grid-cols-[minmax(0,7rem)_minmax(0,1fr)_auto] lg:items-start lg:gap-x-3 ${
+                    confirmingTaskId === task.id ? "relative z-30" : ""
+                  }`}
                 >
                   <div
                     className="flex flex-1 min-w-0 items-start gap-2 cursor-pointer lg:contents"
@@ -152,47 +210,90 @@ export const InboxTasks: React.FC<InboxTasksProps> = ({
                   </div>
 
                   <div className="flex items-center space-x-1.5 shrink-0 pt-0.5 lg:col-start-3">
-                    {confirmingTaskId === task.id ? (
-                      <div className="flex items-center space-x-1 bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-[11px] font-mono">
-                        <span className="text-zinc-400 mr-1 text-[10px]">确认风险:</span>
-                        <select
-                          value={confirmRiskLevel}
-                          onChange={(e) => setConfirmRiskLevel(e.target.value as RiskLevel)}
-                          className="bg-zinc-950 text-zinc-200 border border-zinc-700 rounded px-1 py-0.5 text-[10px]"
-                        >
-                          <option value="low">低风险 (Low - AI通过后自动完成)</option>
-                          <option value="medium">中风险 (Medium - 需人工终审)</option>
-                          <option value="high">高风险 (High - 核心变更)</option>
-                        </select>
-                        <button
-                          onClick={() => {
-                            onConfirmTask(task.id, confirmRiskLevel);
-                            setConfirmingTaskId(null);
-                          }}
-                          className="px-1.5 py-0.5 bg-emerald-600 hover:bg-emerald-500 text-zinc-950 rounded text-[10px] font-bold"
-                        >
-                          确认排队
-                        </button>
-                        <button
-                          onClick={() => setConfirmingTaskId(null)}
-                          className="px-1 py-0.5 text-zinc-400 hover:text-zinc-200 text-[10px]"
-                        >
-                          取消
-                        </button>
-                      </div>
-                    ) : (
+                    <div
+                      ref={confirmingTaskId === task.id ? activeContainerRef : undefined}
+                      className="relative inline-block"
+                    >
                       <button
-                        onClick={() => {
-                          setConfirmRiskLevel(task.riskLevel || "medium");
-                          setConfirmingTaskId(task.id);
-                        }}
-                        className="inline-flex items-center space-x-1 px-2 py-0.5 text-[11px] font-mono text-emerald-400 hover:text-emerald-300 bg-emerald-950/40 hover:bg-emerald-950/80 border border-emerald-900/60 rounded transition-colors"
-                        title="确认风险等级并排入执行队列"
+                        type="button"
+                        onClick={(e) => handleTogglePopover(task.id, e)}
+                        className={`inline-flex items-center space-x-1 px-2 py-0.5 text-[11px] font-mono rounded transition-colors ${
+                          confirmingTaskId === task.id
+                            ? "text-emerald-300 bg-emerald-950 border border-emerald-500/80 shadow-[0_0_8px_rgba(16,185,129,0.3)]"
+                            : "text-emerald-400 hover:text-emerald-300 bg-emerald-950/40 hover:bg-emerald-950/80 border border-emerald-900/60"
+                        }`}
+                        title="选择风险等级并排入执行队列"
+                        aria-expanded={confirmingTaskId === task.id}
+                        aria-haspopup="true"
                       >
                         <Check className="w-3 h-3" />
                         <span>确认排队</span>
+                        <ChevronDown
+                          className={`w-3 h-3 transition-transform duration-150 ${
+                            confirmingTaskId === task.id
+                              ? "rotate-180 text-emerald-300"
+                              : "text-emerald-500/70"
+                          }`}
+                        />
                       </button>
-                    )}
+
+                      {confirmingTaskId === task.id && (
+                        <div
+                          className={`absolute right-0 ${
+                            popoverPlacement === "up" ? "bottom-full mb-1.5" : "top-full mt-1.5"
+                          } z-50 w-64 sm:w-72 bg-zinc-950 border border-zinc-800 rounded-lg shadow-2xl p-1.5 backdrop-blur-md font-mono animate-in fade-in-0 zoom-in-95 duration-100 ring-1 ring-white/5`}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <div className="px-2 py-1.5 mb-1 border-b border-zinc-800/80 flex items-center justify-between text-[10px] text-zinc-400">
+                            <span className="font-semibold tracking-wider text-zinc-300 uppercase">
+                              选择风险并排队
+                            </span>
+                            <span className="text-[9px] text-zinc-500">点击立即入队</span>
+                          </div>
+
+                          <div className="space-y-1">
+                            {RISK_OPTIONS.map((opt) => {
+                              const isPreset = task.riskLevel === opt.level;
+                              const isDefault = !task.riskLevel && opt.level === "medium";
+
+                              return (
+                                <button
+                                  key={opt.level}
+                                  type="button"
+                                  onClick={() => handleSelectRiskAndConfirm(task.id, opt.level)}
+                                  className={`w-full text-left px-2 py-1.5 rounded flex items-start space-x-2.5 transition-all group/item border border-transparent ${opt.hoverBgClass} ${opt.hoverBorderClass}`}
+                                >
+                                  <span
+                                    className={`w-2 h-2 rounded-full mt-1 shrink-0 ${opt.dotColorClass}`}
+                                  />
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center justify-between">
+                                      <span
+                                        className={`text-[11px] font-bold ${opt.textColorClass}`}
+                                      >
+                                        {opt.label} ({opt.tag})
+                                      </span>
+                                      {isPreset ? (
+                                        <span className="text-[9px] text-zinc-500">
+                                          当前设定
+                                        </span>
+                                      ) : isDefault ? (
+                                        <span className="text-[9px] text-amber-500/80">
+                                          默认
+                                        </span>
+                                      ) : null}
+                                    </div>
+                                    <p className="text-[10px] text-zinc-400 group-hover/item:text-zinc-300 leading-tight mt-0.5">
+                                      {opt.description}
+                                    </p>
+                                  </div>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
                     {onEditTask && (
                       <button
                         onClick={(e) => {
