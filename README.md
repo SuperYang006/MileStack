@@ -63,6 +63,36 @@ Task snapshot updates and `TaskEvent` appends happen in the same database transa
 - pnpm 10
 - Git, when submitting fixed review artifacts
 
+## Install from npm
+
+```bash
+npm install -g milestack
+milestack --help
+```
+
+A global install is the preferred way to consume MileStack. Persistent MCP
+configuration points at the `milestack` command, so the CLI has to stay on `PATH`
+for every client session.
+
+A project devDependency is an optional alternative when a repository wants to pin
+the CLI version. In that case the MCP entry refers to the installed entry script
+in `node_modules` instead of a globally installed command:
+
+```bash
+npm install --save-dev milestack
+```
+
+```json
+"milestack": {
+  "type": "local",
+  "command": ["<absolute node path>", "<project>/node_modules/milestack/dist/index.js", "mcp", "--project", "<absolute project path>"],
+  "enabled": true
+}
+```
+
+Running `npx milestack` once is not a valid persistent MCP configuration: the npx
+cache can be cleared, so the configured command stops working until it runs again.
+
 ## Build from source
 
 ```bash

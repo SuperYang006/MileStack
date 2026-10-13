@@ -63,6 +63,34 @@ HTTP -------/                                      \
 - pnpm 10
 - Git（提交固定审核制品时需要）
 
+## 通过 npm 安装
+
+```bash
+npm install -g milestack
+milestack --help
+```
+
+全局安装是使用 MileStack 的首选方式。持久 MCP 配置指向 `milestack` 命令，
+该命令需要在每个客户端会话中始终位于 `PATH` 上。
+
+如果某个仓库希望锁定 CLI 版本，也可以把 MileStack 作为项目 devDependency 安装。
+此时 MCP 条目应指向 `node_modules` 中已安装的入口脚本，而不是全局命令：
+
+```bash
+npm install --save-dev milestack
+```
+
+```json
+"milestack": {
+  "type": "local",
+  "command": ["<node 绝对路径>", "<项目>/node_modules/milestack/dist/index.js", "mcp", "--project", "<项目绝对路径>"],
+  "enabled": true
+}
+```
+
+一次性运行 `npx milestack` 不能作为持久 MCP 配置：npx 缓存可能被清理，
+配置的命令会随之失效，直到再次触发运行。
+
 ## 从源码构建
 
 ```bash

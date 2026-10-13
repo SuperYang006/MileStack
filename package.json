@@ -2,7 +2,34 @@
   "name": "milestack",
   "version": "0.1.0",
   "license": "Apache-2.0",
-  "private": true,
+  "description": "Local-first project progress and task context database shared by developers and coding agents.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SuperYang006/MileStack.git"
+  },
+  "bugs": {
+    "url": "https://github.com/SuperYang006/MileStack/issues"
+  },
+  "homepage": "https://github.com/SuperYang006/MileStack#readme",
+  "keywords": [
+    "milestack",
+    "mcp",
+    "model-context-protocol",
+    "coding-agent",
+    "task-management",
+    "project-management",
+    "sqlite",
+    "cli"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist/index.js",
+    "dist/index.js.map",
+    "dist/migrations",
+    "dist/ui"
+  ],
   "type": "module",
   "packageManager": "pnpm@10.29.2",
   "engines": {
@@ -19,7 +46,8 @@
     "db:generate": "drizzle-kit generate",
     "typecheck": "tsc --noEmit",
     "typecheck:ui": "tsc -p tsconfig.ui.json --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "prepack": "pnpm run typecheck && pnpm run typecheck:ui && pnpm run build && pnpm run test"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",
