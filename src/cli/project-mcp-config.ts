@@ -8,6 +8,8 @@ import {
 } from "node:fs";
 import path from "node:path";
 
+import { resolveMcpLauncher, type McpLauncherResolution } from "./mcp-launcher.js";
+
 export const projectMcpClientNames = [
   "claude",
   "cursor",
@@ -239,6 +241,34 @@ function matchesOpenCodeMcpEntry(value: unknown, expected: OpenCodeMcpEntry): bo
 
 function withOpenCodeJsoncNote(detail: string, hasJsonc: boolean): string {
   return hasJsonc ? `${detail}（检测到 opencode.jsonc，未修改该文件）` : detail;
+}
+
+function launcherNote(launcher: McpLauncherResolution): string | undefined {
+  if (launcher.kind === "path") {
+    return undefined;
+  }
+  if (launcher.kind === "cli-entry") {
+    return `（PATH 中未找到 milestack，command 改用当前 CLI 入口文件：node ${launcher.cliEntryPath}）`;
+  }
+  return (
+    `（PATH 中未找到 milestack，且无法确定当前 CLI 入口文件；` +
+    `请在 MileStack 仓库执行 pnpm build 与 pnpm link --global 后重新 init，或手写 command）`
+  );
+}
+
+function withLauncherNote(
+  configuration: ProjectMcpConfigResult,
+  launcher: McpLauncherResolution,
+): ProjectMcpConfigResult {
+  // A skipped result left the existing file untouched, so the note must not
+  // claim that the command was switched.
+  if (configuration.action === "skipped") {
+    return configuration;
+  }
+  const note = launcherNote(launcher);
+  return note === undefined
+    ? configuration
+    : { ...configuration, detail: `${configuration.detail}${note}` };
 }
 
 function createOpenCodeJsonContent(entry: OpenCodeMcpEntry): string {
@@ -699,13 +729,14 @@ export function configureProjectMcpClients(
 ): ProjectMcpConfigResult[] {
   const absoluteProjectRoot = path.resolve(projectRoot);
   const realProjectRoot = resolveRealProjectRoot(absoluteProjectRoot);
+  const launcher = resolveMcpLauncher();
   const projectEntry: McpEntry = {
-    command: "milestack",
-    args: ["mcp", "--project", absoluteProjectRoot],
+    command: launcher.launcher.command,
+    args: [...launcher.launcher.args, "mcp", "--project", absoluteProjectRoot],
   };
   const openCodeEntry: OpenCodeMcpEntry = {
     type: "local",
-    command: ["milestack", "mcp", "--project", absoluteProjectRoot],
+    command: [projectEntry.command, ...projectEntry.args],
     enabled: true,
   };
 
@@ -756,16 +787,22 @@ export function configureProjectMcpClients(
         realProjectRoot,
         "opencode.jsonc",
       );
-      return configureOpenCodeJsonFile(
-        client,
-        definition.relativePath,
-        target,
-        openCodeEntry,
-        jsoncTarget?.exists === true,
+      return withLauncherNote(
+        configureOpenCodeJsonFile(
+          client,
+          definition.relativePath,
+          target,
+          openCodeEntry,
+          jsoncTarget?.exists === true,
+        ),
+        launcher,
       );
     }
-    return definition.format === "json"
-      ? configureJsonFile(client, definition.relativePath, target, projectEntry)
-      : configureTomlFile(client, definition.relativePath, target, projectEntry);
+    return withLauncherNote(
+      definition.format === "json"
+        ? configureJsonFile(client, definition.relativePath, target, projectEntry)
+        : configureTomlFile(client, definition.relativePath, target, projectEntry),
+      launcher,
+    );
   });
 }

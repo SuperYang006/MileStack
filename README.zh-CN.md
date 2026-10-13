@@ -127,10 +127,22 @@ milestack init --client claude --client cursor --client grok --client codex --cl
 | `cursor` | 项目级 | `.cursor/mcp.json` | 写入当前项目目录，绑定当前 checkout 绝对路径 |
 | `grok` | 项目级 | `.grok/config.toml` | 写入当前项目目录，绑定当前 checkout 绝对路径 |
 | `codex` | 项目级 | `.codex/config.toml` | 写入当前项目目录，绑定当前 checkout 绝对路径 |
-| `opencode` | 项目级 | `opencode.json` | 写入顶层 `mcp.milestack`：`type` 为 `local`，`command` 为 `milestack mcp --project <当前 checkout 绝对路径>`，`enabled` 为 true，不使用 `--discover` |
+| `opencode` | 项目级 | `opencode.json` | 写入顶层 `mcp.milestack`：`type` 为 `local`，`command` 为 `milestack mcp --project <当前 checkout 绝对路径>`，`enabled` 为 true，不使用 `--discover`；`PATH` 中没有 `milestack` 时改用当前 CLI 入口文件 |
 | `agy` | 用户级 | `~/.gemini/config/mcp_config.json` | 不修改用户全局文件；输出推荐的 `agy mcp` 动态发现命令指引 |
 
 新建的 `opencode.json` 会带上 `$schema` `https://opencode.ai/config.json`。若项目中只存在 `opencode.jsonc`，`init` 会打印需要手写的 `mcp.milestack` 条目，并不修改该文件。
+
+`init` 通过 `PATH` 解析 `milestack` 命令。如果 `milestack` 没有全局安装，写入的条目会改用正在执行 `init` 的 CLI 本身，而不再使用裸命令，因此在没有全局安装时仍然可用：
+
+```json
+"milestack": {
+  "type": "local",
+  "command": ["<node 绝对路径>", "<执行 init 的 CLI 入口文件绝对路径>", "mcp", "--project", "<当前 checkout 绝对路径>"],
+  "enabled": true
+}
+```
+
+JSON 与 TOML 客户端通过 `command` 加 `args` 使用同一回退方式，`init` 会在每个客户端的输出中说明这一选择。该回退条目本身可以继续使用。`init` 不会改写已有的不同 `milestack` 条目，因此若要把已有条目换成普通的 `milestack` 命令，需要手动删除或修改该客户端项目级配置中的 `milestack` 条目，再重新运行 `init`。
 
 `opencode.json` 绑定生成它的那个 checkout 的绝对路径，属于每个 checkout 各自的本地配置，应加入忽略列表。`milestack init` 只自动维护 `.milestack/` 的忽略条目；本仓库在自身 `.gitignore` 中显式忽略 `opencode.json`。
 
