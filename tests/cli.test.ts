@@ -964,7 +964,20 @@ describe("project MCP entries without a globally installed CLI", () => {
     try {
       const [skipped] = configureProjectMcpClients(projectRoot, ["opencode"]);
       expect(skipped?.action).toBe("skipped");
+      expect(skipped?.detail).toContain("未覆盖 opencode.json");
+      // Nothing was written, so the detail must not claim the command changed.
+      expect(skipped?.detail).not.toContain("PATH 中未找到");
       expect(readFileSync(opencodePath, "utf8")).toBe(installedBytes);
+
+      const jsonPath = path.join(projectRoot, ".mcp.json");
+      writeFileSync(
+        jsonPath,
+        JSON.stringify({ mcpServers: { milestack: { command: "different", args: [] } } }, null, 2),
+        "utf8",
+      );
+      const [jsonSkipped] = configureProjectMcpClients(projectRoot, ["claude"]);
+      expect(jsonSkipped?.action).toBe("skipped");
+      expect(jsonSkipped?.detail).not.toContain("PATH 中未找到");
     } finally {
       restore();
     }

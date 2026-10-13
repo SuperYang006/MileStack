@@ -142,7 +142,7 @@ milestack init --client claude --client cursor --client grok --client codex --cl
 }
 ```
 
-JSON 与 TOML 客户端通过 `command` 加 `args` 使用同一回退方式，`init` 会在每个客户端的输出中说明这一选择。执行 `pnpm build` 与 `pnpm link --global` 后重新运行 `init`，条目即回到普通的 `milestack` 命令；已有的不同条目始终保持不变，不会被覆盖。
+JSON 与 TOML 客户端通过 `command` 加 `args` 使用同一回退方式，`init` 会在每个客户端的输出中说明这一选择。该回退条目本身可以继续使用。`init` 不会改写已有的不同 `milestack` 条目，因此若要把已有条目换成普通的 `milestack` 命令，需要手动删除或修改该客户端项目级配置中的 `milestack` 条目，再重新运行 `init`。
 
 `opencode.json` 绑定生成它的那个 checkout 的绝对路径，属于每个 checkout 各自的本地配置，应加入忽略列表。`milestack init` 只自动维护 `.milestack/` 的忽略条目；本仓库在自身 `.gitignore` 中显式忽略 `opencode.json`。
 

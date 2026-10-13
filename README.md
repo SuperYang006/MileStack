@@ -142,7 +142,7 @@ A newly created `opencode.json` also carries `$schema` `https://opencode.ai/conf
 }
 ```
 
-JSON and TOML clients use the same fallback through `command` plus `args`, and `init` explains the choice in its per-client output. After `pnpm build` and `pnpm link --global`, run `init` again to get the plain `milestack` command back; an existing different entry is always preserved, never overwritten.
+JSON and TOML clients use the same fallback through `command` plus `args`, and `init` explains the choice in its per-client output. That fallback entry keeps working on its own. `init` never rewrites a different existing `milestack` entry, so switching an existing entry to the plain `milestack` command means deleting or editing that client's project-level `milestack` entry by hand and then running `init` again.
 
 `opencode.json` binds the absolute path of the checkout it was generated in, so it is a per-checkout local file. Add it to your ignore list; `milestack init` only maintains the `.milestack/` entry for you, and this repository ignores `opencode.json` in its own `.gitignore`.
 

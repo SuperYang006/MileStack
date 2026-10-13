@@ -166,9 +166,10 @@ milestack init --project /absolute/path/to/current/checkout
 条目中的启动命令由 `src/cli/mcp-launcher.ts` 解析，供 JSON、TOML、opencode 三种写入共用：
 
 - `PATH` 中能解析到可执行的 `milestack` 时使用裸命令 `milestack`，与全局安装 CLI 的既有行为一致；
-- `PATH` 中没有 `milestack` 时使用 `process.execPath` 加当前 CLI 入口脚本绝对路径（`process.argv[1]`），使只在仓库内构建 `dist/index.js`、从未全局安装的开发者写入的条目仍可启动，并在每个客户端的输出中说明原因；
+- `PATH` 中没有 `milestack` 时使用 `process.execPath` 加当前 CLI 入口脚本绝对路径（`process.argv[1]`），使只在仓库内构建 `dist/index.js`、从未全局安装的开发者写入的条目仍可启动，并在真正写入条目的结果（`created` / `updated` / `unchanged`）中说明原因；
 - 两者都无法确定时保留裸命令 `milestack`，并提示先执行 `pnpm build` 与 `pnpm link --global`，或手写 command；
-- 命令解析只决定新写入的条目形状。已有不同的 `milestack` 条目仍然保持不变，因此全局安装 CLI 后需要开发者再次运行 `init` 才能得到裸命令条目；
+- `skipped` 结果没有写入任何条目，因此不追加上述说明，避免与“未覆盖……已保留原文件”自相矛盾；
+- 命令解析只决定新写入的条目形状。已有不同的 `milestack` 条目仍然保持不变，`init` 不会改写它，因此改用裸命令条目必须由开发者手动删除或修改该客户端的项目级 `milestack` 条目后再运行 `init`；
 - `agy` 的用户级 `--discover` 手动配置说明保持裸命令，因为它在所有项目的全局配置中生效，不应绑定某个 checkout 的入口文件。
 
 **为什么 AGY 不能写入固定项目路径**：若在用户级全局配置中写入固定路径 `--project /path/to/projectA`，在其他项目目录启动 AGY 时仍会错误读写项目 A 的数据库，造成跨项目数据污染。因此 AGY 必须采用 `--discover` 动态寻根模式。

@@ -245,7 +245,8 @@ V0 必须提供一个低成本的旧项目接入入口。初始化操作应：
   - 用户级全局客户端：`agy` 跳过文件写入，输出推荐的 `agy mcp add milestack -- milestack mcp --discover` 注册命令、验证命令及手动配置说明（指向 `~/.gemini/config/mcp_config.json`）；
 - `opencode` 的 `milestack` 条目写入项目根目录 `opencode.json` 的 `mcp.milestack`，为本地 stdio 服务，绑定当前 checkout 的绝对路径，不使用 `--discover`；
 - 写入条目的启动命令必须可用：能通过 `PATH` 解析到全局安装的 `milestack` 时使用裸命令 `milestack`；`PATH` 中没有 `milestack` 时，改用正在执行 `init` 的 CLI（`node <CLI 入口文件绝对路径>`），使未全局安装 CLI 的开发者按文档执行 `init` 后条目仍可启动；此时应在输出中说明原因，且只有 `opencode.jsonc` 时的手写条目提示使用同一条命令；
-- 启动命令回退只影响新写入的条目；已存在的不同 `milestack` 条目保持不变，因此全局安装 CLI 后需要开发者再次运行 `init` 才能得到裸命令条目；
+- 启动命令回退只影响新写入的条目，且回退条目本身可正常启动；已存在的不同 `milestack` 条目保持不变，`init` 不会改写它，因此改用裸命令条目必须由开发者手动删除或修改该客户端的项目级 `milestack` 条目后再运行 `init`；
+- 未写入任何条目的结果（跳过）不得声称改用了新的 command；
 - `opencode` 项目配置与全局 `~/.config/opencode/opencode.json` 合并，同名 MCP 服务以项目条目为准，因此项目级条目无需写入全局配置；
 - 输出可加入 `AGENTS.md` 或其他 AI 指令文件的接入规则；
 - `--project` 使用当前 checkout 的绝对路径，执行或提交前由开发者确认路径无误；

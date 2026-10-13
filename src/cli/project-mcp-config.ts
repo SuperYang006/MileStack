@@ -260,6 +260,11 @@ function withLauncherNote(
   configuration: ProjectMcpConfigResult,
   launcher: McpLauncherResolution,
 ): ProjectMcpConfigResult {
+  // A skipped result left the existing file untouched, so the note must not
+  // claim that the command was switched.
+  if (configuration.action === "skipped") {
+    return configuration;
+  }
   const note = launcherNote(launcher);
   return note === undefined
     ? configuration
