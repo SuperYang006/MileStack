@@ -114,13 +114,60 @@ pnpm install
 pnpm build
 ```
 
-You can run the CLI directly from the checkout:
+Run the built application directly from the checkout; a global link is not required:
 
 ```bash
 node dist/index.js --help
+pnpm serve
 ```
 
-To make `milestack` available globally during development:
+`pnpm serve` uses the current checkout as the managed project and serves the Web UI at
+`http://127.0.0.1:7331`. To manage another project with the development build, pass its
+absolute path explicitly:
+
+```bash
+node dist/index.js serve --project /absolute/path/to/project --port 7331
+```
+
+For Web UI development with hot reload, keep the API server running in one terminal and
+start Vite in another:
+
+```bash
+# Terminal 1
+pnpm serve
+
+# Terminal 2
+pnpm dev:ui
+```
+
+Open `http://localhost:5173`; Vite proxies `/api` to the service on port `7331`.
+Frontend edits are hot-reloaded. After backend edits, run `pnpm build` and restart the
+API server. When using the integrated UI at port `7331`, run `pnpm build:ui` and refresh
+the page after frontend edits.
+
+### Test a local package without sharing the checkout
+
+To verify the package that users will install, pack it and install that tarball into the
+test project:
+
+```bash
+cd /absolute/path/to/MileStack
+pnpm pack
+
+cd /absolute/path/to/test-project
+npm install --save-dev /absolute/path/to/MileStack/milestack-<version>.tgz
+./node_modules/.bin/milestack init --project "$PWD"
+./node_modules/.bin/milestack serve --project "$PWD"
+```
+
+The installed tarball contains its own `dist` and `dist/ui`. A later `pnpm build` in the
+MileStack checkout does not update that installed copy; repack, reinstall, and restart
+the test service to pick up a new build.
+
+### Optional global development link
+
+The global development link is available for convenience, but is not recommended for
+routine development or package-isolation testing:
 
 ```bash
 pnpm setup        # Run once if pnpm has no global bin directory
@@ -129,15 +176,32 @@ pnpm link --global
 milestack --help
 ```
 
+This link makes the bare `milestack` command execute `dist/index.js` from the source
+checkout. Every project that starts MileStack through that bare command therefore shares
+the checkout's runtime and Web UI, and can see the latest local build. Project databases
+remain separate, but the installed application version is not isolated.
+
+Remove the pnpm global link with:
+
+```bash
+pnpm remove --global milestack
+which -a milestack
+```
+
+If `which -a` still lists a manually created launcher or symlink, remove that launcher
+separately. Removing launchers does not delete the source checkout, project-local npm
+packages, or `.milestack` data.
+
 ## Initialize a project
 
-With the global development link:
+With a normal global npm installation:
 
 ```bash
 milestack init --project /absolute/path/to/project
 ```
 
-Or run directly from this repository:
+When developing from source, prefer running directly from the repository instead of
+creating a global development link:
 
 ```bash
 node /absolute/path/to/MileStack/dist/index.js init \

@@ -111,13 +111,55 @@ pnpm install
 pnpm build
 ```
 
-可以直接从 checkout 运行 CLI：
+可以直接从 checkout 运行构建结果，不需要建立全局链接：
 
 ```bash
 node dist/index.js --help
+pnpm serve
 ```
 
-开发时如需全局使用 `milestack`：
+`pnpm serve` 会以当前 checkout 作为被管理项目，并在 `http://127.0.0.1:7331`
+提供 Web UI。如需使用开发版本管理其他项目，请显式传入其绝对路径：
+
+```bash
+node dist/index.js serve --project /项目的绝对路径 --port 7331
+```
+
+开发 Web UI 并使用热更新时，在两个终端中分别运行 API 服务和 Vite：
+
+```bash
+# 终端一
+pnpm serve
+
+# 终端二
+pnpm dev:ui
+```
+
+访问 `http://localhost:5173`；Vite 会将 `/api` 代理到 `7331` 端口的服务，
+前端修改会自动热更新。修改后端代码后，需要执行 `pnpm build` 并重启 API 服务。
+如果使用 `7331` 端口的一体化 UI，修改前端后执行 `pnpm build:ui` 并刷新页面。
+
+### 隔离测试本地安装包
+
+如需验证用户实际安装的包，请先打包，再把生成的 tarball 安装到测试项目：
+
+```bash
+cd /MileStack的绝对路径
+pnpm pack
+
+cd /测试项目的绝对路径
+npm install --save-dev /MileStack的绝对路径/milestack-<version>.tgz
+./node_modules/.bin/milestack init --project "$PWD"
+./node_modules/.bin/milestack serve --project "$PWD"
+```
+
+安装后的 tarball 拥有独立的 `dist` 和 `dist/ui`。之后在 MileStack 源码仓库执行
+`pnpm build` 不会更新测试项目中的副本；需要重新打包、重新安装并重启测试服务，
+才能使用新的构建结果。
+
+### 可选的全局开发链接
+
+全局开发链接可以作为便利工具使用，但不推荐用于日常开发或安装包隔离测试：
 
 ```bash
 pnpm setup        # 如果 pnpm 没有全局 bin 目录，只需执行一次
@@ -126,15 +168,29 @@ pnpm link --global
 milestack --help
 ```
 
+该链接会让裸 `milestack` 命令直接执行源码 checkout 中的 `dist/index.js`。
+因此，所有通过这个裸命令启动 MileStack 的项目都会共享该 checkout 的运行代码和
+Web UI，并可能立即看到最新的本地构建。各项目数据库仍然相互隔离，但应用版本并不隔离。
+
+可以这样移除 pnpm 全局链接：
+
+```bash
+pnpm remove --global milestack
+which -a milestack
+```
+
+如果 `which -a` 仍然列出了手动创建的启动器或软链接，需要单独移除它。
+移除启动器不会删除源码 checkout、项目本地安装的 npm 包或 `.milestack` 数据。
+
 ## 初始化项目
 
-如果已经建立全局开发链接：
+使用正常的 npm 全局安装时：
 
 ```bash
 milestack init --project /absolute/path/to/project
 ```
 
-也可以直接从本仓库运行：
+从源码开发时，建议直接从本仓库运行，不要为此创建全局开发链接：
 
 ```bash
 node /absolute/path/to/MileStack/dist/index.js init \
