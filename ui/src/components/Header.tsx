@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Plus, RefreshCw, Archive } from "lucide-react";
 import { Logo } from "./Logo";
 import type { ProjectSummary } from "../types";
+import { isSemverVersion } from "../runtime-version";
 
 const TERMINAL_EGG_PHRASES = [
   "keeping context coherent across turns",
@@ -66,8 +67,6 @@ const TypewriterEgg: React.FC = () => {
     </span>
   );
 };
-const SEMVER_PATTERN = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
-
 interface HeaderProps {
   project: ProjectSummary;
   isBackendConnected: boolean;
@@ -89,15 +88,12 @@ export const Header: React.FC<HeaderProps> = ({
   completedCount,
   isRefreshing = false,
 }) => {
-  const showRuntimeIdentity =
-    isBackendConnected &&
-    typeof runtimeVersion === "string" &&
-    SEMVER_PATTERN.test(runtimeVersion);
+  const showRuntimeIdentity = isBackendConnected && isSemverVersion(runtimeVersion);
 
   return (
     <header className="bg-zinc-950/80 backdrop-blur-md border-b border-zinc-800/80 sticky top-0 z-30">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-2.5">
-        <div className="flex items-center justify-between gap-4">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
           {/* Logo & Terminal Identity */}
           <div className="flex items-center space-x-3 min-w-0">
             <div className="w-8 h-8 rounded-lg overflow-hidden flex items-center justify-center shrink-0 border border-zinc-800 shadow-md transition-transform hover:scale-105">
@@ -108,13 +104,13 @@ export const Header: React.FC<HeaderProps> = ({
               <span className="font-mono text-sm font-bold tracking-tight text-zinc-100">
                 {project.name.toLowerCase() || "milestack"}
               </span>
-              <span className="font-mono text-xs text-zinc-500">::</span>
+              <span className="hidden md:inline font-mono text-xs text-zinc-500">::</span>
               {project.goal ? (
-                <span className="font-mono text-xs text-zinc-400 truncate">
+                <span className="hidden md:inline font-mono text-xs text-zinc-400 truncate">
                   {project.goal}
                 </span>
               ) : (
-                <div className="truncate">
+                <div className="hidden md:block truncate">
                   <TypewriterEgg />
                 </div>
               )}
@@ -122,11 +118,13 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
 
           {/* Right Controls & Status Pill */}
-          <div className="flex items-center space-x-2.5 shrink-0">
-            {/* Product identity of the running process, separate from the managed project */}
+          <div className="flex items-center gap-2.5 sm:space-x-2.5 shrink-0 ml-auto">
+            {/* Product identity of the running process, separate from the managed project.
+                Never split, never dropped: narrow screens give up the goal and the
+                button labels first, and this group wraps to its own row if needed. */}
             {showRuntimeIdentity && (
               <span
-                className="hidden md:inline font-mono text-[11px] tracking-tight text-zinc-600 select-none whitespace-nowrap"
+                className="font-mono text-[11px] tracking-tight text-zinc-600 select-none whitespace-nowrap"
                 title={`MileStack 运行版本 v${runtimeVersion}`}
               >
                 MileStack · v{runtimeVersion}

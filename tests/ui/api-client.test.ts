@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { apiClient } from "../../ui/src/api/client.js";
+import { isSemverVersion } from "../../ui/src/runtime-version.js";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -20,6 +21,55 @@ describe("UI API client", () => {
       "/api/status?view=full&projectId=project-1&since=2026-10-13T00%3A00%3A00.000Z",
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
+  });
+
+  it("keeps the service online when a healthy response carries no usable version", async () => {
+    const respondWith = (body: unknown): void => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn<typeof fetch>().mockResolvedValue(
+          new Response(JSON.stringify(body), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }),
+        ),
+      );
+    };
+
+    respondWith({ status: "ok", timestamp: "2026-10-13T00:00:00.000Z" });
+    await expect(apiClient.getRuntimeHealth()).resolves.toEqual({
+      status: "ok",
+      timestamp: "2026-10-13T00:00:00.000Z",
+      version: null,
+    });
+
+    respondWith({ status: "ok", timestamp: "2026-10-13T00:00:00.000Z", version: "" });
+    await expect(apiClient.getRuntimeHealth()).resolves.toMatchObject({ version: null });
+
+    respondWith({ status: "ok", timestamp: "2026-10-13T00:00:00.000Z", version: "unknown" });
+    const invalid = await apiClient.getRuntimeHealth();
+    expect(invalid).not.toBeNull();
+    expect(isSemverVersion(invalid?.version)).toBe(false);
+
+    respondWith({ status: "ok", timestamp: "2026-10-13T00:00:00.000Z", version: "1.2.3-rc.1+build.7" });
+    await expect(apiClient.getRuntimeHealth()).resolves.toMatchObject({
+      version: "1.2.3-rc.1+build.7",
+    });
+    expect(isSemverVersion("1.2.3-rc.1+build.7")).toBe(true);
+  });
+
+  it("reports no runtime health when the endpoint is unreachable or not successful", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 503 })),
+    );
+    await expect(apiClient.getRuntimeHealth()).resolves.toBeNull();
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>().mockRejectedValue(new Error("connection refused")),
+    );
+    await expect(apiClient.getRuntimeHealth()).resolves.toBeNull();
   });
 
   it("loads completed task pages with the requested cursor and page size", async () => {

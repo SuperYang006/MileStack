@@ -81,25 +81,26 @@ function saveStoredDetails(details: Record<string, TaskDetails>) {
 let backendAvailable: boolean | null = null;
 
 export const apiClient = {
+  // A reachable health endpoint means the service is online. The version is
+  // reported separately so an older build without it still shows as online.
   async getRuntimeHealth(): Promise<RuntimeHealth | null> {
     try {
       const res = await fetch("/api/health", { method: "GET", signal: AbortSignal.timeout(1000) });
-      if (res.ok) {
-        const health = (await res.json()) as Partial<RuntimeHealth>;
-        if (typeof health.version === "string" && health.version.length > 0) {
-          backendAvailable = true;
-          return {
-            status: typeof health.status === "string" ? health.status : "ok",
-            timestamp: typeof health.timestamp === "string" ? health.timestamp : "",
-            version: health.version,
-          };
-        }
+      if (!res.ok) {
+        backendAvailable = false;
+        return null;
       }
-      backendAvailable = false;
+      backendAvailable = true;
+      const body = (await res.json().catch(() => ({}))) as Partial<RuntimeHealth>;
+      return {
+        status: typeof body.status === "string" ? body.status : "ok",
+        timestamp: typeof body.timestamp === "string" ? body.timestamp : "",
+        version: typeof body.version === "string" && body.version.length > 0 ? body.version : null,
+      };
     } catch {
       backendAvailable = false;
+      return null;
     }
-    return null;
   },
 
   async getProjectStatus(

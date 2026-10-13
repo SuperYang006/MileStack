@@ -30,7 +30,7 @@ export interface ProjectSummary {
 export interface RuntimeHealth {
   status: string;
   timestamp: string;
-  version: string;
+  version: string | null;
 }
 
 export interface WaitingForTask {
