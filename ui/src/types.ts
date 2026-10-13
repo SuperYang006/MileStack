@@ -27,6 +27,12 @@ export interface ProjectSummary {
   goal: string | null;
 }
 
+export interface RuntimeHealth {
+  status: string;
+  timestamp: string;
+  version: string;
+}
+
 export interface WaitingForTask {
   id: string;
   title: string;

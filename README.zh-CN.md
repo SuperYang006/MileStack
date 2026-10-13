@@ -355,7 +355,10 @@ milestack mcp --discover
 milestack serve --project /absolute/path/to/project --port 7331
 ```
 
-Web UI 和 HTTP API 默认通过 `http://127.0.0.1:7331` 提供服务。
+Web UI 和 HTTP API 默认通过 `http://127.0.0.1:7331` 提供服务。页头会在服务状态旁显示
+`MileStack · v<version>`，版本取自 `GET /api/health`。该值在构建时按包版本写入运行进程，
+因此运行中的服务不会自行变化：升级 npm 包后需要重启 `milestack serve` 才会显示新版本。
+MileStack 不会访问 npm Registry，也不会提示“最新版本”。
 
 ## 风险与审核策略
 

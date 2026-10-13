@@ -369,7 +369,12 @@ milestack mcp --discover
 milestack serve --project /absolute/path/to/project --port 7331
 ```
 
-The web UI and HTTP API are served at `http://127.0.0.1:7331` by default.
+The web UI and HTTP API are served at `http://127.0.0.1:7331` by default. The header
+shows `MileStack · v<version>` next to the service status, taken from
+`GET /api/health`. That value is baked into the running process at build time from the
+package version, so a running server never changes it: after upgrading the npm package,
+restart `milestack serve` to pick up the new version. MileStack does not contact the npm
+registry and never reports a "latest version".
 
 ## Risk and review policy
 

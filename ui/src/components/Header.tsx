@@ -66,9 +66,12 @@ const TypewriterEgg: React.FC = () => {
     </span>
   );
 };
+const SEMVER_PATTERN = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
+
 interface HeaderProps {
   project: ProjectSummary;
   isBackendConnected: boolean;
+  runtimeVersion?: string | null;
   onRefresh: () => void;
   onOpenCreateModal: () => void;
   onOpenArchive?: () => void;
@@ -79,12 +82,18 @@ interface HeaderProps {
 export const Header: React.FC<HeaderProps> = ({
   project,
   isBackendConnected,
+  runtimeVersion,
   onRefresh,
   onOpenCreateModal,
   onOpenArchive,
   completedCount,
   isRefreshing = false,
 }) => {
+  const showRuntimeIdentity =
+    isBackendConnected &&
+    typeof runtimeVersion === "string" &&
+    SEMVER_PATTERN.test(runtimeVersion);
+
   return (
     <header className="bg-zinc-950/80 backdrop-blur-md border-b border-zinc-800/80 sticky top-0 z-30">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-2.5">
@@ -114,6 +123,16 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Right Controls & Status Pill */}
           <div className="flex items-center space-x-2.5 shrink-0">
+            {/* Product identity of the running process, separate from the managed project */}
+            {showRuntimeIdentity && (
+              <span
+                className="hidden md:inline font-mono text-[11px] tracking-tight text-zinc-600 select-none whitespace-nowrap"
+                title={`MileStack 运行版本 v${runtimeVersion}`}
+              >
+                MileStack · v{runtimeVersion}
+              </span>
+            )}
+
             {/* Connection Status indicator */}
             <div className="flex items-center space-x-2 px-2.5 py-1 rounded-md bg-zinc-900/90 border border-zinc-800 text-[11px] font-mono text-zinc-400">
               <span

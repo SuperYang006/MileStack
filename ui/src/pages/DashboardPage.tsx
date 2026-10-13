@@ -78,9 +78,9 @@ export const DashboardPage: React.FC = () => {
     refetchIntervalInBackground: false,
   });
 
-  const { data: backendConnected = false } = useQuery({
+  const { data: runtimeHealth = null } = useQuery({
     queryKey: ["backendHealth"],
-    queryFn: () => apiClient.isBackendAvailable(),
+    queryFn: () => apiClient.getRuntimeHealth(),
     enabled: isDocumentVisible,
     refetchInterval: 30_000,
     refetchIntervalInBackground: false,
@@ -229,7 +229,8 @@ export const DashboardPage: React.FC = () => {
       {/* Header */}
       <Header
         project={status.project}
-        isBackendConnected={backendConnected}
+        isBackendConnected={runtimeHealth !== null}
+        runtimeVersion={runtimeHealth?.version ?? null}
         onRefresh={() => {
           forceFullStatusRef.current = true;
           void refetch();

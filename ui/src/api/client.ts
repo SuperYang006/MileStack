@@ -6,6 +6,7 @@ import type {
   EditInboxTaskPayload,
   TaskPage,
   TaskStatus,
+  RuntimeHealth,
 } from "../types.js";
 import { initialProjectStatus, sampleTaskDetails } from "./mock-data.js";
 
@@ -80,14 +81,25 @@ function saveStoredDetails(details: Record<string, TaskDetails>) {
 let backendAvailable: boolean | null = null;
 
 export const apiClient = {
-  async isBackendAvailable(): Promise<boolean> {
+  async getRuntimeHealth(): Promise<RuntimeHealth | null> {
     try {
       const res = await fetch("/api/health", { method: "GET", signal: AbortSignal.timeout(1000) });
-      backendAvailable = res.ok;
+      if (res.ok) {
+        const health = (await res.json()) as Partial<RuntimeHealth>;
+        if (typeof health.version === "string" && health.version.length > 0) {
+          backendAvailable = true;
+          return {
+            status: typeof health.status === "string" ? health.status : "ok",
+            timestamp: typeof health.timestamp === "string" ? health.timestamp : "",
+            version: health.version,
+          };
+        }
+      }
+      backendAvailable = false;
     } catch {
       backendAvailable = false;
     }
-    return backendAvailable;
+    return null;
   },
 
   async getProjectStatus(

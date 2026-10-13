@@ -1,8 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createHttpServer } from "../../src/server/server.js";
+
+const packageVersion = (
+  JSON.parse(readFileSync(path.resolve("package.json"), "utf8")) as { version: string }
+).version;
 
 describe("HTTP API Server", () => {
   let tempDir: string;
@@ -22,7 +26,7 @@ describe("HTTP API Server", () => {
     rmSync(tempDir, { recursive: true, force: true });
   });
 
-  it("returns health status on GET /api/health", async () => {
+  it("returns health status and the package version on GET /api/health", async () => {
     const res = await serverInstance.app.inject({
       method: "GET",
       url: "/api/health",
@@ -31,6 +35,7 @@ describe("HTTP API Server", () => {
     const body = JSON.parse(res.payload);
     expect(body.status).toBe("ok");
     expect(body.timestamp).toBeDefined();
+    expect(body.version).toBe(packageVersion);
   });
 
   it("returns project summary on GET /api/project", async () => {

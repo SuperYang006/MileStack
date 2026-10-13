@@ -28,6 +28,7 @@ import {
   listTasksInputSchema,
 } from "../core/query-contract.js";
 import type { ReviewFinding, VerificationEvidence } from "../core/review-model.js";
+import { runtimeVersion } from "./runtime-version.js";
 
 export type HttpServerOptions = {
   projectRoot?: string | undefined;
@@ -88,7 +89,7 @@ export async function createHttpServer(
 
   // Health check
   app.get("/api/health", async () => {
-    return { status: "ok", timestamp: new Date().toISOString() };
+    return { status: "ok", timestamp: new Date().toISOString(), version: runtimeVersion };
   });
 
   // Project Info
