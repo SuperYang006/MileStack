@@ -188,6 +188,34 @@ npm script 会把项目自己的 `node_modules/.bin` 放在 `PATH` 最前面，�
 | 本地安装包测试 | 在测试项目中运行 `npm run milestack:serve` | 测试项目的 `node_modules` |
 | 正常全局使用 | `milestack serve` | npm 全局安装的包 |
 
+#### 更新已有的本地测试包
+
+`pnpm pack` 会在写入 tarball 之前执行 `prepack` 检查。如果类型检查、构建或测试失败，
+`dist` 可能已经重新构建，但磁盘上的 `milestack-<version>.tgz` 仍然是旧文件。
+只有命令成功退出并输出 tarball 文件名时，才能认为打包成功。
+
+重新安装前，可以直接检查安装包内容：
+
+```bash
+cd /MileStack的绝对路径
+pnpm pack
+tar -xOf milestack-<version>.tgz package/package.json | grep '"version"'
+tar -xOf milestack-<version>.tgz package/dist/ui/index.html | grep '<title>'
+```
+
+如果使用相同版本号和相同文件路径重新打包，npm 可能保留已经安装的副本。
+请先停止正在运行的测试服务，卸载旧依赖，重新安装 tarball，再启动服务：
+
+```bash
+cd /测试项目的绝对路径
+npm uninstall milestack
+npm install --save-dev /MileStack的绝对路径/milestack-<version>.tgz
+npm run milestack:serve
+```
+
+重新打包不会改变包版本。如果 `package.json` 仍然是 `0.1.0`，即使包内代码已经更新，
+Web UI 继续显示 `v0.1.0` 也是正确行为。准备正式的新版本时才需要递增包版本号。
+
 ### 可选的全局开发链接
 
 全局开发链接可以作为便利工具使用，但不推荐用于日常开发或安装包隔离测试：

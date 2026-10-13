@@ -196,6 +196,37 @@ the test service to pick up a new build.
 | Local package test | `npm run milestack:serve` in the test project | Test project's `node_modules` |
 | Normal global use | `milestack serve` | Globally installed npm package |
 
+#### Refresh an existing local test package
+
+`pnpm pack` runs the `prepack` checks before writing the tarball. If type checking, the
+build, or tests fail, `dist` may already have been rebuilt while an older
+`milestack-<version>.tgz` remains on disk. Treat the pack as successful only when the
+command exits successfully and prints the tarball name.
+
+Inspect the package itself before reinstalling it:
+
+```bash
+cd /absolute/path/to/MileStack
+pnpm pack
+tar -xOf milestack-<version>.tgz package/package.json | grep '"version"'
+tar -xOf milestack-<version>.tgz package/dist/ui/index.html | grep '<title>'
+```
+
+When repacking the same version to the same path, npm may keep the already installed
+copy. Stop the running test service, remove that dependency, reinstall the tarball, and
+then restart it:
+
+```bash
+cd /absolute/path/to/test-project
+npm uninstall milestack
+npm install --save-dev /absolute/path/to/MileStack/milestack-<version>.tgz
+npm run milestack:serve
+```
+
+Repacking does not change the package version. If `package.json` still contains `0.1.0`,
+the Web UI correctly continues to display `v0.1.0` even when the packaged code is newer.
+Increment the package version when preparing an actual new release.
+
 ### Optional global development link
 
 The global development link is available for convenience, but is not recommended for
