@@ -1,0 +1,139 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <!-- 背景渐变 -->
+    <linearGradient id="bg-ha" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0E121E"/>
+      <stop offset="50%" stop-color="#0A0C16"/>
+      <stop offset="100%" stop-color="#05060B"/>
+    </linearGradient>
+
+    <!-- 开发者轨道渐变 (Cobalt to Cyan Flare) -->
+    <linearGradient id="dev-track-ha" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#1D4ED8"/>
+      <stop offset="40%" stop-color="#2563EB"/>
+      <stop offset="80%" stop-color="#38BDF8"/>
+      <stop offset="100%" stop-color="#7DD3FC"/>
+    </linearGradient>
+
+    <!-- 智能体轨道渐变 (Violet to Neon Pink) -->
+    <linearGradient id="agent-track-ha" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F43F5E"/>
+      <stop offset="40%" stop-color="#EC4899"/>
+      <stop offset="80%" stop-color="#A855F7"/>
+      <stop offset="100%" stop-color="#6366F1"/>
+    </linearGradient>
+
+    <!-- 梯级里程栈阶梯渐变 -->
+    <linearGradient id="stack-rung-ha" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#38BDF8"/>
+      <stop offset="50%" stop-color="#C084FC"/>
+      <stop offset="100%" stop-color="#F43F5E"/>
+    </linearGradient>
+
+    <!-- 柔和辉光 -->
+    <filter id="glow-ha" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <!-- 穿插立体阴影 -->
+    <filter id="shadow-ha" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="7" stdDeviation="6" flood-color="#000000" flood-opacity="0.65"/>
+    </filter>
+
+    <!-- 背景漫射环境光 -->
+    <radialGradient id="ambient-ha" cx="50%" cy="48%" r="55%">
+      <stop offset="0%" stop-color="#8B5CF6" stop-opacity="0.14"/>
+      <stop offset="50%" stop-color="#2563EB" stop-opacity="0.08"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- 图标底板 -->
+  <rect width="512" height="512" rx="112" fill="url(#bg-ha)"/>
+  <rect width="512" height="512" rx="112" fill="none" stroke="#334155" stroke-width="2" stroke-opacity="0.35"/>
+
+  <!-- 环境背景光 -->
+  <circle cx="256" cy="256" r="210" fill="url(#ambient-ha)"/>
+
+  <!-- 主体图形：双圆弧流动 + S形流线 + 金字塔梯级里程栈 -->
+  <g id="synergy-harmonic-a">
+
+    <!-- 1. 底层环弧 (底层穿插段，纯圆弧流动) -->
+    <path d="M 256 360 C 190 360 140 310 140 240 C 140 170 190 120 256 120"
+          fill="none"
+          stroke="url(#agent-track-ha)"
+          stroke-width="36"
+          stroke-linecap="round"
+          stroke-opacity="0.25"/>
+
+    <!-- 2. 中央梯级里程碑堆栈 (The Ascending Milestone Stack) -->
+    <g id="tiered-milestone-stack" filter="url(#glow-ha)">
+      <!-- Rung 3 (底层基座：SQLite & Task Inbox) -->
+      <line x1="202" y1="310" x2="310" y2="310" stroke="url(#stack-rung-ha)" stroke-width="18" stroke-linecap="round" stroke-opacity="0.85"/>
+      <circle cx="256" cy="310" r="3" fill="#FFFFFF" fill-opacity="0.8"/>
+
+      <!-- Rung 2 (中层推进：Active Execution & Context) -->
+      <line x1="214" y1="250" x2="298" y2="250" stroke="url(#stack-rung-ha)" stroke-width="18" stroke-linecap="round"/>
+      <circle cx="256" cy="250" r="3.5" fill="#FFFFFF" fill-opacity="0.95"/>
+
+      <!-- Rung 1 (顶层目标：Review Passed & Milestone Apex) -->
+      <line x1="226" y1="190" x2="286" y2="190" stroke="url(#stack-rung-ha)" stroke-width="18" stroke-linecap="round"/>
+      <!-- 顶层信标 -->
+      <circle cx="256" cy="190" r="5" fill="#FFFFFF"/>
+      <circle cx="256" cy="190" r="9" fill="none" stroke="#FFFFFF" stroke-width="1.5" stroke-opacity="0.6"/>
+    </g>
+
+    <!-- 3. 开发者轨道 (Developer Track - 前景大环) -->
+    <g id="dev-track" filter="url(#glow-ha)">
+      <path d="M 256 120 C 170 120 126 178 126 256 C 126 334 176 388 256 388 C 300 388 336 364 356 328"
+            fill="none"
+            stroke="url(#dev-track-ha)"
+            stroke-width="38"
+            stroke-linecap="round"
+            filter="url(#shadow-ha)"/>
+
+      <!-- S 形流动脊线高光 -->
+      <path d="M 256 104 C 180 104 140 160 140 256 C 140 330 184 372 256 372"
+            fill="none"
+            stroke="#BAE6FD"
+            stroke-width="2.5"
+            stroke-linecap="round"
+            stroke-opacity="0.85"/>
+
+      <!-- 开发者端点刻度信标 -->
+      <circle cx="356" cy="328" r="8" fill="#38BDF8"/>
+      <circle cx="356" cy="328" r="4" fill="#FFFFFF"/>
+    </g>
+
+    <!-- 4. 智能体轨道 (Agent Track - 穿插互锁前弧) -->
+    <g id="agent-track" filter="url(#glow-ha)">
+      <path d="M 256 388 C 342 388 386 330 386 252 C 386 174 336 120 256 120 C 212 120 176 144 156 180"
+            fill="none"
+            stroke="url(#agent-track-ha)"
+            stroke-width="38"
+            stroke-linecap="round"
+            filter="url(#shadow-ha)"/>
+
+      <!-- 智能体流线高光脊线 -->
+      <path d="M 256 404 C 332 404 372 348 372 252 C 372 178 328 136 256 136"
+            fill="none"
+            stroke="#FBCFE8"
+            stroke-width="2.5"
+            stroke-linecap="round"
+            stroke-opacity="0.85"/>
+
+      <!-- 智能体端点刻度信标 -->
+      <circle cx="156" cy="180" r="8" fill="#F43F5E"/>
+      <circle cx="156" cy="180" r="4" fill="#FFFFFF"/>
+    </g>
+
+    <!-- 5. 两极交汇共生微粒 -->
+    <circle cx="256" cy="120" r="9" fill="#FFFFFF" filter="url(#glow-ha)"/>
+    <circle cx="256" cy="388" r="9" fill="#FFFFFF" filter="url(#glow-ha)"/>
+
+  </g>
+</svg>

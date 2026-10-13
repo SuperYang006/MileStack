@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
-import { Terminal, Plus, RefreshCw } from "lucide-react";
+import { Plus, RefreshCw } from "lucide-react";
+import { Logo } from "./Logo";
 import type { ProjectSummary } from "../types";
 
 const TERMINAL_EGG_PHRASES = [
@@ -75,8 +76,8 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="flex items-center justify-between gap-4">
           {/* Logo & Terminal Identity */}
           <div className="flex items-center space-x-3 min-w-0">
-            <div className="w-8 h-8 rounded-md bg-zinc-900 border border-zinc-700/80 flex items-center justify-center text-cyan-400 font-mono shadow-inner">
-              <Terminal className="w-4 h-4" />
+            <div className="w-8 h-8 rounded-lg overflow-hidden flex items-center justify-center shrink-0 border border-zinc-800 shadow-md transition-transform hover:scale-105">
+              <Logo className="w-full h-full" />
             </div>
 
             <div className="flex items-baseline space-x-2.5 min-w-0 truncate">
