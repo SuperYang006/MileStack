@@ -15,32 +15,43 @@ const TERMINAL_EGG_PHRASES = [
 const TypewriterEgg: React.FC = () => {
   const [phraseIdx, setPhraseIdx] = useState(0);
   const [subIdx, setSubIdx] = useState(0);
-  const [isDeleting, setIsDeleting] = useState(false);
+  const [phase, setPhase] = useState<"typing" | "paused" | "deleting">("typing");
 
   useEffect(() => {
     const currentPhrase = TERMINAL_EGG_PHRASES[phraseIdx] || "";
 
-    // If typing and reached full text, pause before deleting
-    if (!isDeleting && subIdx === currentPhrase.length) {
-      const timeout = setTimeout(() => setIsDeleting(true), 3200);
+    if (phase === "typing") {
+      if (subIdx >= currentPhrase.length) {
+        // Phrase fully typed, pause briefly before deleting
+        const timeout = setTimeout(() => {
+          setPhase("deleting");
+        }, 2200);
+        return () => clearTimeout(timeout);
+      }
+
+      // Continue typing forwards
+      const timeout = setTimeout(() => {
+        setSubIdx((prev) => Math.min(prev + 1, currentPhrase.length));
+      }, 50);
       return () => clearTimeout(timeout);
     }
 
-    // If deleting and reached 0, move to next phrase
-    if (!isDeleting && subIdx === 0) {
-      setIsDeleting(false);
-      setPhraseIdx((prev) => (prev + 1) % TERMINAL_EGG_PHRASES.length);
-      return;
+    if (phase === "deleting") {
+      if (subIdx <= 0) {
+        // Phrase fully deleted, switch to next phrase and resume typing
+        setPhase("typing");
+        setPhraseIdx((prev) => (prev + 1) % TERMINAL_EGG_PHRASES.length);
+        setSubIdx(0);
+        return;
+      }
+
+      // Continue deleting backwards
+      const timeout = setTimeout(() => {
+        setSubIdx((prev) => Math.max(prev - 1, 0));
+      }, 25);
+      return () => clearTimeout(timeout);
     }
-
-    // Typing/deleting interval speed
-    const speed = isDeleting ? 28 : 55;
-    const timeout = setTimeout(() => {
-      setSubIdx((prev) => prev + (isDeleting ? -1 : 1));
-    }, speed);
-
-    return () => clearTimeout(timeout);
-  }, [phraseIdx, subIdx, isDeleting]);
+  }, [phraseIdx, subIdx, phase]);
 
   const currentPhrase = TERMINAL_EGG_PHRASES[phraseIdx] || "";
   const displayed = currentPhrase.slice(0, subIdx);
