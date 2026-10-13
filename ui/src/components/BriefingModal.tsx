@@ -1,9 +1,9 @@
 import React, { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { X, Copy, Check, Terminal, ShieldAlert, Clock } from "lucide-react";
-import { formatKnownTaskBriefInstructions } from "../../../src/core/agent-instructions.js";
 import { apiClient } from "../api/client";
 import type { TaskSummary, ProjectSummary, TaskDetails } from "../types";
+import { formatTaskBriefing } from "../utils/taskBriefing";
 
 interface BriefingModalProps {
   task: TaskSummary | null;
@@ -28,39 +28,9 @@ export const BriefingModal: React.FC<BriefingModalProps> = ({
 
   if (!isOpen || !task) return null;
 
-  const waitingDeps = task.waitingFor.map((w) => `- ${w.title} (${w.status})`).join("\n");
-
-  const objectiveText = details?.task.objective || "（未提供详细目标说明）";
-  const criteriaText =
-    details?.task.acceptanceCriteria && details.task.acceptanceCriteria.length > 0
-      ? details.task.acceptanceCriteria.map((c, i) => `  ${i + 1}. ${c}`).join("\n")
-      : "  （未指定具体验收条件）";
-
-  const briefingText = `# MileStack 任务简报
-
-## 1. 项目概览
-- **项目名称**: ${project.name}
-- **项目目标**: ${project.goal || "对齐人机任务上下文，保障可信工程交付。"}
-
-## 2. 目标任务
-- **Task ID**: \`${task.id}\`
-- **任务标题**: ${task.title}
-- **当前状态**: \`${task.status}\` (队列序号: #${task.queuePosition || 1})
-- **核心目标**: ${objectiveText}
-- **验收条件**:
-${criteriaText}
-- **可执行性**: ${task.runnable ? "就绪可立即执行 (无未完成前置依赖)" : "等待前置依赖"}
-${
-  task.waitingFor.length > 0
-    ? `\n### 尚未完成的前置依赖:\n${waitingDeps}\n`
-    : ""
-}
-## 3. AI 协作执行协议
-${formatKnownTaskBriefInstructions(task.id)}
-3. 执行过程中若有阶段进展，调用 \`update_task\` 汇报阶段产物与下一步骤；
-4. 若遭遇阻塞，调用 \`update_task\` 填写 blocker 和 requiredAction；
-5. 验收条件满足且验证完成后调用 \`submit_for_review\` 提交审核摘要；任务进入 in_review，等待开发者批准后才会完成。
-`;
+  const briefingText = details
+    ? formatTaskBriefing({ project, task, details })
+    : "";
 
   const handleCopy = async () => {
     if (isLoading || isError || !details) return;

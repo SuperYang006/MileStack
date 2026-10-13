@@ -113,8 +113,10 @@ export function formatKnownTaskBriefInstructions(taskId: string): string {
     "This brief already provides a taskId, so use the known-task flow:",
     `1. Call get_task directly with taskId \u0060${taskId}\u0060. Do not call get_project_status first.`,
     "2. Read the objective, acceptance criteria, dependencies, history, current handoff, and status before acting.",
-    `3. If the task status is ready, call start_task with taskId \u0060${taskId}\u0060 and save the returned runId.`,
-    `4. ${taskClaimValidationRule}`,
-    "5. If the claim fails, do not modify the project; report the returned error and required action.",
+    `3. If the task status is ready, call start_task with taskId \u0060${taskId}\u0060 and save the returned runId. ${taskClaimValidationRule}`,
+    "4. If the claim fails, do not modify the project; report the returned error and required action.",
+    "5. Record meaningful progress with update_task and the current runId. Include a summary and, when they change, currentStep and nextStep.",
+    "6. If you are blocked or cannot continue, call update_task with the current runId, blocker, requiredAction, and handoffNote, then stop. Do not invent a separate release or block tool.",
+    "7. After the acceptance criteria and required verification pass, call submit_for_review with the current runId, an existing full 40-character commit SHA, and the actual branch and worktree. Submission moves the task to in_review and invalidates the runId. A verified low-risk task may complete automatically after review; medium- and high-risk tasks stay in in_review until a developer approves.",
   ].join("\n");
 }
