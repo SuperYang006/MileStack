@@ -141,21 +141,52 @@ pnpm dev:ui
 
 ### 隔离测试本地安装包
 
-如需验证用户实际安装的包，请先打包，再把生成的 tarball 安装到测试项目：
+如需验证用户实际安装的包，请先打包，再把生成的 tarball 安装到测试项目。
+`milestack init` 只负责初始化数据库和客户端配置，不会安装 npm 包，也不会为项目创建
+`node_modules`。
 
 ```bash
 cd /MileStack的绝对路径
 pnpm pack
 
 cd /测试项目的绝对路径
+# 仅当测试项目还没有 package.json 时，先执行：
+npm init -y
 npm install --save-dev /MileStack的绝对路径/milestack-<version>.tgz
+./node_modules/.bin/milestack --help
 ./node_modules/.bin/milestack init --project "$PWD"
-./node_modules/.bin/milestack serve --project "$PWD"
 ```
+
+为了方便重复使用，可以在测试项目的 `package.json` 中加入项目本地脚本：
+
+```json
+{
+  "scripts": {
+    "milestack:init": "milestack init --project .",
+    "milestack:serve": "milestack serve --project . --port 7332"
+  }
+}
+```
+
+之后通过以下命令启动测试项目中安装的版本：
+
+```bash
+npm run milestack:serve
+```
+
+npm script 会把项目自己的 `node_modules/.bin` 放在 `PATH` 最前面，因此即使系统中安装了
+其他全局版本，这些脚本仍然使用测试项目内安装的 tarball。测试服务使用 `7332` 端口，
+还可以与默认使用 `7331` 端口的源码开发服务同时运行。
 
 安装后的 tarball 拥有独立的 `dist` 和 `dist/ui`。之后在 MileStack 源码仓库执行
 `pnpm build` 不会更新测试项目中的副本；需要重新打包、重新安装并重启测试服务，
 才能使用新的构建结果。
+
+| 使用场景 | 命令 | 实际使用的 MileStack 版本 |
+| --- | --- | --- |
+| 源码开发 | 在 MileStack checkout 中运行 `pnpm serve` | 当前 checkout 的 `dist` |
+| 本地安装包测试 | 在测试项目中运行 `npm run milestack:serve` | 测试项目的 `node_modules` |
+| 正常全局使用 | `milestack serve` | npm 全局安装的包 |
 
 ### 可选的全局开发链接
 

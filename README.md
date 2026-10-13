@@ -148,21 +148,53 @@ the page after frontend edits.
 ### Test a local package without sharing the checkout
 
 To verify the package that users will install, pack it and install that tarball into the
-test project:
+test project. `milestack init` initializes the database and client configuration; it does
+not install the npm package or create `node_modules` for the project.
 
 ```bash
 cd /absolute/path/to/MileStack
 pnpm pack
 
 cd /absolute/path/to/test-project
+# Run this first only if the test project has no package.json:
+npm init -y
 npm install --save-dev /absolute/path/to/MileStack/milestack-<version>.tgz
+./node_modules/.bin/milestack --help
 ./node_modules/.bin/milestack init --project "$PWD"
-./node_modules/.bin/milestack serve --project "$PWD"
 ```
+
+For convenient repeated use, add project-local scripts to the test project's
+`package.json`:
+
+```json
+{
+  "scripts": {
+    "milestack:init": "milestack init --project .",
+    "milestack:serve": "milestack serve --project . --port 7332"
+  }
+}
+```
+
+Then start the installed test package with:
+
+```bash
+npm run milestack:serve
+```
+
+An npm script puts the project's own `node_modules/.bin` first on `PATH`, so these scripts
+keep using the tarball installed in the test project even when another version is
+installed globally. Port `7332` also lets the test service run alongside source development
+on the default port `7331`.
 
 The installed tarball contains its own `dist` and `dist/ui`. A later `pnpm build` in the
 MileStack checkout does not update that installed copy; repack, reinstall, and restart
 the test service to pick up a new build.
+
+| Workflow | Command | MileStack version used |
+| --- | --- | --- |
+| Source development | `pnpm serve` in the MileStack checkout | Current checkout's `dist` |
+| Local package test | `npm run milestack:serve` in the test project | Test project's `node_modules` |
+| Normal global use | `milestack serve` | Globally installed npm package |
 
 ### Optional global development link
 
