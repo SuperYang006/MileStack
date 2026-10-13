@@ -72,11 +72,11 @@ export const Header: React.FC<HeaderProps> = ({
                 className={`w-1.5 h-1.5 rounded-full ${
                   isBackendConnected
                     ? "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]"
-                    : "bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.8)]"
+                    : "bg-rose-400 shadow-[0_0_8px_rgba(251,113,133,0.8)]"
                 }`}
               />
               <span className="text-zinc-300">
-                {isBackendConnected ? "服务在线" : "本地演示"}
+                {isBackendConnected ? "服务在线" : "服务离线"}
               </span>
             </div>
 
@@ -109,10 +109,13 @@ export const Header: React.FC<HeaderProps> = ({
               <span className="hidden sm:inline">刷新</span>
             </button>
 
-            {/* Create Task button */}
+            {/* Create Task button. An unreachable service cannot accept the write, so the
+                entry is disabled instead of failing after the click. */}
             <button
               onClick={onOpenCreateModal}
-              className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-mono font-semibold transition-colors shadow-xs"
+              disabled={!isBackendConnected}
+              title={isBackendConnected ? "新建任务" : "服务离线，无法新建任务"}
+              className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-mono font-semibold transition-colors shadow-xs disabled:bg-zinc-800 disabled:text-zinc-500 disabled:shadow-none"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>新建任务</span>

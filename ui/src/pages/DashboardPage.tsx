@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { RefreshCw, WifiOff } from "lucide-react";
 import {
   useQuery,
   useInfiniteQuery,
@@ -19,14 +20,43 @@ import { TaskDetailModal } from "../components/TaskDetailModal";
 import { CreateTaskModal } from "../components/CreateTaskModal";
 import { BriefingModal } from "../components/BriefingModal";
 import { EditInboxModal } from "../components/EditInboxModal";
+import { ServiceDisconnectedModal } from "../components/ServiceDisconnectedModal";
 import type {
   ProjectStatus,
+  ProjectSummary,
   TaskSummary,
   CreateTaskPayload,
   EditInboxTaskPayload,
   TaskDetails,
   RiskLevel,
 } from "../types";
+
+const POLL_INTERVAL_MS = 15_000;
+
+/** The dashboard never invents tasks. While the service is unreachable the same
+ *  page renders with empty queues so the disconnection cannot be mistaken for an
+ *  empty project. */
+function createEmptyProjectStatus(project: ProjectSummary): ProjectStatus {
+  return {
+    project,
+    latestUpdatedAt: null,
+    counts: {
+      inbox: 0,
+      ready: 0,
+      running: 0,
+      blocked: 0,
+      inReview: 0,
+      completed: 0,
+      total: 0,
+    },
+    current: [],
+    next: [],
+    blocked: [],
+    inReview: [],
+    inbox: [],
+    recentlyCompleted: [],
+  };
+}
 
 function useDocumentVisible(): boolean {
   const [isVisible, setIsVisible] = useState(
@@ -55,11 +85,16 @@ export const DashboardPage: React.FC = () => {
   const [briefingTask, setBriefingTask] = useState<TaskSummary | null>(null);
   const [editingInboxTask, setEditingInboxTask] = useState<TaskSummary | TaskDetails | null>(null);
   const [isArchiveOpen, setIsArchiveOpen] = useState(false);
+  const [lastProject, setLastProject] = useState<ProjectSummary>({ id: "", name: "", goal: null });
+  const [isDisconnectNoticeDismissed, setIsDisconnectNoticeDismissed] = useState(false);
+  const [isReconnecting, setIsReconnecting] = useState(false);
 
-  // Queries
+  // Queries. A failed call is never retried into a fake result: it marks the
+  // service offline right away, and the notice waits for a real recovery.
   const {
     data: status,
     isLoading: isStatusLoading,
+    isError: isStatusError,
     isRefetching,
     refetch,
   } = useQuery({
@@ -74,23 +109,46 @@ export const DashboardPage: React.FC = () => {
       throw new Error("Project status was not returned.");
     },
     enabled: isDocumentVisible,
-    refetchInterval: 15_000,
+    retry: false,
+    refetchInterval: POLL_INTERVAL_MS,
     refetchIntervalInBackground: false,
   });
 
+  const { data: runtimeHealth, isFetched: isHealthFetched } = useQuery({
+    queryKey: ["backendHealth"],
+    queryFn: () => apiClient.getRuntimeHealth(),
+    enabled: isDocumentVisible,
+    retry: false,
+    refetchInterval: POLL_INTERVAL_MS,
+    refetchIntervalInBackground: false,
+  });
+
+  const isServiceDisconnected = isStatusError || (isHealthFetched && runtimeHealth === null);
+
   useEffect(() => {
     if (status?.project.name) {
+      setLastProject(status.project);
       document.title = status.project.name;
     }
   }, [status?.project.name]);
 
-  const { data: runtimeHealth = null } = useQuery({
-    queryKey: ["backendHealth"],
-    queryFn: () => apiClient.getRuntimeHealth(),
-    enabled: isDocumentVisible,
-    refetchInterval: 30_000,
-    refetchIntervalInBackground: false,
-  });
+  // One notice per disconnection: closing it keeps the offline state, and only a
+  // real recovery rearms it for the next one.
+  useEffect(() => {
+    if (!isServiceDisconnected) {
+      setIsDisconnectNoticeDismissed(false);
+    }
+  }, [isServiceDisconnected]);
+
+  // A disconnection closes every surface that holds or writes task data, so no
+  // stale snapshot or local edit can survive into the offline state.
+  useEffect(() => {
+    if (!isServiceDisconnected) return;
+    setSelectedTaskId(null);
+    setIsCreateModalOpen(false);
+    setEditingInboxTask(null);
+    setIsArchiveOpen(false);
+  }, [isServiceDisconnected]);
 
   const completedTasksQuery = useInfiniteQuery({
     queryKey: ["completedTasks"],
@@ -103,9 +161,10 @@ export const DashboardPage: React.FC = () => {
   });
 
   const completedTasks = useMemo(() => {
+    if (isServiceDisconnected) return [];
     const loaded = completedTasksQuery.data?.pages.flatMap((page) => page.tasks) ?? [];
     return Array.from(new Map(loaded.map((task) => [task.id, task])).values());
-  }, [completedTasksQuery.data]);
+  }, [completedTasksQuery.data, isServiceDisconnected]);
 
   const invalidateProjectQueries = () => {
     void queryClient.invalidateQueries({ queryKey: ["projectStatus"] });
@@ -116,7 +175,8 @@ export const DashboardPage: React.FC = () => {
     queryKey: ["taskDetails", selectedTaskId],
     queryFn: () => (selectedTaskId ? apiClient.getTaskDetails(selectedTaskId) : null),
     enabled: isDocumentVisible && !!selectedTaskId,
-    refetchInterval: 15_000,
+    retry: false,
+    refetchInterval: POLL_INTERVAL_MS,
     refetchIntervalInBackground: false,
   });
 
@@ -217,12 +277,32 @@ export const DashboardPage: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ["taskDetails", variables.taskId] });
     },
   });
+  // An offline dashboard is still a dashboard: it keeps the frame and the last
+  // known project name, but never the last task snapshot.
+  const visibleStatus =
+    !isServiceDisconnected && status ? status : createEmptyProjectStatus(lastProject);
+
+  const reconnect = async () => {
+    setIsReconnecting(true);
+    forceFullStatusRef.current = true;
+    try {
+      await Promise.all([refetch(), queryClient.refetchQueries({ queryKey: ["backendHealth"] })]);
+    } finally {
+      setIsReconnecting(false);
+    }
+  };
+
+  const openCreateModal = () => {
+    if (isServiceDisconnected) return;
+    setIsCreateModalOpen(true);
+  };
+
   const allTasks = useMemo(
-    () => (status ? buildTaskIndex(status, completedTasks) : new Map()),
-    [status, completedTasks],
+    () => buildTaskIndex(visibleStatus, completedTasks),
+    [visibleStatus, completedTasks],
   );
 
-  if (isStatusLoading || !status) {
+  if (isStatusLoading || (!status && !isServiceDisconnected)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-zinc-950 font-mono text-zinc-500 text-xs">
         正在连接 MileStack 数据总线...
@@ -234,9 +314,9 @@ export const DashboardPage: React.FC = () => {
     <div className="min-h-screen flex flex-col bg-zinc-950 text-zinc-100 pb-16 lg:pb-0 selection:bg-cyan-500/30 selection:text-cyan-200">
       {/* Header */}
       <Header
-        project={status.project}
-        isBackendConnected={runtimeHealth !== null}
-        runtimeVersion={runtimeHealth?.version ?? null}
+        project={visibleStatus.project}
+        isBackendConnected={!isServiceDisconnected}
+        runtimeVersion={isServiceDisconnected ? null : runtimeHealth?.version ?? null}
         onRefresh={() => {
           forceFullStatusRef.current = true;
           void refetch();
@@ -247,22 +327,42 @@ export const DashboardPage: React.FC = () => {
             queryClient.invalidateQueries({ queryKey: ["taskDetails", selectedTaskId] });
           }
         }}
-        onOpenCreateModal={() => setIsCreateModalOpen(true)}
+        onOpenCreateModal={openCreateModal}
         onOpenArchive={() => setIsArchiveOpen(true)}
-        completedCount={status.counts.completed}
+        completedCount={visibleStatus.counts.completed}
         isRefreshing={isRefetching}
       />
+
+      {/* Offline Notice: stays after the dialog is closed so the empty queues below
+          are never read as an empty project. */}
+      {isServiceDisconnected && (
+        <div className="w-full px-4 sm:px-6 lg:px-8 pt-4">
+          <div className="max-w-7xl mx-auto flex flex-wrap items-center gap-x-3 gap-y-2 rounded-md border border-rose-900/60 bg-rose-950/30 px-3 py-2 font-mono text-[11px] text-rose-200">
+            <WifiOff className="w-3.5 h-3.5 shrink-0 text-rose-400" />
+            <span>服务离线，当前不显示任务数据。请确认 milestack serve 仍在运行后重试。</span>
+            <button
+              type="button"
+              onClick={() => void reconnect()}
+              disabled={isReconnecting}
+              className="ml-auto inline-flex items-center gap-1.5 rounded border border-rose-800/70 bg-rose-950/50 px-2 py-1 text-rose-100 hover:bg-rose-900/50 transition-colors disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3 h-3 ${isReconnecting ? "animate-spin" : ""}`} />
+              {isReconnecting ? "正在重新连接..." : "重新连接"}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Main Content Area */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 w-full space-y-6 lg:flex lg:h-[calc(100vh-4rem)] lg:min-h-0 lg:flex-col lg:space-y-3 lg:overflow-hidden">
         {/* Blocked Section (Top priority when tasks are blocked) */}
         <BlockedTasks
-          tasks={status.blocked}
+          tasks={visibleStatus.blocked}
           onSelectTask={(id) => setSelectedTaskId(id)}
         />
         {/* Execution Flow View (Compact topology for branches and dependencies) */}
         <ExecutionFlowView
-          status={status}
+          status={visibleStatus}
           additionalCompletedTasks={completedTasks}
           onSelectTask={(id) => setSelectedTaskId(id)}
         />
@@ -272,7 +372,7 @@ export const DashboardPage: React.FC = () => {
           {/* Top-left: 已就绪 */}
           <div className="lg:h-full lg:min-h-0">
             <NextTasks
-              tasks={status.next}
+              tasks={visibleStatus.next}
               allTasks={allTasks}
               onReorder={(id, dir) => reorderTaskMutation.mutate({ taskId: id, direction: dir })}
               onReturnToInbox={(id) => returnReadyMutation.mutate(id)}
@@ -285,7 +385,7 @@ export const DashboardPage: React.FC = () => {
           {/* Top-right: 正在进行 */}
           <div className="lg:h-full lg:min-h-0">
             <CurrentTasks
-              tasks={status.current}
+              tasks={visibleStatus.current}
               allTasks={allTasks}
               onSelectTask={(id) => setSelectedTaskId(id)}
               onReleaseTask={(id) => releaseTaskMutation.mutate(id)}
@@ -295,7 +395,7 @@ export const DashboardPage: React.FC = () => {
           {/* Bottom-left: 待审核 */}
           <div className="lg:h-full lg:min-h-0">
             <ReviewTasks
-              tasks={status.inReview}
+              tasks={visibleStatus.inReview}
               onApprove={(id) => approveTaskMutation.mutate(id)}
               onWaiveApproval={(taskId, reason) =>
                 waiveTaskApprovalMutation.mutate({ taskId, reason })
@@ -310,13 +410,13 @@ export const DashboardPage: React.FC = () => {
           {/* Bottom-right: 待整理收件箱 */}
           <div className="lg:h-full lg:min-h-0">
             <InboxTasks
-              tasks={status.inbox}
+              tasks={visibleStatus.inbox}
               allTasks={allTasks}
               onConfirmTask={(id, riskLevel) => confirmInboxMutation.mutate({ taskId: id, riskLevel })}
               onDeleteTask={(id) => deleteInboxMutation.mutate(id)}
               onSelectTask={(id) => setSelectedTaskId(id)}
               onEditTask={(task) => setEditingInboxTask(task)}
-              onCreateTask={() => setIsCreateModalOpen(true)}
+              onCreateTask={openCreateModal}
             />
           </div>
         </div>
@@ -327,7 +427,7 @@ export const DashboardPage: React.FC = () => {
         isOpen={isArchiveOpen}
         onClose={() => setIsArchiveOpen(false)}
         tasks={completedTasks}
-        totalCount={status.counts.completed}
+        totalCount={visibleStatus.counts.completed}
         isLoading={completedTasksQuery.isLoading}
         isError={completedTasksQuery.isError}
         hasMore={completedTasksQuery.hasNextPage ?? false}
@@ -367,10 +467,10 @@ export const DashboardPage: React.FC = () => {
         isOpen={!!editingInboxTask}
         onClose={() => setEditingInboxTask(null)}
         availableTasks={[
-          ...status.current,
-          ...status.next,
-          ...status.blocked,
-          ...status.inbox,
+          ...visibleStatus.current,
+          ...visibleStatus.next,
+          ...visibleStatus.blocked,
+          ...visibleStatus.inbox,
         ]}
         onSubmit={async (taskId, payload) => {
           await editInboxTaskMutation.mutateAsync({ taskId, payload });
@@ -389,9 +489,16 @@ export const DashboardPage: React.FC = () => {
 
       <BriefingModal
         task={briefingTask}
-        project={status.project}
+        project={visibleStatus.project}
         isOpen={!!briefingTask}
         onClose={() => setBriefingTask(null)}
+      />
+
+      <ServiceDisconnectedModal
+        isOpen={isServiceDisconnected && !isDisconnectNoticeDismissed}
+        isReconnecting={isReconnecting}
+        onReconnect={reconnect}
+        onClose={() => setIsDisconnectNoticeDismissed(true)}
       />
     </div>
   );

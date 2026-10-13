@@ -6,91 +6,75 @@ import type {
   EditInboxTaskPayload,
   TaskPage,
   TaskStatus,
+  RiskLevel,
   RuntimeHealth,
 } from "../types.js";
-import { initialProjectStatus, sampleTaskDetails } from "./mock-data.js";
 
-const STORAGE_KEY = "milestack_ui_status_data";
-const DETAILS_KEY = "milestack_ui_details_data";
+/** Shown wherever a transport failure reaches the user, so a dead service never
+ *  looks like a rejected request or like an empty project. */
+const SERVICE_UNAVAILABLE_MESSAGE =
+  "无法连接到 MileStack 服务，请确认 milestack serve 仍在运行后重试。";
 
-function loadStoredStatus(): ProjectStatus {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const stored = JSON.parse(raw) as ProjectStatus;
-      const normalized = {
-        ...stored,
-        current: stored.current ?? [],
-        next: stored.next ?? [],
-        blocked: stored.blocked ?? [],
-        inReview: stored.inReview ?? [],
-        inbox: stored.inbox ?? [],
-        recentlyCompleted: stored.recentlyCompleted ?? [],
-      };
-      return {
-        ...normalized,
-        counts: {
-          inbox: normalized.inbox.length,
-          ready: normalized.next.length,
-          running: normalized.current.length,
-          blocked: normalized.blocked.length,
-          inReview: normalized.inReview.length,
-          completed: normalized.recentlyCompleted.length,
-          total:
-            normalized.current.length +
-            normalized.next.length +
-            normalized.blocked.length +
-            normalized.inReview.length +
-            normalized.inbox.length +
-            normalized.recentlyCompleted.length,
-        },
-      };
-    }
-  } catch {
-    // fallback
-  }
-  return initialProjectStatus;
+const HEALTH_TIMEOUT_MS = 1000;
+const READ_TIMEOUT_MS = 2000;
+const WRITE_TIMEOUT_MS = 10_000;
+
+interface RequestOptions {
+  method?: string;
+  body?: unknown;
+  timeoutMs?: number;
 }
 
-function saveStoredStatus(status: ProjectStatus) {
+/** Performs one API call. A transport failure always surfaces as an explicit
+ *  error; there is no local data that could stand in for the service. */
+async function send(path: string, options: RequestOptions = {}): Promise<Response> {
+  const { method, body, timeoutMs = READ_TIMEOUT_MS } = options;
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(status));
+    return await fetch(path, {
+      ...(method ? { method } : {}),
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      ...(body === undefined ? {} : { headers: { "Content-Type": "application/json" } }),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
   } catch {
-    // ignore
+    throw new Error(SERVICE_UNAVAILABLE_MESSAGE);
   }
 }
 
-function loadStoredDetails(): Record<string, TaskDetails> {
-  try {
-    const raw = localStorage.getItem(DETAILS_KEY);
-    if (raw) return JSON.parse(raw) as Record<string, TaskDetails>;
-  } catch {
-    // fallback
-  }
-  return sampleTaskDetails;
+/** Turns a non-success response into the server's own message when it has one. */
+async function toRequestError(res: Response): Promise<Error> {
+  const body: unknown = await res.json().catch(() => null);
+  const message =
+    typeof body === "object" &&
+    body !== null &&
+    "error" in body &&
+    typeof body.error === "string"
+      ? body.error
+      : `HTTP ${res.status}`;
+  return new Error(message);
 }
 
-function saveStoredDetails(details: Record<string, TaskDetails>) {
-  try {
-    localStorage.setItem(DETAILS_KEY, JSON.stringify(details));
-  } catch {
-    // ignore
-  }
+async function sendJson<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const res = await send(path, options);
+  if (!res.ok) throw await toRequestError(res);
+  return (await res.json()) as T;
 }
 
-let backendAvailable: boolean | null = null;
+async function sendVoid(path: string, options: RequestOptions = {}): Promise<void> {
+  const res = await send(path, options);
+  if (!res.ok) throw await toRequestError(res);
+}
 
 export const apiClient = {
   // A reachable health endpoint means the service is online. The version is
   // reported separately so an older build without it still shows as online.
+  // Null means unreachable or not successful, which the UI shows as offline.
   async getRuntimeHealth(): Promise<RuntimeHealth | null> {
     try {
-      const res = await fetch("/api/health", { method: "GET", signal: AbortSignal.timeout(1000) });
+      const res = await send("/api/health", { method: "GET", timeoutMs: HEALTH_TIMEOUT_MS });
       if (!res.ok) {
-        backendAvailable = false;
         return null;
       }
-      backendAvailable = true;
       const body = (await res.json().catch(() => ({}))) as Partial<RuntimeHealth>;
       return {
         status: typeof body.status === "string" ? body.status : "ok",
@@ -98,35 +82,26 @@ export const apiClient = {
         version: typeof body.version === "string" && body.version.length > 0 ? body.version : null,
       };
     } catch {
-      backendAvailable = false;
       return null;
     }
   },
 
+  /** Resolves with the authoritative status, or null when the service reports
+   *  nothing changed. Rejects when the status cannot be read at all. */
   async getProjectStatus(
     projectId?: string,
     since?: string,
   ): Promise<ProjectStatus | null> {
-    try {
-      const params = new URLSearchParams({ view: "full" });
-      if (projectId) params.set("projectId", projectId);
-      if (since) params.set("since", since);
-      const url = `/api/status?${params.toString()}`;
-      const res = await fetch(url, { signal: AbortSignal.timeout(2000) });
-      if (res.status === 304) {
-        backendAvailable = true;
-        return null;
-      }
-      if (res.ok) {
-        backendAvailable = true;
-        return (await res.json()) as ProjectStatus;
-      }
-    } catch {
-      backendAvailable = false;
-    }
+    const params = new URLSearchParams({ view: "full" });
+    if (projectId) params.set("projectId", projectId);
+    if (since) params.set("since", since);
 
-    // Mock fallback
-    return loadStoredStatus();
+    const res = await send(`/api/status?${params.toString()}`);
+    if (res.status === 304) {
+      return null;
+    }
+    if (!res.ok) throw await toRequestError(res);
+    return (await res.json()) as ProjectStatus;
   },
 
   async listTasks(
@@ -142,377 +117,86 @@ export const apiClient = {
     if (cursor) params.set("cursor", cursor);
     if (projectId) params.set("projectId", projectId);
 
-    try {
-      const res = await fetch(`/api/tasks?${params.toString()}`, {
-        signal: AbortSignal.timeout(2000),
-      });
-      if (res.ok) {
-        backendAvailable = true;
-        return (await res.json()) as TaskPage;
-      }
-    } catch {
-      backendAvailable = false;
-    }
-
-    const stored = loadStoredStatus();
-    const tasksByStatus: Record<TaskStatus, TaskSummary[]> = {
-      inbox: stored.inbox,
-      ready: stored.next,
-      running: stored.current,
-      blocked: stored.blocked,
-      in_review: stored.inReview,
-      completed: stored.recentlyCompleted,
-    };
-    const allTasks = tasksByStatus[status];
-    const offset = cursor?.startsWith("mock:")
-      ? Number.parseInt(cursor.slice("mock:".length), 10)
-      : 0;
-    const startIndex = Number.isFinite(offset) && offset >= 0 ? offset : 0;
-    const tasks = allTasks.slice(startIndex, startIndex + pageSize);
-    const hasMore = startIndex + tasks.length < allTasks.length;
-    return {
-      status,
-      tasks,
-      nextCursor: hasMore ? `mock:${startIndex + tasks.length}` : null,
-      hasMore,
-    };
+    return sendJson<TaskPage>(`/api/tasks?${params.toString()}`);
   },
 
   async getTaskDetails(taskId: string, projectId?: string): Promise<TaskDetails> {
-    const url = projectId
+    const path = projectId
       ? `/api/tasks/${encodeURIComponent(taskId)}?projectId=${encodeURIComponent(projectId)}`
       : `/api/tasks/${encodeURIComponent(taskId)}`;
 
-    let res: Response;
-    try {
-      res = await fetch(url, { signal: AbortSignal.timeout(2000) });
-    } catch (error) {
-      backendAvailable = false;
-      throw error;
-    }
-
-    backendAvailable = true;
-    if (!res.ok) {
-      const error: unknown = await res.json().catch(() => null);
-      const message =
-        typeof error === "object" &&
-        error !== null &&
-        "error" in error &&
-        typeof error.error === "string"
-          ? error.error
-          : `HTTP ${res.status}`;
-      throw new Error(
-        message,
-      );
-    }
-
-    return (await res.json()) as TaskDetails;
+    return sendJson<TaskDetails>(path);
   },
 
   async createTask(payload: CreateTaskPayload, projectId?: string): Promise<TaskSummary> {
-    try {
-      const res = await fetch("/api/tasks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(projectId ? { ...payload, projectId } : payload),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        return (data.task || data) as TaskSummary;
-      }
-    } catch {
-      // fallback
-    }
-
-    const status = loadStoredStatus();
-    const targetStatus = payload.status ?? "inbox";
-    const newId = `task-${Date.now().toString(36)}`;
-    const newSummary: TaskSummary = {
-      id: newId,
-      projectId: projectId || "proj_milestack",
-      title: payload.title,
-      status: targetStatus,
-      queuePosition: targetStatus === "ready" ? status.next.length + 1 : null,
-      dependencyIds: payload.dependencyIds ?? [],
-      waitingFor: [],
-      runnable: targetStatus === "ready",
-      currentStep: null,
-      nextStep: null,
-      blocker: null,
-      requiredAction: null,
-      updatedAt: new Date().toISOString(),
-      completedAt: null,
-    };
-
-    if (targetStatus === "ready") {
-      status.next.push(newSummary);
-    } else {
-      status.inbox.push(newSummary);
-    }
-    saveStoredStatus(status);
-
-    const details = loadStoredDetails();
-    details[newId] = {
-      task: {
-        id: newId,
-        projectId: newSummary.projectId,
-        title: payload.title,
-        objective: payload.objective ?? null,
-        acceptanceCriteria: payload.acceptanceCriteria ?? [],
-        status: targetStatus,
-        queuePosition: newSummary.queuePosition,
-        dependencyIds: newSummary.dependencyIds,
-        currentStep: null,
-        nextStep: null,
-        blocker: null,
-        requiredAction: null,
-        handoffNote: null,
-        sourceTaskId: null,
-        activeRunId: null,
-        createdBy: "developer",
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        completedAt: null,
-      },
-      events: [
-        {
-          id: `evt-${Date.now()}`,
-          projectId: newSummary.projectId,
-          taskId: newId,
-          runId: null,
-          type: "created",
-          summary: `创建任务：${payload.title}`,
-          completedWork: null,
-          currentStep: null,
-          nextStep: null,
-          blocker: null,
-          requiredAction: null,
-          handoffNote: null,
-          actorLabel: "developer",
-          createdAt: new Date().toISOString(),
-        },
-      ],
-    };
-    saveStoredDetails(details);
-
-    return newSummary;
+    const data = await sendJson<unknown>("/api/tasks", {
+      method: "POST",
+      body: projectId ? { ...payload, projectId } : payload,
+      timeoutMs: WRITE_TIMEOUT_MS,
+    });
+    return ((data as { task?: TaskSummary }).task || data) as TaskSummary;
   },
 
   async createTasks(payloads: CreateTaskPayload[], projectId?: string): Promise<TaskSummary[]> {
-    try {
-      const res = await fetch("/api/tasks/batch", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(projectId ? { tasks: payloads, projectId } : { tasks: payloads }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        return (Array.isArray(data) ? data.map((d: any) => d.task || d) : []) as TaskSummary[];
-      }
-    } catch {
-      // fallback
-    }
-
-    const results: TaskSummary[] = [];
-    for (const payload of payloads) {
-      results.push(await this.createTask(payload, projectId));
-    }
-    return results;
+    const data = await sendJson<unknown>("/api/tasks/batch", {
+      method: "POST",
+      body: projectId ? { tasks: payloads, projectId } : { tasks: payloads },
+      timeoutMs: WRITE_TIMEOUT_MS,
+    });
+    return Array.isArray(data)
+      ? data.map((entry: any) => entry.task || entry)
+      : [];
   },
+
   async editInboxTask(
     taskId: string,
     payload: EditInboxTaskPayload,
     projectId?: string,
   ): Promise<TaskDetails> {
-    try {
-      const url = projectId
-        ? `/api/tasks/${encodeURIComponent(taskId)}?projectId=${encodeURIComponent(projectId)}`
-        : `/api/tasks/${encodeURIComponent(taskId)}`;
-      const res = await fetch(url, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...payload, projectId }),
-      });
-      if (res.ok) {
-        return (await res.json()) as TaskDetails;
-      }
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || `HTTP ${res.status}`);
-    } catch (e) {
-      if (backendAvailable) throw e;
-    }
+    const path = projectId
+      ? `/api/tasks/${encodeURIComponent(taskId)}?projectId=${encodeURIComponent(projectId)}`
+      : `/api/tasks/${encodeURIComponent(taskId)}`;
 
-    // Mock fallback
-    const status = loadStoredStatus();
-    const task = status.inbox.find((t) => t.id === taskId);
-    if (task) {
-      task.title = payload.title;
-      task.dependencyIds = payload.dependencyIds || [];
-      if (payload.riskLevel) task.riskLevel = payload.riskLevel;
-      task.updatedAt = new Date().toISOString();
-      saveStoredStatus(status);
-    }
-    const detailsMap = loadStoredDetails();
-    if (detailsMap[taskId]) {
-      detailsMap[taskId].task.title = payload.title;
-      detailsMap[taskId].task.objective = payload.objective ?? null;
-      detailsMap[taskId].task.acceptanceCriteria = payload.acceptanceCriteria || null;
-      detailsMap[taskId].task.dependencyIds = payload.dependencyIds || [];
-      if (payload.riskLevel) detailsMap[taskId].task.riskLevel = payload.riskLevel;
-      detailsMap[taskId].task.updatedAt = new Date().toISOString();
-      detailsMap[taskId].events.push({
-        id: `evt-${Date.now()}`,
-        projectId: detailsMap[taskId].task.projectId,
-        taskId,
-        runId: null,
-        type: "progress",
-        summary: "Inbox task definition updated by developer.",
-        completedWork: null,
-        currentStep: null,
-        nextStep: null,
-        blocker: null,
-        requiredAction: null,
-        handoffNote: null,
-        actorLabel: "developer",
-        createdAt: new Date().toISOString(),
-      });
-      saveStoredDetails(detailsMap);
-      return detailsMap[taskId];
-    }
-    return this.getTaskDetails(taskId, projectId);
+    return sendJson<TaskDetails>(path, {
+      method: "PUT",
+      body: { ...payload, projectId },
+      timeoutMs: WRITE_TIMEOUT_MS,
+    });
   },
 
-  async confirmInboxTask(taskId: string, riskLevel?: import("../types.js").RiskLevel, projectId?: string): Promise<void> {
-    try {
-      const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/confirm`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...(projectId ? { projectId } : {}),
-          ...(riskLevel ? { riskLevel } : {}),
-        }),
-      });
-      if (res.ok) return;
-    } catch {
-      // fallback
-    }
-
-    const status = loadStoredStatus();
-    const taskIdx = status.inbox.findIndex((t) => t.id === taskId);
-    if (taskIdx >= 0) {
-      const [task] = status.inbox.splice(taskIdx, 1);
-      if (task) {
-        task.status = "ready";
-        if (riskLevel) task.riskLevel = riskLevel;
-        task.riskConfirmed = true;
-        task.queuePosition = status.next.length + 1;
-        task.runnable = task.waitingFor.length === 0;
-        status.next.push(task);
-        saveStoredStatus(status);
-      }
-    }
+  async confirmInboxTask(taskId: string, riskLevel?: RiskLevel, projectId?: string): Promise<void> {
+    await sendVoid(`/api/tasks/${encodeURIComponent(taskId)}/confirm`, {
+      method: "POST",
+      body: {
+        ...(projectId ? { projectId } : {}),
+        ...(riskLevel ? { riskLevel } : {}),
+      },
+      timeoutMs: WRITE_TIMEOUT_MS,
+    });
   },
 
   async deleteInboxTask(taskId: string, projectId?: string): Promise<void> {
-    try {
-      const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/delete`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(projectId ? { projectId } : {}),
-      });
-      if (res.ok) return;
-      backendAvailable = true;
-      const error = await res.json().catch(() => ({}));
-      throw new Error(error.error || `HTTP ${res.status}`);
-    } catch (error) {
-      if (backendAvailable) throw error;
-    }
-
-    const status = loadStoredStatus();
-    status.inbox = status.inbox.filter((t) => t.id !== taskId);
-    saveStoredStatus(status);
+    await sendVoid(`/api/tasks/${encodeURIComponent(taskId)}/delete`, {
+      method: "POST",
+      body: projectId ? { projectId } : {},
+      timeoutMs: WRITE_TIMEOUT_MS,
+    });
   },
 
   async returnReadyTaskToInbox(taskId: string, projectId?: string): Promise<void> {
-    try {
-      const res = await fetch(
-        `/api/tasks/${encodeURIComponent(taskId)}/return-to-inbox`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(projectId ? { projectId } : {}),
-        },
-      );
-      if (res.ok) return;
-      backendAvailable = true;
-      const error = await res.json().catch(() => ({}));
-      throw new Error(error.error || `HTTP ${res.status}`);
-    } catch (error) {
-      if (backendAvailable) throw error;
-    }
-
-    const status = loadStoredStatus();
-    const taskIdx = status.next.findIndex((task) => task.id === taskId);
-    if (taskIdx >= 0) {
-      const [task] = status.next.splice(taskIdx, 1);
-      if (task) {
-        task.status = "inbox";
-        task.queuePosition = null;
-        status.next.forEach((item, index) => {
-          item.queuePosition = index + 1;
-        });
-        status.inbox.push(task);
-        saveStoredStatus(status);
-
-        const detailsMap = loadStoredDetails();
-        const details = detailsMap[taskId];
-        if (details) {
-          details.task.status = "inbox";
-          details.task.queuePosition = null;
-          details.task.updatedAt = new Date().toISOString();
-          details.events.push({
-            id: `evt-${Date.now()}`,
-            projectId: details.task.projectId,
-            taskId,
-            runId: null,
-            type: "progress",
-            summary: "Ready task returned to inbox by developer.",
-            completedWork: null,
-            currentStep: details.task.currentStep,
-            nextStep: details.task.nextStep,
-            blocker: details.task.blocker,
-            requiredAction: details.task.requiredAction,
-            handoffNote: details.task.handoffNote,
-            actorLabel: "developer",
-            createdAt: details.task.updatedAt,
-          });
-          saveStoredDetails(detailsMap);
-        }
-      }
-    }
+    await sendVoid(`/api/tasks/${encodeURIComponent(taskId)}/return-to-inbox`, {
+      method: "POST",
+      body: projectId ? { projectId } : {},
+      timeoutMs: WRITE_TIMEOUT_MS,
+    });
   },
 
   async deleteReadyTask(taskId: string, projectId?: string): Promise<void> {
-    try {
-      const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/delete`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(projectId ? { projectId } : {}),
-      });
-      if (res.ok) return;
-      backendAvailable = true;
-      const error = await res.json().catch(() => ({}));
-      throw new Error(error.error || `HTTP ${res.status}`);
-    } catch (error) {
-      if (backendAvailable) throw error;
-    }
-
-    const status = loadStoredStatus();
-    status.next = status.next.filter((task) => task.id !== taskId);
-    status.next.forEach((item, index) => {
-      item.queuePosition = index + 1;
+    await sendVoid(`/api/tasks/${encodeURIComponent(taskId)}/delete`, {
+      method: "POST",
+      body: projectId ? { projectId } : {},
+      timeoutMs: WRITE_TIMEOUT_MS,
     });
-    saveStoredStatus(status);
   },
 
   async reorderReadyTask(
@@ -520,123 +204,27 @@ export const apiClient = {
     direction: "up" | "down",
     projectId?: string,
   ): Promise<void> {
-    try {
-      const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/reorder`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(projectId ? { direction, projectId } : { direction }),
-      });
-      if (res.ok) return;
-    } catch {
-      // fallback
-    }
-
-    const status = loadStoredStatus();
-    const idx = status.next.findIndex((t) => t.id === taskId);
-    if (idx === -1) return;
-
-    if (direction === "up" && idx > 0) {
-      const current = status.next[idx]!;
-      const prev = status.next[idx - 1]!;
-      status.next[idx - 1] = current;
-      status.next[idx] = prev;
-    } else if (direction === "down" && idx < status.next.length - 1) {
-      const current = status.next[idx]!;
-      const next = status.next[idx + 1]!;
-      status.next[idx + 1] = current;
-      status.next[idx] = next;
-    }
-
-    status.next.forEach((item, index) => {
-      item.queuePosition = index + 1;
+    await sendVoid(`/api/tasks/${encodeURIComponent(taskId)}/reorder`, {
+      method: "POST",
+      body: projectId ? { direction, projectId } : { direction },
+      timeoutMs: WRITE_TIMEOUT_MS,
     });
-    saveStoredStatus(status);
   },
 
   async releaseTask(taskId: string, reason?: string, projectId?: string): Promise<void> {
-    try {
-      const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/release`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(projectId ? { reason, projectId } : { reason }),
-      });
-      if (res.ok) return;
-    } catch {
-      // fallback
-    }
-
-    const status = loadStoredStatus();
-    const idx = status.current.findIndex((t) => t.id === taskId);
-    if (idx >= 0) {
-      const [task] = status.current.splice(idx, 1);
-      if (task) {
-        task.status = "ready";
-        task.currentStep = null;
-        task.nextStep = null;
-        task.queuePosition = 1;
-        // Insert at head of next
-        status.next.unshift(task);
-        status.next.forEach((item, index) => {
-          item.queuePosition = index + 1;
-        });
-        saveStoredStatus(status);
-      }
-    }
+    await sendVoid(`/api/tasks/${encodeURIComponent(taskId)}/release`, {
+      method: "POST",
+      body: { reason, projectId },
+      timeoutMs: WRITE_TIMEOUT_MS,
+    });
   },
 
   async approveTask(taskId: string, projectId?: string): Promise<void> {
-    try {
-      const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/approve`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(projectId ? { projectId } : {}),
-      });
-      if (res.ok) return;
-      backendAvailable = true;
-      const error = await res.json().catch(() => ({}));
-      throw new Error(error.error || `HTTP ${res.status}`);
-    } catch (error) {
-      if (backendAvailable) throw error;
-    }
-
-    const status = loadStoredStatus();
-    const taskIndex = status.inReview.findIndex((task) => task.id === taskId);
-    if (taskIndex < 0) return;
-    const [task] = status.inReview.splice(taskIndex, 1);
-    if (!task) return;
-    const completedAt = new Date().toISOString();
-    task.status = "completed";
-    task.queuePosition = null;
-    task.runnable = false;
-    task.completedAt = completedAt;
-    status.recentlyCompleted.unshift(task);
-    saveStoredStatus(status);
-
-    const detailsMap = loadStoredDetails();
-    const details = detailsMap[taskId];
-    if (details) {
-      details.task.status = "completed";
-      details.task.queuePosition = null;
-      details.task.completedAt = completedAt;
-      details.task.updatedAt = completedAt;
-      details.events.push({
-        id: `evt-${Date.now()}`,
-        projectId: details.task.projectId,
-        taskId,
-        runId: null,
-        type: "approved",
-        summary: "Task approved by developer.",
-        completedWork: null,
-        currentStep: null,
-        nextStep: null,
-        blocker: null,
-        requiredAction: null,
-        handoffNote: details.task.handoffNote,
-        actorLabel: "developer",
-        createdAt: completedAt,
-      });
-      saveStoredDetails(detailsMap);
-    }
+    await sendVoid(`/api/tasks/${encodeURIComponent(taskId)}/approve`, {
+      method: "POST",
+      body: projectId ? { projectId } : {},
+      timeoutMs: WRITE_TIMEOUT_MS,
+    });
   },
 
   async waiveTaskApproval(
@@ -644,20 +232,11 @@ export const apiClient = {
     reason: string,
     projectId?: string,
   ): Promise<void> {
-    const res = await fetch(
-      `/api/tasks/${encodeURIComponent(taskId)}/waive-approval`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(projectId ? { reason, projectId } : { reason }),
-      },
-    );
-    if (res.ok) return;
-    backendAvailable = true;
-    const error = await res.json().catch(() => ({}));
-    throw new Error(
-      typeof error.error === "string" ? error.error : `HTTP ${res.status}`,
-    );
+    await sendVoid(`/api/tasks/${encodeURIComponent(taskId)}/waive-approval`, {
+      method: "POST",
+      body: { reason, projectId },
+      timeoutMs: WRITE_TIMEOUT_MS,
+    });
   },
 
   async requestTaskChanges(
@@ -665,72 +244,11 @@ export const apiClient = {
     feedback: string,
     projectId?: string,
   ): Promise<void> {
-    try {
-      const res = await fetch(
-        `/api/tasks/${encodeURIComponent(taskId)}/request-changes`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(projectId ? { feedback, projectId } : { feedback }),
-        },
-      );
-      if (res.ok) return;
-      backendAvailable = true;
-      const error = await res.json().catch(() => ({}));
-      throw new Error(error.error || `HTTP ${res.status}`);
-    } catch (error) {
-      if (backendAvailable) throw error;
-    }
-
-    const status = loadStoredStatus();
-    const taskIndex = status.inReview.findIndex((task) => task.id === taskId);
-    if (taskIndex < 0) return;
-    const [task] = status.inReview.splice(taskIndex, 1);
-    if (!task) return;
-    status.next.forEach((item) => {
-      item.queuePosition = (item.queuePosition ?? 0) + 1;
+    await sendVoid(`/api/tasks/${encodeURIComponent(taskId)}/request-changes`, {
+      method: "POST",
+      body: { feedback, projectId },
+      timeoutMs: WRITE_TIMEOUT_MS,
     });
-    task.status = "ready";
-    task.queuePosition = 1;
-    task.runnable = task.waitingFor.length === 0;
-    task.currentStep = null;
-    task.nextStep = null;
-    task.blocker = null;
-    task.requiredAction = null;
-    task.updatedAt = new Date().toISOString();
-    status.next.unshift(task);
-    saveStoredStatus(status);
-
-    const detailsMap = loadStoredDetails();
-    const details = detailsMap[taskId];
-    if (details) {
-      details.task.status = "ready";
-      details.task.queuePosition = 1;
-      details.task.activeRunId = null;
-      details.task.currentStep = null;
-      details.task.nextStep = null;
-      details.task.blocker = null;
-      details.task.requiredAction = null;
-      details.task.handoffNote = feedback;
-      details.task.updatedAt = task.updatedAt;
-      details.events.push({
-        id: `evt-${Date.now()}`,
-        projectId: details.task.projectId,
-        taskId,
-        runId: null,
-        type: "changes_requested",
-        summary: feedback,
-        completedWork: null,
-        currentStep: null,
-        nextStep: null,
-        blocker: null,
-        requiredAction: null,
-        handoffNote: feedback,
-        actorLabel: "developer",
-        createdAt: task.updatedAt,
-      });
-      saveStoredDetails(detailsMap);
-    }
   },
 
   async reopenCompletedTask(
@@ -738,71 +256,10 @@ export const apiClient = {
     reason: string,
     projectId?: string,
   ): Promise<void> {
-    try {
-      const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/reopen`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(projectId ? { reason, projectId } : { reason }),
-      });
-      if (res.ok) return;
-      backendAvailable = true;
-      const error = await res.json().catch(() => ({}));
-      throw new Error(error.error || `HTTP ${res.status}`);
-    } catch (error) {
-      if (backendAvailable) throw error;
-    }
-
-    const status = loadStoredStatus();
-    const taskIndex = status.recentlyCompleted.findIndex((task) => task.id === taskId);
-    if (taskIndex < 0) return;
-    const [task] = status.recentlyCompleted.splice(taskIndex, 1);
-    if (!task) return;
-    status.next.forEach((item) => {
-      item.queuePosition = (item.queuePosition ?? 0) + 1;
+    await sendVoid(`/api/tasks/${encodeURIComponent(taskId)}/reopen`, {
+      method: "POST",
+      body: { reason, projectId },
+      timeoutMs: WRITE_TIMEOUT_MS,
     });
-    task.status = "ready";
-    task.queuePosition = 1;
-    task.runnable = task.waitingFor.length === 0;
-    task.completedAt = null;
-    task.currentStep = null;
-    task.nextStep = null;
-    task.blocker = null;
-    task.requiredAction = null;
-    task.updatedAt = new Date().toISOString();
-    status.next.unshift(task);
-    saveStoredStatus(status);
-
-    const detailsMap = loadStoredDetails();
-    const details = detailsMap[taskId];
-    if (details) {
-      details.task.status = "ready";
-      details.task.queuePosition = 1;
-      details.task.activeRunId = null;
-      details.task.completedAt = null;
-      details.task.handoffNote = reason;
-      details.task.updatedAt = task.updatedAt;
-      details.events.push({
-        id: `evt-${Date.now()}`,
-        projectId: details.task.projectId,
-        taskId,
-        runId: null,
-        type: "reopened",
-        summary: reason,
-        completedWork: null,
-        currentStep: null,
-        nextStep: null,
-        blocker: null,
-        requiredAction: null,
-        handoffNote: reason,
-        actorLabel: "developer",
-        createdAt: task.updatedAt,
-      });
-      saveStoredDetails(detailsMap);
-    }
-  },
-
-  resetDemoData(): void {
-    localStorage.removeItem(STORAGE_KEY);
-    localStorage.removeItem(DETAILS_KEY);
   },
 };
