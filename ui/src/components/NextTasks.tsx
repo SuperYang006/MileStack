@@ -89,6 +89,7 @@ export const NextTasks: React.FC<NextTasksProps> = ({
             description="当前没有排队中的就绪任务。可在待整理收件箱中确认任务，或新增规划"
             tag="队列清空"
             variant="indigo"
+            className="lg:h-full"
           />
         ) : (
           <div className="space-y-2">

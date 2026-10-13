@@ -56,6 +56,7 @@ export const CurrentTasks: React.FC<CurrentTasksProps> = ({
             description="总线连接正常。一旦就绪队列有可执行任务，Agent 将认领并开始推进"
             tag="待命监听"
             variant="cyan"
+            className="lg:h-full"
           />
         ) : (
           <div className="space-y-2.5">

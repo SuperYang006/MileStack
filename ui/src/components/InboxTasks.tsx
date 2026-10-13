@@ -52,6 +52,7 @@ export const InboxTasks: React.FC<InboxTasksProps> = ({
             description="暂无待整理的新增任务。Agent 发现的新事项或手动录入的需求将暂存在此"
             tag="收件箱已清空"
             variant="default"
+            className="lg:h-full"
             action={
               onCreateTask
                 ? {
