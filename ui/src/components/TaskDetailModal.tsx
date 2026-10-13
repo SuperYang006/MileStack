@@ -3,6 +3,7 @@ import { X, GitCommit, CheckCircle2, Clock, Timer, Edit3, GitFork, ArrowRight, Z
 import { EmptyState } from "./EmptyState";
 import type { TaskDetails, TaskEvent, TaskSummary } from "../types";
 import { TaskIdBadge } from "./CopyTaskIdButton";
+import { FeedbackModal, useFeedbackDialog } from "./FeedbackModal";
 import { buildDownstreamMap } from "../utils/dependencyGraph";
 import {
   computeRunExecutions,
@@ -38,6 +39,35 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
   onRequestChanges,
 }) => {
   const [now, setNow] = useState(() => Date.now());
+  const { openFeedbackDialog, feedbackDialogProps } = useFeedbackDialog();
+
+  const handleOpenWaive = () => {
+    if (!details) return;
+    openFeedbackDialog({
+      taskId: details.task.id,
+      taskTitle: details.task.title,
+      title: "直接验收任务",
+      description: "跳过 AI 审核结论直接验收，验收原因将记入任务事件。请输入验收原因：",
+      theme: "violet",
+      confirmLabel: "直接验收",
+      placeholder: "请输入直接验收的原因与依据...",
+      onSubmit: (reason) => onWaiveApproval?.(details.task.id, reason),
+    });
+  };
+
+  const handleOpenRequestChanges = () => {
+    if (!details) return;
+    openFeedbackDialog({
+      taskId: details.task.id,
+      taskTitle: details.task.title,
+      title: "退回返工",
+      description: "请输入退回返工的修改意见：",
+      theme: "amber",
+      confirmLabel: "退回返工",
+      placeholder: "请输入退回返工的修改意见与具体建议...",
+      onSubmit: (fb) => onRequestChanges?.(details.task.id, fb),
+    });
+  };
 
   const runs = details
     ? computeRunExecutions(
@@ -241,15 +271,9 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                       )}
                       {canWaiveApproval && onWaiveApproval && (
                         <button
-                          onClick={() => {
-                            const reason = window.prompt(
-                              "请输入直接验收该任务的原因：",
-                              "",
-                            );
-                            if (reason?.trim())
-                              onWaiveApproval(details.task.id, reason.trim());
-                          }}
-                          className="inline-flex items-center space-x-1.5 px-3 py-1 rounded text-xs font-semibold bg-violet-900/60 hover:bg-violet-800/80 border border-violet-700 text-violet-100 transition-colors"
+                          type="button"
+                          onClick={handleOpenWaive}
+                          className="inline-flex items-center space-x-1.5 px-3 py-1 rounded text-xs font-semibold bg-violet-900/60 hover:bg-violet-800/80 border border-violet-700 text-violet-100 transition-colors cursor-pointer"
                           title="跳过 AI 审核结论直接验收，验收原因记入任务事件"
                         >
                           <ShieldCheck className="w-3.5 h-3.5" />
@@ -258,11 +282,9 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                       )}
                       {onRequestChanges && (
                         <button
-                          onClick={() => {
-                            const fb = window.prompt("请输入退回返工的修改意见：", "");
-                            if (fb?.trim()) onRequestChanges(details.task.id, fb.trim());
-                          }}
-                          className="inline-flex items-center space-x-1.5 px-3 py-1 rounded text-xs font-semibold bg-amber-950/60 hover:bg-amber-900/80 border border-amber-800 text-amber-200 transition-colors"
+                          type="button"
+                          onClick={handleOpenRequestChanges}
+                          className="inline-flex items-center space-x-1.5 px-3 py-1 rounded text-xs font-semibold bg-amber-950/60 hover:bg-amber-900/80 border border-amber-800 text-amber-200 transition-colors cursor-pointer"
                         >
                           <MessageSquare className="w-3.5 h-3.5" />
                           <span>退回返工</span>
@@ -777,6 +799,8 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
           </button>
         </div>
       </div>
+
+      <FeedbackModal {...feedbackDialogProps} />
     </div>
   );
 };

@@ -12,6 +12,7 @@ import {
 import type { TaskSummary } from "../types";
 import { TaskIdBadge } from "./CopyTaskIdButton";
 import { EmptyState } from "./EmptyState";
+import { FeedbackModal, useFeedbackDialog } from "./FeedbackModal";
 
 interface ReviewTasksProps {
   tasks: TaskSummary[];
@@ -24,10 +25,10 @@ interface ReviewTasksProps {
 const ReviewTaskItem: React.FC<{
   task: TaskSummary;
   onApprove: (taskId: string) => void;
-  onWaiveApproval: (taskId: string, reason: string) => void;
-  onRequestChanges: (taskId: string, feedback: string) => void;
+  onOpenWaive: (task: TaskSummary) => void;
+  onOpenRequestChanges: (task: TaskSummary) => void;
   onSelectTask: (taskId: string) => void;
-}> = ({ task, onApprove, onWaiveApproval, onRequestChanges, onSelectTask }) => {
+}> = ({ task, onApprove, onOpenWaive, onOpenRequestChanges, onSelectTask }) => {
   const digest = task.latestReview;
   const reviewStatus = digest?.status ?? "pending";
 
@@ -153,14 +154,9 @@ const ReviewTaskItem: React.FC<{
 
             {canWaiveApproval && (
               <button
-                onClick={() => {
-                  const reason = window.prompt(
-                    "请输入直接验收该任务的原因（审核尚未通过，验收原因将记入任务事件）：",
-                    "",
-                  );
-                  if (reason?.trim()) onWaiveApproval(task.id, reason.trim());
-                }}
-                className="inline-flex items-center space-x-1 px-2.5 py-1 text-[11px] text-violet-300 hover:text-violet-200 bg-violet-950/40 hover:bg-violet-900/80 border border-violet-800/70 rounded transition-colors"
+                type="button"
+                onClick={() => onOpenWaive(task)}
+                className="inline-flex items-center space-x-1 px-2.5 py-1 text-[11px] text-violet-300 hover:text-violet-200 bg-violet-950/40 hover:bg-violet-900/80 border border-violet-800/70 rounded transition-colors cursor-pointer"
                 title="跳过 AI 审核结论直接验收，并记录验收原因"
               >
                 <ShieldCheck className="w-3 h-3" />
@@ -169,11 +165,9 @@ const ReviewTaskItem: React.FC<{
             )}
 
             <button
-              onClick={() => {
-                const feedback = window.prompt("请输入退回返工的审核反馈意见：", "");
-                if (feedback?.trim()) onRequestChanges(task.id, feedback.trim());
-              }}
-              className="inline-flex items-center space-x-1 px-2.5 py-1 text-[11px] text-amber-300 hover:text-amber-200 bg-amber-950/40 hover:bg-amber-950/80 border border-amber-900/60 rounded transition-colors"
+              type="button"
+              onClick={() => onOpenRequestChanges(task)}
+              className="inline-flex items-center space-x-1 px-2.5 py-1 text-[11px] text-amber-300 hover:text-amber-200 bg-amber-950/40 hover:bg-amber-950/80 border border-amber-900/60 rounded transition-colors cursor-pointer"
               title="填写审核反馈并退回返工"
             >
               <MessageSquare className="w-3 h-3" />
@@ -215,6 +209,34 @@ export const ReviewTasks: React.FC<ReviewTasksProps> = ({
   onRequestChanges,
   onSelectTask,
 }) => {
+  const { openFeedbackDialog, feedbackDialogProps } = useFeedbackDialog();
+
+  const handleOpenWaive = (task: TaskSummary) => {
+    openFeedbackDialog({
+      taskId: task.id,
+      taskTitle: task.title,
+      title: "直接验收任务",
+      description: "审核尚未通过，直接验收原因将记入任务事件。请输入验收原因：",
+      theme: "violet",
+      confirmLabel: "直接验收",
+      placeholder: "请输入直接验收的原因与依据...",
+      onSubmit: (reason) => onWaiveApproval(task.id, reason),
+    });
+  };
+
+  const handleOpenRequestChanges = (task: TaskSummary) => {
+    openFeedbackDialog({
+      taskId: task.id,
+      taskTitle: task.title,
+      title: "退回返工",
+      description: "请输入退回返工的审核反馈意见：",
+      theme: "amber",
+      confirmLabel: "退回返工",
+      placeholder: "请输入审核反馈意见与具体修改建议...",
+      onSubmit: (feedback) => onRequestChanges(task.id, feedback),
+    });
+  };
+
   // Empty and populated states share one section skeleton so the two-column grid
   // cell keeps the same flex height split instead of collapsing to a title row.
   const isEmpty = tasks.length === 0;
@@ -254,13 +276,15 @@ export const ReviewTasks: React.FC<ReviewTasksProps> = ({
               key={task.id}
               task={task}
               onApprove={onApprove}
-              onWaiveApproval={onWaiveApproval}
-              onRequestChanges={onRequestChanges}
+              onOpenWaive={handleOpenWaive}
+              onOpenRequestChanges={handleOpenRequestChanges}
               onSelectTask={onSelectTask}
             />
           ))
         )}
       </div>
+
+      <FeedbackModal {...feedbackDialogProps} />
     </section>
   );
 };

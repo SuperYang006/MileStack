@@ -3,6 +3,7 @@ import { ArrowUpRight, RotateCcw, Archive, X } from "lucide-react";
 import { EmptyState } from "./EmptyState";
 import type { TaskSummary } from "../types";
 import { TaskIdBadge } from "./CopyTaskIdButton";
+import { FeedbackModal, useFeedbackDialog } from "./FeedbackModal";
 
 interface RecentTasksProps {
   isOpen: boolean;
@@ -34,6 +35,20 @@ export const RecentTasks: React.FC<RecentTasksProps> = ({
   const listRef = useRef<HTMLDivElement>(null);
   const [isMounted, setIsMounted] = useState(isOpen);
   const [isEntering, setIsEntering] = useState(false);
+  const { openFeedbackDialog, feedbackDialogProps } = useFeedbackDialog();
+
+  const handleOpenReopen = (task: TaskSummary) => {
+    openFeedbackDialog({
+      taskId: task.id,
+      taskTitle: task.title,
+      title: "归档任务返工",
+      description: "将已完成任务重新打开为 Ready 任务。请输入重新打开的返工原因：",
+      theme: "cyan",
+      confirmLabel: "确认返工",
+      placeholder: "请输入重新打开并返工的具体原因...",
+      onSubmit: (reason) => onReopenTask(task.id, reason),
+    });
+  };
 
   // Transition state machine for mount/slide-in and slide-out/unmount
   useEffect(() => {
@@ -197,11 +212,8 @@ export const RecentTasks: React.FC<RecentTasksProps> = ({
                     <div className="flex items-center space-x-1.5 shrink-0 pt-0.5">
                       <button
                         type="button"
-                        onClick={() => {
-                          const reason = window.prompt("请输入重新打开的返工原因：", "");
-                          if (reason?.trim()) onReopenTask(task.id, reason.trim());
-                        }}
-                        className="inline-flex items-center space-x-1 px-2 py-0.5 text-[11px] font-mono text-amber-400 hover:text-amber-300 bg-amber-950/30 hover:bg-amber-950/60 border border-amber-900/50 rounded transition-colors"
+                        onClick={() => handleOpenReopen(task)}
+                        className="inline-flex items-center space-x-1 px-2 py-0.5 text-[11px] font-mono text-cyan-400 hover:text-cyan-300 bg-cyan-950/30 hover:bg-cyan-950/60 border border-cyan-900/50 rounded transition-colors cursor-pointer"
                         title="重新打开为 Ready 任务"
                       >
                         <RotateCcw className="w-3 h-3" />
@@ -229,6 +241,8 @@ export const RecentTasks: React.FC<RecentTasksProps> = ({
           </div>
         </aside>
       </div>
+
+      <FeedbackModal {...feedbackDialogProps} />
     </div>
   );
 };
