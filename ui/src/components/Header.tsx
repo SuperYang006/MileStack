@@ -95,12 +95,12 @@ export const Header: React.FC<HeaderProps> = ({
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-2.5">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
           {/* Logo & Terminal Identity */}
-          <div className="flex items-center space-x-3 min-w-0">
+          <div className="flex min-w-0 flex-1 items-center space-x-3">
             <div className="w-8 h-8 rounded-lg overflow-hidden flex items-center justify-center shrink-0 border border-zinc-800 shadow-md transition-transform hover:scale-105">
               <Logo className="w-full h-full" />
             </div>
 
-            <div className="flex items-baseline space-x-2.5 min-w-0 truncate">
+            <div className="flex min-w-0 flex-1 items-baseline space-x-2.5 truncate">
               <span className="font-mono text-sm font-bold tracking-tight text-zinc-100">
                 {project.name.toLowerCase() || "milestack"}
               </span>
@@ -110,7 +110,7 @@ export const Header: React.FC<HeaderProps> = ({
                   {project.goal}
                 </span>
               ) : (
-                <div className="hidden md:block truncate">
+                <div className="hidden min-w-0 flex-1 truncate md:block">
                   <TypewriterEgg />
                 </div>
               )}
