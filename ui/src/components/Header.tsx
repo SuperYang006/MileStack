@@ -1,72 +1,9 @@
-import React, { useState, useEffect } from "react";
+import React from "react";
 import { Plus, RefreshCw, Archive } from "lucide-react";
 import { Logo } from "./Logo";
 import type { ProjectSummary } from "../types";
 import { isSemverVersion } from "../runtime-version";
 
-const TERMINAL_EGG_PHRASES = [
-  "keeping context coherent across turns",
-  "verifying acceptance criteria, bit by bit",
-  "no hallucinations allowed in the loop",
-  "local-first source of truth for humans & agents",
-  "shipping working software with verifiable evidence",
-  "aligning intentions with verifiable outcomes",
-];
-
-const TypewriterEgg: React.FC = () => {
-  const [phraseIdx, setPhraseIdx] = useState(0);
-  const [subIdx, setSubIdx] = useState(0);
-  const [phase, setPhase] = useState<"typing" | "paused" | "deleting">("typing");
-
-  useEffect(() => {
-    const currentPhrase = TERMINAL_EGG_PHRASES[phraseIdx] || "";
-
-    if (phase === "typing") {
-      if (subIdx >= currentPhrase.length) {
-        // Phrase fully typed, pause briefly before deleting
-        const timeout = setTimeout(() => {
-          setPhase("deleting");
-        }, 2200);
-        return () => clearTimeout(timeout);
-      }
-
-      // Continue typing forwards
-      const timeout = setTimeout(() => {
-        setSubIdx((prev) => Math.min(prev + 1, currentPhrase.length));
-      }, 50);
-      return () => clearTimeout(timeout);
-    }
-
-    if (phase === "deleting") {
-      if (subIdx <= 0) {
-        // Phrase fully deleted, switch to next phrase and resume typing
-        setPhase("typing");
-        setPhraseIdx((prev) => (prev + 1) % TERMINAL_EGG_PHRASES.length);
-        setSubIdx(0);
-        return;
-      }
-
-      // Continue deleting backwards
-      const timeout = setTimeout(() => {
-        setSubIdx((prev) => Math.max(prev - 1, 0));
-      }, 25);
-      return () => clearTimeout(timeout);
-    }
-  }, [phraseIdx, subIdx, phase]);
-
-  const currentPhrase = TERMINAL_EGG_PHRASES[phraseIdx] || "";
-  const displayed = currentPhrase.slice(0, subIdx);
-
-  return (
-    <span className="inline-flex items-center space-x-0.5 font-mono text-xs select-none">
-      <span className="text-amber-500/70 mr-1 select-none font-bold">$</span>
-      <span className="text-amber-300/90 tracking-wide drop-shadow-[0_0_8px_rgba(245,158,11,0.2)]">
-        {displayed}
-      </span>
-      <span className="inline-block w-1.5 h-3.5 bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.7)] animate-pulse ml-0.5 opacity-90 rounded-[0.5px]" />
-    </span>
-  );
-};
 interface HeaderProps {
   project: ProjectSummary;
   isBackendConnected: boolean;
@@ -104,15 +41,13 @@ export const Header: React.FC<HeaderProps> = ({
               <span className="font-mono text-sm font-bold tracking-tight text-zinc-100">
                 {project.name.toLowerCase() || "milestack"}
               </span>
-              <span className="hidden md:inline font-mono text-xs text-zinc-500">::</span>
-              {project.goal ? (
-                <span className="hidden md:inline font-mono text-xs text-zinc-400 truncate">
-                  {project.goal}
-                </span>
-              ) : (
-                <div className="hidden min-w-0 flex-1 truncate md:block">
-                  <TypewriterEgg />
-                </div>
+              {project.goal && (
+                <>
+                  <span className="hidden md:inline font-mono text-xs text-zinc-500">::</span>
+                  <span className="hidden md:inline font-mono text-xs text-zinc-400 truncate">
+                    {project.goal}
+                  </span>
+                </>
               )}
             </div>
           </div>
