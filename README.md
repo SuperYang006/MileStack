@@ -201,8 +201,16 @@ project `.mcp.json` configuration. See below for detailed AGY (Gemini CLI) conne
 Add this line manually to the project's version-controlled root `AGENTS.md`:
 
 ```md
-Before working on tasks, read and follow .milestack/agent-instructions.md
+Before working on tasks, read and follow `.milestack/agent-instructions.md`.
 ```
+
+`milestack init` only reads the root `AGENTS.md`. It never creates, appends, or
+overwrites that file, because existing project instructions must not be replaced
+without your review. Every `init` ends with a summary that reports whether the
+reference is already present; when it is missing, the summary prints the exact line
+to paste, explains that a Coding Agent may not read the MileStack workflow rules
+without it, and reminds you to reopen the clients configured in this run rather than
+one fixed client.
 
 Every developer should run `milestack init` in their own checkout because `.milestack/` is intentionally local and ignored.
 

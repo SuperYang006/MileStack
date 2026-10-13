@@ -487,6 +487,164 @@ describe("CLI entry point", () => {
   });
 });
 
+describe("init AGENTS.md instruction reminder", () => {
+  let restoreLauncherEnvironment = (): void => {};
+
+  beforeEach(() => {
+    restoreLauncherEnvironment = useLauncherEnvironment({ launcherOnPath: true }).restore;
+  });
+
+  afterEach(() => {
+    restoreLauncherEnvironment();
+  });
+
+  const rootAgentsPath = (projectRoot: string): string => path.join(projectRoot, "AGENTS.md");
+  const copyableInstruction =
+    "  Before working on tasks, read and follow `.milestack/agent-instructions.md`.";
+
+  it("asks the user to create AGENTS.md when it does not exist and never creates it", async () => {
+    const projectRoot = createTemporaryProject();
+    const capture = outputCapture();
+
+    expect(
+      await runCli(
+        ["init", "--project", projectRoot, "--client", "claude,cursor,codex"],
+        capture.output,
+      ),
+    ).toBe(0);
+
+    const output = capture.stdout.join("");
+    expect(output).toContain("MileStack 初始化完成");
+    expect(output).toContain("✓ 数据库已创建");
+    expect(output).toContain("✓ Claude MCP 配置已写入 .mcp.json");
+    expect(output).toContain("✓ Cursor MCP 配置已写入 .cursor/mcp.json");
+    expect(output).toContain("✓ Codex MCP 配置已写入 .codex/config.toml");
+    expect(output).toContain("⚠ 还需手动完成 1 个项目级步骤");
+    expect(output).toContain("项目根目录还没有 AGENTS.md，请创建该文件并加入下面这一行：");
+    expect(output).toContain(copyableInstruction);
+    expect(output).toContain("如果不添加，Coding Agent 可能不会读取 MileStack 工作流规则。");
+    expect(output).toContain("MileStack 不会自动修改 AGENTS.md，以免覆盖已有内容。");
+    expect(output).toContain("下一步：完成项目指令配置后，重新打开已配置的客户端会话：");
+    expect(output).toContain("Claude、Cursor、Codex");
+    expect(existsSync(rootAgentsPath(projectRoot))).toBe(false);
+  });
+
+  it("asks the user to append to an existing AGENTS.md and preserves its content", async () => {
+    const projectRoot = createTemporaryProject();
+    const existing = "# Project rules\nKeep this content.\n";
+    writeFileSync(rootAgentsPath(projectRoot), existing, "utf8");
+    const capture = outputCapture();
+
+    expect(
+      await runCli(["init", "--project", projectRoot, "--client", "claude"], capture.output),
+    ).toBe(0);
+
+    const output = capture.stdout.join("");
+    expect(output).toContain("⚠ 还需手动完成 1 个项目级步骤");
+    expect(output).toContain(
+      "请在项目根目录已有的 AGENTS.md 中加入下面这一行，不要覆盖原有内容：",
+    );
+    expect(output).toContain(copyableInstruction);
+    expect(output).not.toContain("已关联 MileStack instructions");
+    expect(readFileSync(rootAgentsPath(projectRoot), "utf8")).toBe(existing);
+  });
+
+  it("reports the linked state without a pending warning when AGENTS.md references the instructions", async () => {
+    const projectRoot = createTemporaryProject();
+    writeFileSync(
+      rootAgentsPath(projectRoot),
+      "# Project rules\n\nBefore working on tasks, read and follow `.milestack/agent-instructions.md`.\n",
+      "utf8",
+    );
+    const capture = outputCapture();
+
+    expect(
+      await runCli(["init", "--project", projectRoot, "--client", "claude,codex"], capture.output),
+    ).toBe(0);
+
+    const output = capture.stdout.join("");
+    expect(output).toContain("✓ AGENTS.md 已关联 MileStack instructions");
+    expect(output).not.toContain("还需手动完成 1 个项目级步骤");
+    expect(output).not.toContain(copyableInstruction);
+    expect(output).toContain("下一步：重新打开已配置的客户端会话：");
+    expect(output).toContain("Claude、Codex");
+  });
+
+  it("names only the selected client in the next step", async () => {
+    const projectRoot = createTemporaryProject();
+    const capture = outputCapture();
+
+    expect(
+      await runCli(["init", "--project", projectRoot, "--client", "cursor"], capture.output),
+    ).toBe(0);
+
+    const output = capture.stdout.join("");
+    expect(output).toContain("重新打开已配置的客户端会话：\nCursor\n");
+    expect(output).not.toContain("Claude、Cursor、Codex");
+    expect(output).not.toContain("Codex");
+  });
+
+  it("uses client-neutral wording when no client is selected", async () => {
+    const projectRoot = createTemporaryProject();
+    const capture = outputCapture();
+
+    expect(await runCli(["init", "--project", projectRoot], capture.output)).toBe(0);
+
+    const output = capture.stdout.join("");
+    expect(output).toContain("⚠ 还需手动完成 1 个项目级步骤");
+    expect(output).toContain(copyableInstruction);
+    expect(output).toContain(
+      "下一步：完成项目指令配置后，手动配置 MCP 后重新打开相应的 Coding Agent 会话。",
+    );
+    expect(output).not.toContain("重新打开已配置的客户端会话");
+  });
+
+  it("does not claim a file write for skipped or unchanged client results", async () => {
+    const conflictingProject = createTemporaryProject();
+    writeFileSync(
+      path.join(conflictingProject, ".mcp.json"),
+      `${JSON.stringify(
+        { mcpServers: { milestack: { command: "other", args: ["mcp"] } } },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+    const conflicting = outputCapture();
+
+    expect(
+      await runCli(
+        ["init", "--project", conflictingProject, "--client", "claude,codex"],
+        conflicting.output,
+      ),
+    ).toBe(0);
+
+    const conflictingOutput = conflicting.stdout.join("");
+    expect(conflictingOutput).toContain("⚠ Claude MCP 配置未写入 .mcp.json");
+    expect(conflictingOutput).not.toContain("✓ Claude MCP 配置已写入 .mcp.json");
+    expect(conflictingOutput).toContain("✓ Codex MCP 配置已写入 .codex/config.toml");
+
+    const idempotentProject = createTemporaryProject();
+    expect(
+      await runCli(
+        ["init", "--project", idempotentProject, "--client", "claude"],
+        outputCapture().output,
+      ),
+    ).toBe(0);
+    const second = outputCapture();
+
+    expect(
+      await runCli(["init", "--project", idempotentProject, "--client", "claude"], second.output),
+    ).toBe(0);
+
+    const secondOutput = second.stdout.join("");
+    expect(secondOutput).toContain("✓ 数据库已就绪（此前已初始化）");
+    expect(secondOutput).toContain("✓ Claude MCP 配置已是最新（.mcp.json 未修改）");
+    expect(secondOutput).not.toContain("✓ Claude MCP 配置已写入 .mcp.json");
+    expect(secondOutput).toContain("  claude: 已有相同的 .mcp.json 配置，未修改");
+  });
+});
+
 describe("project MCP configuration", () => {
   let restoreLauncherEnvironment = (): void => {};
 

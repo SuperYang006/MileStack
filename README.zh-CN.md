@@ -196,8 +196,10 @@ JSON 与 TOML 客户端通过 `command` 加 `args` 使用同一回退方式，`i
 请手动将下面这行加入项目版本控制中的根 `AGENTS.md`：
 
 ```md
-Before working on tasks, read and follow .milestack/agent-instructions.md
+Before working on tasks, read and follow `.milestack/agent-instructions.md`.
 ```
+
+`milestack init` 只会读取根 `AGENTS.md`，不会创建、追加或覆盖该文件，因为已有项目指令不应在未经你确认的情况下被替换。每次 `init` 结束时会输出摘要，说明该引用是否已经存在；若尚未引用，摘要会给出可直接复制的原始指令，说明不添加可能导致 Coding Agent 无法读取 MileStack 工作流规则，并提示完成后重新打开本次通过 `--client` 配置的客户端会话，而不是固定某一个客户端。
 
 每位开发者都应在自己的 checkout 中运行 `milestack init`，因为 `.milestack/` 是有意保持本地化并被忽略的目录。
 

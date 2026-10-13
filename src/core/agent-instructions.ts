@@ -11,6 +11,10 @@ const taskCompletionRule =
 
 export const projectAgentInstructionsPath = ".milestack/agent-instructions.md";
 
+export const rootAgentInstructionsFile = "AGENTS.md";
+
+export const rootAgentInstructionSnippet = `Before working on tasks, read and follow \`${projectAgentInstructionsPath}\`.`;
+
 const mileStackVersion = "0.1.0";
 const rootAgentInstruction =
   "Before working on tasks, read and follow .milestack/agent-instructions.md";

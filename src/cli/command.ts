@@ -7,6 +7,8 @@ import {
   formatAgentIntegrationInstructions,
   formatProjectAgentInstructions,
   projectAgentInstructionsPath,
+  rootAgentInstructionSnippet,
+  rootAgentInstructionsFile,
 } from "../core/agent-instructions.js";
 import type { ProjectStatus, TaskSummary } from "../core/query-contract.js";
 import {
@@ -17,8 +19,10 @@ import {
 } from "../project/project-context.js";
 import {
   configureProjectMcpClients,
+  projectMcpClientDisplayNames,
   projectMcpClientNames,
   type ProjectMcpClientName,
+  type ProjectMcpConfigResult,
 } from "./project-mcp-config.js";
 
 export const helpText = `Usage: milestack <command> [options]
@@ -319,19 +323,18 @@ function agyMcpInstructions(): string {
 
 function projectMcpInstructions(
   projectRoot: string,
-  clients: readonly ProjectMcpClientName[],
+  results: readonly ProjectMcpConfigResult[],
 ): string {
-  const fileClients = clients.filter((c) => c !== "agy");
-  const hasAgy = clients.includes("agy");
+  const fileResults = results.filter((configuration) => configuration.client !== "agy");
+  const agyResult = results.find((configuration) => configuration.client === "agy");
 
   const sections: string[] = [];
 
-  if (fileClients.length > 0) {
-    const results = configureProjectMcpClients(projectRoot, fileClients);
+  if (fileResults.length > 0) {
     sections.push(
       [
         "项目级 MCP 配置（仅当前项目）：",
-        ...results.map((configuration) => `  ${configuration.client}: ${configuration.detail}`),
+        ...fileResults.map((configuration) => `  ${configuration.client}: ${configuration.detail}`),
         "",
         "上述文件只写入当前项目目录，不会修改用户主目录中的全局配置。",
         `--project 使用当前 checkout 的绝对路径：${projectRoot}`,
@@ -340,17 +343,99 @@ function projectMcpInstructions(
     );
   }
 
-  if (hasAgy) {
-    const agyResult = configureProjectMcpClients(projectRoot, ["agy"])[0];
+  if (agyResult) {
     sections.push(
       [
         "用户级 MCP 配置（AGY 全局生效）：",
-        `  agy: ${agyResult?.detail}`,
+        `  agy: ${agyResult.detail}`,
       ].join("\n"),
     );
   }
 
   return sections.join("\n\n");
+}
+
+type RootAgentInstructionLink = "missing" | "unlinked" | "linked";
+
+function readRootAgentInstructionLink(projectRoot: string): RootAgentInstructionLink {
+  const agentsPath = path.join(projectRoot, rootAgentInstructionsFile);
+  if (!existsSync(agentsPath)) {
+    return "missing";
+  }
+  try {
+    return readFileSync(agentsPath, "utf8").includes(projectAgentInstructionsPath)
+      ? "linked"
+      : "unlinked";
+  } catch {
+    return "unlinked";
+  }
+}
+
+function mcpSummaryLine(configuration: ProjectMcpConfigResult): string {
+  const client = projectMcpClientDisplayNames[configuration.client];
+  if (configuration.client === "agy") {
+    return `⚠ ${client} MCP 配置需手动注册：milestack init 不修改用户级配置`;
+  }
+  if (configuration.action === "skipped") {
+    return `⚠ ${client} MCP 配置未写入 ${configuration.relativePath}`;
+  }
+  if (configuration.action === "updated") {
+    return `✓ ${client} MCP 配置已更新 ${configuration.relativePath}`;
+  }
+  if (configuration.action === "unchanged") {
+    return `✓ ${client} MCP 配置已是最新（${configuration.relativePath} 未修改）`;
+  }
+  return `✓ ${client} MCP 配置已写入 ${configuration.relativePath}`;
+}
+
+function formatInitSummary(
+  created: boolean,
+  results: readonly ProjectMcpConfigResult[] | undefined,
+  agentInstructionLink: RootAgentInstructionLink,
+  clients: readonly ProjectMcpClientName[] | undefined,
+  styler: ReturnType<typeof createStyler>,
+): string {
+  const lines: string[] = [styler.bold("MileStack 初始化完成"), ""];
+  lines.push(
+    styler.green(created ? "✓ 数据库已创建" : "✓ 数据库已就绪（此前已初始化）"),
+  );
+  for (const configuration of results ?? []) {
+    const line = mcpSummaryLine(configuration);
+    lines.push(line.startsWith("⚠") ? styler.yellow(line) : styler.green(line));
+  }
+
+  const linked = agentInstructionLink === "linked";
+  if (linked) {
+    lines.push(styler.green(`✓ ${rootAgentInstructionsFile} 已关联 MileStack instructions`));
+  } else {
+    lines.push(styler.yellow("⚠ 还需手动完成 1 个项目级步骤"));
+    lines.push("");
+    lines.push(
+      agentInstructionLink === "missing"
+        ? `项目根目录还没有 ${rootAgentInstructionsFile}，请创建该文件并加入下面这一行：`
+        : `请在项目根目录已有的 ${rootAgentInstructionsFile} 中加入下面这一行，不要覆盖原有内容：`,
+    );
+    lines.push("");
+    lines.push(`  ${rootAgentInstructionSnippet}`);
+    lines.push("");
+    lines.push("如果不添加，Coding Agent 可能不会读取 MileStack 工作流规则。");
+    lines.push(`MileStack 不会自动修改 ${rootAgentInstructionsFile}，以免覆盖已有内容。`);
+  }
+
+  lines.push("");
+  const nextStep = clients === undefined
+    ? linked
+      ? "下一步：手动配置 MCP 后，重新打开相应的 Coding Agent 会话。"
+      : "下一步：完成项目指令配置后，手动配置 MCP 后重新打开相应的 Coding Agent 会话。"
+    : linked
+      ? "下一步：重新打开已配置的客户端会话："
+      : "下一步：完成项目指令配置后，重新打开已配置的客户端会话：";
+  lines.push(nextStep);
+  if (clients !== undefined) {
+    lines.push(clients.map((client) => projectMcpClientDisplayNames[client]).join("、"));
+  }
+
+  return `${lines.join("\n")}\n`;
 }
 
 async function runInit(
@@ -380,18 +465,28 @@ async function runInit(
         },
       },
     };
-    const mcpOutput = clients === undefined
+    const mcpResults = clients === undefined
+      ? undefined
+      : configureProjectMcpClients(projectRoot, clients);
+    const mcpOutput = mcpResults === undefined
       ? `MCP configuration (project-level, fixed path):\n${JSON.stringify(projectConfiguration, null, 2)}\n\n` +
         `MCP configuration (user-level, auto-discover, for agy/gemini):\n${JSON.stringify(discoverConfiguration, null, 2)}\n\n` +
         agyMcpInstructions() + "\n\n" +
         codexMcpInstructions(projectRoot)
-      : projectMcpInstructions(projectRoot, clients);
+      : projectMcpInstructions(projectRoot, mcpResults);
     output.writeStdout(
       `${context.created ? "Initialized" : "Already initialized"} ${projectRoot}\n` +
         `Database: ${context.database.databasePath}\n\n` +
         `Agent instructions: ${agentInstructionsPath}\n\n` +
         `${mcpOutput}\n\n` +
-        `AI integration instructions:\n${formatAgentIntegrationInstructions()}\n`,
+        `AI integration instructions:\n${formatAgentIntegrationInstructions()}\n\n` +
+        formatInitSummary(
+          context.created,
+          mcpResults,
+          readRootAgentInstructionLink(projectRoot),
+          clients,
+          createStyler(shouldEnableColor()),
+        ),
     );
   } finally {
     context.database.close();

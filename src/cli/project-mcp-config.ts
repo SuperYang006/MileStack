@@ -20,6 +20,15 @@ export const projectMcpClientNames = [
 ] as const;
 
 export type ProjectMcpClientName = (typeof projectMcpClientNames)[number];
+
+export const projectMcpClientDisplayNames: Record<ProjectMcpClientName, string> = {
+  claude: "Claude",
+  cursor: "Cursor",
+  grok: "Grok",
+  codex: "Codex",
+  opencode: "OpenCode",
+  agy: "AGY",
+};
 export type ProjectMcpConfigAction = "created" | "updated" | "unchanged" | "skipped";
 
 export type ProjectMcpConfigResult = {
