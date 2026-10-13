@@ -78,6 +78,12 @@ export const DashboardPage: React.FC = () => {
     refetchIntervalInBackground: false,
   });
 
+  useEffect(() => {
+    if (status?.project.name) {
+      document.title = status.project.name;
+    }
+  }, [status?.project.name]);
+
   const { data: runtimeHealth = null } = useQuery({
     queryKey: ["backendHealth"],
     queryFn: () => apiClient.getRuntimeHealth(),
