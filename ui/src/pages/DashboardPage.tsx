@@ -145,6 +145,7 @@ export const DashboardPage: React.FC = () => {
   useEffect(() => {
     if (!isServiceDisconnected) return;
     setSelectedTaskId(null);
+    setBriefingTask(null);
     setIsCreateModalOpen(false);
     setEditingInboxTask(null);
     setIsArchiveOpen(false);
@@ -389,6 +390,7 @@ export const DashboardPage: React.FC = () => {
               allTasks={allTasks}
               onSelectTask={(id) => setSelectedTaskId(id)}
               onReleaseTask={(id) => releaseTaskMutation.mutate(id)}
+              isServiceOffline={isServiceDisconnected}
             />
           </div>
 
@@ -416,7 +418,7 @@ export const DashboardPage: React.FC = () => {
               onDeleteTask={(id) => deleteInboxMutation.mutate(id)}
               onSelectTask={(id) => setSelectedTaskId(id)}
               onEditTask={(task) => setEditingInboxTask(task)}
-              onCreateTask={openCreateModal}
+              onCreateTask={isServiceDisconnected ? undefined : openCreateModal}
             />
           </div>
         </div>

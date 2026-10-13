@@ -1,5 +1,5 @@
 import React from "react";
-import { LogOut, Activity, Bot, ArrowRight, GitFork } from "lucide-react";
+import { LogOut, Activity, Bot, ArrowRight, GitFork, WifiOff } from "lucide-react";
 import { EmptyState } from "./EmptyState";
 import type { TaskSummary } from "../types";
 import { TaskIdBadge } from "./CopyTaskIdButton";
@@ -10,6 +10,7 @@ interface CurrentTasksProps {
   allTasks?: Map<string, TaskSummary>;
   onSelectTask: (taskId: string) => void;
   onReleaseTask: (taskId: string) => void;
+  isServiceOffline?: boolean;
 }
 
 function formatRelativeTime(dateString: string): { label: string; isFresh: boolean } {
@@ -32,30 +33,43 @@ export const CurrentTasks: React.FC<CurrentTasksProps> = ({
   allTasks = new Map(),
   onSelectTask,
   onReleaseTask,
+  isServiceOffline = false,
 }) => {
   return (
     <section className="rounded-lg border border-zinc-800 bg-zinc-900/50 backdrop-blur-xs overflow-hidden lg:h-full lg:min-h-0 lg:flex lg:flex-col">
       <div className="px-4 py-2.5 border-b border-zinc-800/80 flex items-center justify-between shrink-0">
         <div className="flex items-center space-x-2">
-          <span className="w-2 h-2 rounded-full bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.8)] animate-pulse" />
+          {/* While the service is unreachable the panel must not read as a live
+              agent bus, so it stops pulsing and says so. */}
+          <span
+            className={`w-2 h-2 rounded-full ${
+              isServiceOffline
+                ? "bg-rose-400"
+                : "bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.8)] animate-pulse"
+            }`}
+          />
           <h2 className="text-xs font-mono font-bold tracking-wider text-zinc-200 uppercase">
             正在进行 ({tasks.length})
           </h2>
         </div>
         <div className="flex items-center space-x-2 text-[11px] font-mono text-zinc-500">
-          <Activity className="w-3 h-3 text-cyan-400" />
-          <span>Agent 协同监听中</span>
+          <Activity className={`w-3 h-3 ${isServiceOffline ? "text-rose-400" : "text-cyan-400"}`} />
+          <span>{isServiceOffline ? "服务不可达" : "Agent 协同监听中"}</span>
         </div>
       </div>
 
       <div className="p-3 lg:flex-1 lg:min-h-0 lg:overflow-y-auto">
         {tasks.length === 0 ? (
           <EmptyState
-            icon={Bot}
-            title="Agent 待命中，暂无进行中任务"
-            description="总线连接正常。一旦就绪队列有可执行任务，Agent 将认领并开始推进"
-            tag="待命监听"
-            variant="cyan"
+            icon={isServiceOffline ? WifiOff : Bot}
+            title={isServiceOffline ? "服务离线，暂不显示任务数据" : "Agent 待命中，暂无进行中任务"}
+            description={
+              isServiceOffline
+                ? "无法获取进行中任务。请确认 milestack serve 仍在运行后重试"
+                : "总线连接正常。一旦就绪队列有可执行任务，Agent 将认领并开始推进"
+            }
+            tag={isServiceOffline ? "服务不可达" : "待命监听"}
+            variant={isServiceOffline ? "default" : "cyan"}
             className="lg:h-full"
           />
         ) : (
