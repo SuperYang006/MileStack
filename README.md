@@ -127,10 +127,22 @@ Client support matrix:
 | `cursor` | Project-level | `.cursor/mcp.json` | Writes to current project directory, bound to checkout absolute path |
 | `grok` | Project-level | `.grok/config.toml` | Writes to current project directory, bound to checkout absolute path |
 | `codex` | Project-level | `.codex/config.toml` | Writes to current project directory, bound to checkout absolute path |
-| `opencode` | Project-level | `opencode.json` | Writes top-level `mcp.milestack`: `type` `local`, `command` `milestack mcp --project <absolute checkout path>`, `enabled` true, no `--discover` |
+| `opencode` | Project-level | `opencode.json` | Writes top-level `mcp.milestack`: `type` `local`, `command` `milestack mcp --project <absolute checkout path>`, `enabled` true, no `--discover`; falls back to the running CLI entry when `milestack` is not on `PATH` |
 | `agy` | User-level | `~/.gemini/config/mcp_config.json` | Skips writing user-global files; outputs recommended `agy mcp` dynamic discovery command guidance |
 
 A newly created `opencode.json` also carries `$schema` `https://opencode.ai/config.json`. If only `opencode.jsonc` exists, `init` prints the `mcp.milestack` entry to add by hand and leaves that file untouched.
+
+`init` resolves the `milestack` command through `PATH`. When `milestack` is not installed globally, the entry it writes uses the CLI that is running `init` instead of the bare command, so it stays usable without a global install:
+
+```json
+"milestack": {
+  "type": "local",
+  "command": ["<absolute node path>", "<absolute path of the CLI entry running init>", "mcp", "--project", "<absolute checkout path>"],
+  "enabled": true
+}
+```
+
+JSON and TOML clients use the same fallback through `command` plus `args`, and `init` explains the choice in its per-client output. After `pnpm build` and `pnpm link --global`, run `init` again to get the plain `milestack` command back; an existing different entry is always preserved, never overwritten.
 
 `opencode.json` binds the absolute path of the checkout it was generated in, so it is a per-checkout local file. Add it to your ignore list; `milestack init` only maintains the `.milestack/` entry for you, and this repository ignores `opencode.json` in its own `.gitignore`.
 

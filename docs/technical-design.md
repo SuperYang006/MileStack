@@ -163,6 +163,14 @@ milestack init --project /absolute/path/to/current/checkout
 - OpenCode 会把项目级 `opencode.json` 与全局 `~/.config/opencode/opencode.json` 合并，同名 MCP 服务以项目条目为准，因此 `init` 只补项目内缺失的 `milestack`，既不修改全局文件，也不执行 `opencode mcp add`。
 - `opencode.json` 绑定的是当前 checkout 的绝对路径，属于每个 checkout 各自生成的本地配置，应加入版本控制忽略列表。`init` 只自动维护 `.milestack/` 的忽略条目，不会替项目写入 `opencode.json` 的忽略规则；MileStack 自身的仓库在 `.gitignore` 中显式忽略 `opencode.json`。
 
+条目中的启动命令由 `src/cli/mcp-launcher.ts` 解析，供 JSON、TOML、opencode 三种写入共用：
+
+- `PATH` 中能解析到可执行的 `milestack` 时使用裸命令 `milestack`，与全局安装 CLI 的既有行为一致；
+- `PATH` 中没有 `milestack` 时使用 `process.execPath` 加当前 CLI 入口脚本绝对路径（`process.argv[1]`），使只在仓库内构建 `dist/index.js`、从未全局安装的开发者写入的条目仍可启动，并在每个客户端的输出中说明原因；
+- 两者都无法确定时保留裸命令 `milestack`，并提示先执行 `pnpm build` 与 `pnpm link --global`，或手写 command；
+- 命令解析只决定新写入的条目形状。已有不同的 `milestack` 条目仍然保持不变，因此全局安装 CLI 后需要开发者再次运行 `init` 才能得到裸命令条目；
+- `agy` 的用户级 `--discover` 手动配置说明保持裸命令，因为它在所有项目的全局配置中生效，不应绑定某个 checkout 的入口文件。
+
 **为什么 AGY 不能写入固定项目路径**：若在用户级全局配置中写入固定路径 `--project /path/to/projectA`，在其他项目目录启动 AGY 时仍会错误读写项目 A 的数据库，造成跨项目数据污染。因此 AGY 必须采用 `--discover` 动态寻根模式。
 
 `--project` 必须指向当前 checkout 的绝对路径，执行或提交前由开发者确认路径无误。项目级写入不会修改 `~/.claude.json`、`~/.cursor`、`~/.grok`、`~/.codex`、`~/.config/opencode` 或 `~/.gemini` 等全局客户端配置；已有不同的 `milestack` 条目保持不变，不会被覆盖。写入后需要重新打开对应客户端会话。Codex 项目配置只在已信任的仓库中生效，Claude 的 `.mcp.json` 仍需用户批准。

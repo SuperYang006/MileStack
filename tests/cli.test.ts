@@ -1,8 +1,16 @@
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { helpText, runCli } from "../src/cli/command.js";
 import {
@@ -38,6 +46,54 @@ function outputCapture() {
     output: {
       writeStdout: (message: string) => stdout.push(message),
       writeStderr: (message: string) => stderr.push(message),
+    },
+  };
+}
+
+type LauncherEnvironmentOptions = {
+  launcherOnPath: boolean;
+  cliEntryExists?: boolean;
+};
+
+type LauncherEnvironment = {
+  cliEntryPath: string;
+  restore: () => void;
+};
+
+function useLauncherEnvironment(options: LauncherEnvironmentOptions): LauncherEnvironment {
+  const environmentRoot = createTemporaryProject();
+  const binDirectory = path.join(environmentRoot, "bin");
+  mkdirSync(binDirectory, { recursive: true });
+  if (options.launcherOnPath) {
+    const launcherPath = path.join(binDirectory, "milestack");
+    writeFileSync(launcherPath, "#!/bin/sh\nexit 0\n", "utf8");
+    chmodSync(launcherPath, 0o755);
+  }
+
+  const cliEntryPath = path.join(environmentRoot, "dist", "index.js");
+  if (options.cliEntryExists !== false) {
+    mkdirSync(path.dirname(cliEntryPath), { recursive: true });
+    writeFileSync(cliEntryPath, "// fake MileStack CLI entry\n", "utf8");
+  }
+
+  const originalPath = process.env["PATH"];
+  const originalEntry = process.argv[1];
+  process.env["PATH"] = binDirectory;
+  process.argv[1] = options.cliEntryExists === false ? path.join(environmentRoot, "missing.js") : cliEntryPath;
+
+  return {
+    cliEntryPath,
+    restore: () => {
+      if (originalPath === undefined) {
+        delete process.env["PATH"];
+      } else {
+        process.env["PATH"] = originalPath;
+      }
+      if (originalEntry === undefined) {
+        process.argv.splice(1, 1);
+      } else {
+        process.argv[1] = originalEntry;
+      }
     },
   };
 }
@@ -386,6 +442,16 @@ describe("CLI entry point", () => {
 });
 
 describe("project MCP configuration", () => {
+  let restoreLauncherEnvironment = (): void => {};
+
+  beforeEach(() => {
+    restoreLauncherEnvironment = useLauncherEnvironment({ launcherOnPath: true }).restore;
+  });
+
+  afterEach(() => {
+    restoreLauncherEnvironment();
+  });
+
   it("creates project files for all supported clients and is idempotent", () => {
     const projectRoot = createTemporaryProject();
     const absoluteProjectRoot = path.resolve(projectRoot);
@@ -769,6 +835,232 @@ describe("project MCP configuration", () => {
       const [skipped] = configureProjectMcpClients(projectRoot, ["codex"]);
       expect(skipped?.action).toBe("skipped");
       expect(readFileSync(tomlPath, "utf8")).toBe(conflictingBytes);
+    }
+  });
+});
+
+describe("project MCP entries without a globally installed CLI", () => {
+  it("keeps the bare milestack command when the CLI resolves through PATH", () => {
+    const projectRoot = createTemporaryProject();
+    const { restore } = useLauncherEnvironment({ launcherOnPath: true });
+    try {
+      const [created] = configureProjectMcpClients(projectRoot, ["opencode"]);
+
+      expect(created?.action).toBe("created");
+      expect(created?.detail).not.toContain("PATH 中未找到");
+      expect(JSON.parse(readFileSync(path.join(projectRoot, "opencode.json"), "utf8"))).toMatchObject({
+        mcp: {
+          milestack: {
+            type: "local",
+            command: ["milestack", "mcp", "--project", path.resolve(projectRoot)],
+            enabled: true,
+          },
+        },
+      });
+    } finally {
+      restore();
+    }
+  });
+
+  it("writes node plus the current CLI entry for every file client when PATH has no milestack", () => {
+    const projectRoot = createTemporaryProject();
+    const absoluteProjectRoot = path.resolve(projectRoot);
+    const { cliEntryPath, restore } = useLauncherEnvironment({ launcherOnPath: false });
+    try {
+      const [created] = configureProjectMcpClients(projectRoot, ["opencode"]);
+      expect(created?.action).toBe("created");
+      expect(created?.detail).toContain("PATH 中未找到 milestack");
+      expect(created?.detail).toContain(cliEntryPath);
+
+      const opencodePath = path.join(projectRoot, "opencode.json");
+      const createdBytes = readFileSync(opencodePath, "utf8");
+      expect(JSON.parse(createdBytes)).toEqual({
+        $schema: "https://opencode.ai/config.json",
+        mcp: {
+          milestack: {
+            type: "local",
+            command: [
+              process.execPath,
+              cliEntryPath,
+              "mcp",
+              "--project",
+              absoluteProjectRoot,
+            ],
+            enabled: true,
+          },
+        },
+      });
+
+      const [unchanged] = configureProjectMcpClients(projectRoot, ["opencode"]);
+      expect(unchanged?.action).toBe("unchanged");
+      expect(readFileSync(opencodePath, "utf8")).toBe(createdBytes);
+
+      configureProjectMcpClients(projectRoot, ["claude", "codex"]);
+      expect(JSON.parse(readFileSync(path.join(projectRoot, ".mcp.json"), "utf8"))).toMatchObject({
+        mcpServers: {
+          milestack: {
+            command: process.execPath,
+            args: [cliEntryPath, "mcp", "--project", absoluteProjectRoot],
+          },
+        },
+      });
+      expect(readFileSync(path.join(projectRoot, ".codex", "config.toml"), "utf8")).toContain(
+        `command = "${process.execPath}"\nargs = ["${cliEntryPath}", "mcp", "--project", "${absoluteProjectRoot}"]`,
+      );
+    } finally {
+      restore();
+    }
+  });
+
+  it("merges the fallback entry into an existing opencode.json without losing its content", () => {
+    const projectRoot = createTemporaryProject();
+    const absoluteProjectRoot = path.resolve(projectRoot);
+    const opencodePath = path.join(projectRoot, "opencode.json");
+    writeFileSync(
+      opencodePath,
+      JSON.stringify({ model: "keep-me", mcp: { other: { type: "local", command: ["other"] } } }, null, 2),
+      "utf8",
+    );
+    const { cliEntryPath, restore } = useLauncherEnvironment({ launcherOnPath: false });
+    try {
+      const [updated] = configureProjectMcpClients(projectRoot, ["opencode"]);
+      expect(updated?.action).toBe("updated");
+      expect(JSON.parse(readFileSync(opencodePath, "utf8"))).toMatchObject({
+        model: "keep-me",
+        mcp: {
+          other: { type: "local", command: ["other"] },
+          milestack: {
+            type: "local",
+            command: [
+              process.execPath,
+              cliEntryPath,
+              "mcp",
+              "--project",
+              absoluteProjectRoot,
+            ],
+            enabled: true,
+          },
+        },
+      });
+    } finally {
+      restore();
+    }
+  });
+
+  it("preserves an existing bare-command entry instead of replacing it with the fallback", () => {
+    const projectRoot = createTemporaryProject();
+    const absoluteProjectRoot = path.resolve(projectRoot);
+    const installed = useLauncherEnvironment({ launcherOnPath: true });
+    configureProjectMcpClients(projectRoot, ["opencode"]);
+    installed.restore();
+
+    const opencodePath = path.join(projectRoot, "opencode.json");
+    const installedBytes = readFileSync(opencodePath, "utf8");
+    expect(JSON.parse(installedBytes)).toMatchObject({
+      mcp: { milestack: { command: ["milestack", "mcp", "--project", absoluteProjectRoot] } },
+    });
+
+    const { restore } = useLauncherEnvironment({ launcherOnPath: false });
+    try {
+      const [skipped] = configureProjectMcpClients(projectRoot, ["opencode"]);
+      expect(skipped?.action).toBe("skipped");
+      expect(readFileSync(opencodePath, "utf8")).toBe(installedBytes);
+    } finally {
+      restore();
+    }
+  });
+
+  it("prints a manual opencode.jsonc entry that uses the fallback command", () => {
+    const projectRoot = createTemporaryProject();
+    const jsoncPath = path.join(projectRoot, "opencode.jsonc");
+    const jsoncBytes = "// keep comments\n{\n  \"model\": \"keep-me\"\n}\n";
+    writeFileSync(jsoncPath, jsoncBytes, "utf8");
+    const { cliEntryPath, restore } = useLauncherEnvironment({ launcherOnPath: false });
+    try {
+      const [jsoncOnly] = configureProjectMcpClients(projectRoot, ["opencode"]);
+      expect(jsoncOnly?.action).toBe("skipped");
+      const detail = jsoncOnly?.detail ?? "";
+      expect(detail).toContain("手写");
+      expect(detail).toContain(
+        JSON.stringify(
+          {
+            mcp: {
+              milestack: {
+                type: "local",
+                command: [
+                  process.execPath,
+                  cliEntryPath,
+                  "mcp",
+                  "--project",
+                  path.resolve(projectRoot),
+                ],
+                enabled: true,
+              },
+            },
+          },
+          null,
+          2,
+        ),
+      );
+      expect(existsSync(path.join(projectRoot, "opencode.json"))).toBe(false);
+      expect(readFileSync(jsoncPath, "utf8")).toBe(jsoncBytes);
+    } finally {
+      restore();
+    }
+  });
+
+  it("keeps the bare command and explains the global install step when no CLI entry file exists", () => {
+    const projectRoot = createTemporaryProject();
+    const { restore } = useLauncherEnvironment({ launcherOnPath: false, cliEntryExists: false });
+    try {
+      const [created] = configureProjectMcpClients(projectRoot, ["opencode"]);
+      expect(created?.action).toBe("created");
+      expect(created?.detail).toContain("pnpm link --global");
+      expect(JSON.parse(readFileSync(path.join(projectRoot, "opencode.json"), "utf8"))).toMatchObject({
+        mcp: {
+          milestack: {
+            command: ["milestack", "mcp", "--project", path.resolve(projectRoot)],
+          },
+        },
+      });
+    } finally {
+      restore();
+    }
+  });
+
+  it("reports the fallback entry through init when the CLI is not installed", async () => {
+    const projectRoot = createTemporaryProject();
+    const capture = outputCapture();
+    const { cliEntryPath, restore } = useLauncherEnvironment({ launcherOnPath: false });
+    try {
+      expect(
+        await runCli(
+          ["init", "--project", projectRoot, "--client", "opencode", "--client", "claude"],
+          capture.output,
+        ),
+      ).toBe(0);
+      expect(capture.stderr).toEqual([]);
+
+      const output = capture.stdout.join("");
+      expect(output).toContain("PATH 中未找到 milestack");
+      expect(output).toContain(cliEntryPath);
+      expect(JSON.parse(readFileSync(path.join(projectRoot, "opencode.json"), "utf8"))).toMatchObject({
+        mcp: {
+          milestack: {
+            type: "local",
+            command: [
+              process.execPath,
+              cliEntryPath,
+              "mcp",
+              "--project",
+              path.resolve(projectRoot),
+            ],
+            enabled: true,
+          },
+        },
+      });
+    } finally {
+      restore();
     }
   });
 });
