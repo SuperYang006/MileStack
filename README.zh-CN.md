@@ -74,7 +74,7 @@ milestack --help
 该命令需要在每个客户端会话中始终位于 `PATH` 上。
 
 如果某个仓库希望锁定 CLI 版本，也可以把 MileStack 作为项目 devDependency 安装。
-安装后通过 `init` 写入客户端配置，这样每个客户端都会得到自己支持的格式：
+请安装到项目自身，再通过 `init` 写入客户端配置，这样每个客户端都会得到自己支持的格式：
 
 ```bash
 npm install --save-dev milestack
@@ -82,9 +82,8 @@ npm install --save-dev milestack
   --project /absolute/path/to/project
 ```
 
-`PATH` 上已有 `milestack` 时，`init` 会记录 `milestack` 命令；没有时，它会记录
-正在执行 `init` 的 CLI，也就是该 devDependency 在项目内的入口脚本，
-因此条目会一直使用被锁定的版本：
+当 `init` 从项目自身的 `node_modules` 运行时，即使 `PATH` 上还有另一个
+`milestack`，条目也会固定到该项目内安装的这一份：
 
 ```json
 "milestack": {
@@ -94,7 +93,9 @@ npm install --save-dev milestack
 ```
 
 Codex 与 Grok 会在各自的 TOML 文件中得到同样的 command 与 args，OpenCode 则得到
-它自己的 `mcp.milestack` 结构。参见[初始化项目](#初始化项目)中的客户端支持矩阵。
+它自己的 `mcp.milestack` 结构。当 `init` 从其他位置运行时：若 `PATH` 上存在
+`milestack` 则记录该命令，否则记录正在执行 `init` 的 CLI 入口。
+参见[初始化项目](#初始化项目)中的客户端支持矩阵。
 
 请通过项目内的二进制运行 `init`，不要使用 `npx milestack` 或 `npm exec`：
 这两者会把临时的 `milestack` 放到 `PATH` 上，`init` 就会记录裸的
@@ -170,7 +171,7 @@ milestack init --client claude --client cursor --client grok --client codex --cl
 
 新建的 `opencode.json` 会带上 `$schema` `https://opencode.ai/config.json`。若项目中只存在 `opencode.jsonc`，`init` 会打印需要手写的 `mcp.milestack` 条目，并不修改该文件。
 
-`init` 通过 `PATH` 解析 `milestack` 命令。如果 `milestack` 没有全局安装，写入的条目会改用正在执行 `init` 的 CLI 本身，而不再使用裸命令，因此在没有全局安装时仍然可用：
+`init` 通过 `PATH` 解析 `milestack` 命令。如果 `milestack` 没有全局安装，写入的条目会改用正在执行 `init` 的 CLI 本身，而不再使用裸命令，因此在没有全局安装时仍然可用。从目标项目自身 `node_modules` 启动的 CLI 优先于 `PATH`，因此项目 devDependency 始终被固定：
 
 ```json
 "milestack": {

@@ -53,6 +53,7 @@ function outputCapture() {
 type LauncherEnvironmentOptions = {
   launcherOnPath: boolean;
   cliEntryExists?: boolean;
+  cliEntryDirectory?: string;
 };
 
 type LauncherEnvironment = {
@@ -70,7 +71,8 @@ function useLauncherEnvironment(options: LauncherEnvironmentOptions): LauncherEn
     chmodSync(launcherPath, 0o755);
   }
 
-  const cliEntryPath = path.join(environmentRoot, "dist", "index.js");
+  const entryDirectory = options.cliEntryDirectory ?? path.join(environmentRoot, "dist");
+  const cliEntryPath = path.join(entryDirectory, "index.js");
   if (options.cliEntryExists !== false) {
     mkdirSync(path.dirname(cliEntryPath), { recursive: true });
     writeFileSync(cliEntryPath, "// fake MileStack CLI entry\n", "utf8");
@@ -1112,6 +1114,64 @@ describe("project MCP entries without a globally installed CLI", () => {
               "--project",
               path.resolve(projectRoot),
             ],
+            enabled: true,
+          },
+        },
+      });
+    } finally {
+      restore();
+    }
+  });
+});
+
+describe("project MCP entries started from the project dependency", () => {
+  it("pins every client to the project entry even when a global CLI is on PATH", () => {
+    const projectRoot = createTemporaryProject();
+    const absoluteProjectRoot = path.resolve(projectRoot);
+    const { cliEntryPath, restore } = useLauncherEnvironment({
+      launcherOnPath: true,
+      cliEntryDirectory: path.join(absoluteProjectRoot, "node_modules", "milestack", "dist"),
+    });
+    try {
+      const results = configureProjectMcpClients(projectRoot, [
+        "claude",
+        "cursor",
+        "grok",
+        "codex",
+        "opencode",
+      ]);
+
+      expect(results.map((item) => item.action)).toEqual([
+        "created",
+        "created",
+        "created",
+        "created",
+        "created",
+      ]);
+      for (const result of results) {
+        expect(result.detail).toContain("已固定到项目 node_modules");
+        expect(result.detail).not.toContain("PATH 中未找到");
+      }
+
+      const expectedEntry = {
+        command: process.execPath,
+        args: [cliEntryPath, "mcp", "--project", absoluteProjectRoot],
+      };
+      for (const relativePath of [".mcp.json", ".cursor/mcp.json"]) {
+        expect(JSON.parse(readFileSync(path.join(projectRoot, relativePath), "utf8"))).toMatchObject({
+          mcpServers: { milestack: expectedEntry },
+        });
+      }
+      for (const relativePath of [".grok/config.toml", ".codex/config.toml"]) {
+        expect(readFileSync(path.join(projectRoot, relativePath), "utf8")).toContain(
+          `command = "${process.execPath}"\nargs = ["${cliEntryPath}", "mcp", "--project", "${absoluteProjectRoot}"]`,
+        );
+      }
+      expect(JSON.parse(readFileSync(path.join(projectRoot, "opencode.json"), "utf8"))).toMatchObject({
+        mcp: {
+          milestack: {
+            type: "local",
+            command: [process.execPath, cliEntryPath, "mcp", "--project", absoluteProjectRoot],
             enabled: true,
           },
         },

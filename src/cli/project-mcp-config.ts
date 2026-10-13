@@ -247,6 +247,9 @@ function launcherNote(launcher: McpLauncherResolution): string | undefined {
   if (launcher.kind === "path") {
     return undefined;
   }
+  if (launcher.kind === "project-cli-entry") {
+    return `（已固定到项目 node_modules 中的 CLI 入口文件：node ${launcher.cliEntryPath}）`;
+  }
   if (launcher.kind === "cli-entry") {
     return `（PATH 中未找到 milestack，command 改用当前 CLI 入口文件：node ${launcher.cliEntryPath}）`;
   }
@@ -729,7 +732,7 @@ export function configureProjectMcpClients(
 ): ProjectMcpConfigResult[] {
   const absoluteProjectRoot = path.resolve(projectRoot);
   const realProjectRoot = resolveRealProjectRoot(absoluteProjectRoot);
-  const launcher = resolveMcpLauncher();
+  const launcher = resolveMcpLauncher({ projectRoot: absoluteProjectRoot });
   const projectEntry: McpEntry = {
     command: launcher.launcher.command,
     args: [...launcher.launcher.args, "mcp", "--project", absoluteProjectRoot],

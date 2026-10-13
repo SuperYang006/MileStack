@@ -75,8 +75,8 @@ configuration points at the `milestack` command, so the CLI has to stay on `PATH
 for every client session.
 
 A project devDependency is an optional alternative when a repository wants to pin
-the CLI version. Install it and let `init` write the client configuration, so each
-client receives its own supported format:
+the CLI version. Install it in the project itself, then let `init` write the client
+configuration, so each client receives its own supported format:
 
 ```bash
 npm install --save-dev milestack
@@ -84,9 +84,8 @@ npm install --save-dev milestack
   --project /absolute/path/to/project
 ```
 
-`init` records the `milestack` command when one is already on `PATH`. When none is,
-it records the CLI that is running `init`, which here is the project-local entry
-script of the declared devDependency, so the entry keeps using the pinned version:
+When `init` runs from the project's own `node_modules`, the entry is pinned to that
+installed copy even if another `milestack` is on `PATH`:
 
 ```json
 "milestack": {
@@ -96,7 +95,9 @@ script of the declared devDependency, so the entry keeps using the pinned versio
 ```
 
 Codex and Grok receive the same command and arguments in their TOML files, and
-OpenCode receives its own `mcp.milestack` shape. See the client support matrix in
+OpenCode receives its own `mcp.milestack` shape. When `init` runs from somewhere else,
+it records the `milestack` command if one is on `PATH`, and otherwise the CLI entry
+that is running `init`. See the client support matrix in
 [Initialize a project](#initialize-a-project).
 
 Run `init` through the project binary, not through `npx milestack` or `npm exec`.
@@ -173,7 +174,7 @@ Client support matrix:
 
 A newly created `opencode.json` also carries `$schema` `https://opencode.ai/config.json`. If only `opencode.jsonc` exists, `init` prints the `mcp.milestack` entry to add by hand and leaves that file untouched.
 
-`init` resolves the `milestack` command through `PATH`. When `milestack` is not installed globally, the entry it writes uses the CLI that is running `init` instead of the bare command, so it stays usable without a global install:
+`init` resolves the `milestack` command through `PATH`. When `milestack` is not installed globally, the entry it writes uses the CLI that is running `init` instead of the bare command, so it stays usable without a global install. A CLI started from the target project's own `node_modules` always wins over `PATH`, so a project devDependency stays pinned:
 
 ```json
 "milestack": {
