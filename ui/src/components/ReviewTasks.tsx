@@ -183,19 +183,8 @@ const ReviewTaskItem: React.FC<{
         </div>
       </div>
 
-      {/* Layer 2: review summary only. Full text stays in the task detail modal. */}
-      {digest?.summary ? (
-        <div className="text-[11px] leading-relaxed text-zinc-300 bg-zinc-950/50 p-2 rounded border border-zinc-850 line-clamp-2">
-          <span className="text-zinc-500 font-semibold mr-1">审核摘要：</span>
-          {digest.summary}
-        </div>
-      ) : (
-        <div className="text-[11px] text-zinc-600 italic">
-          {isPending ? "等待 AI 审核代理领取并出具审核结论" : "暂无审核摘要"}
-        </div>
-      )}
-
-      {/* Layer 3: low-weight review metadata on the left, detail entry on the right. */}
+      {/* Layer 2: low-weight review metadata on the left, detail entry on the right. The
+          review summary is intentionally not shown here; it stays in the task detail modal. */}
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[11px] text-zinc-500">
         <span className="min-w-0 truncate">
           {reviewMeta.map((item, index) => (
