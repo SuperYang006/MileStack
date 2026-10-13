@@ -5,10 +5,8 @@ import {
   ArrowUpRight,
   CheckCircle2,
   ShieldAlert,
-  GitCommit,
   Bot,
   Clock,
-  GitBranch,
   ShieldCheck,
 } from "lucide-react";
 import type { TaskSummary } from "../types";
@@ -31,7 +29,6 @@ const ReviewTaskItem: React.FC<{
 }> = ({ task, onApprove, onWaiveApproval, onRequestChanges, onSelectTask }) => {
   const digest = task.latestReview;
   const reviewStatus = digest?.status ?? "pending";
-  const reviewerLabel = digest?.reviewerActorLabel;
 
   // Review states:
   // 1. pending: 未领取 (等待 AI 审核)
@@ -90,16 +87,20 @@ const ReviewTaskItem: React.FC<{
     </span>
   );
 
-  const counts = [
-    { label: "验收条件", value: digest?.acceptanceCriteriaCount ?? 0 },
-    { label: "验证证据", value: digest?.verificationEvidenceCount ?? 0 },
-    { label: "审核发现", value: digest?.findingsCount ?? 0 },
-  ];
+  const findingsCount = digest?.findingsCount ?? 0;
+  const reviewMeta = digest
+    ? [
+        { text: `第 ${digest.reviewRound} 轮`, alert: false },
+        { text: `验收 ${digest.acceptanceCriteriaCount}`, alert: false },
+        { text: `证据 ${digest.verificationEvidenceCount}`, alert: false },
+        { text: `发现 ${findingsCount}`, alert: findingsCount > 0 },
+      ]
+    : [];
 
   return (
     <div className="p-3.5 rounded-lg bg-zinc-950/80 border border-zinc-800 hover:border-violet-900/60 transition-colors space-y-2 font-mono">
-      {/* Summary row: identity, risk, review state, and review counts. Clicking opens the task detail modal. */}
-      <div className="flex items-start justify-between gap-3 lg:grid lg:grid-cols-[minmax(0,7rem)_minmax(0,1fr)_auto] lg:items-start lg:gap-x-3">
+      {/* Layer 1: identity, review state, risk, and review actions. */}
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 lg:grid lg:grid-cols-[minmax(0,7rem)_minmax(0,1fr)_auto] lg:gap-y-0">
         <div
           role="button"
           tabIndex={0}
@@ -110,62 +111,26 @@ const ReviewTaskItem: React.FC<{
               onSelectTask(task.id);
             }
           }}
-          className="flex flex-1 min-w-0 items-start gap-2 cursor-pointer lg:contents"
+          className="flex w-full min-w-0 items-start gap-2 cursor-pointer lg:contents"
           title="查看任务详情与事件记录"
         >
-          <TaskIdBadge taskId={task.id} variant="muted" className="lg:w-full" />
-          <div className="min-w-0 flex-1">
+          <span className="w-[7rem] min-w-0 shrink-0">
+            <TaskIdBadge taskId={task.id} variant="muted" className="w-full" />
+          </span>
+          <div className="flex min-w-0 flex-1 flex-col gap-1.5">
             <h3 className="min-w-0 text-xs font-medium text-zinc-100 line-clamp-2 break-words hover:text-violet-300 transition-colors">
               {task.title}
             </h3>
 
-            <div className="mt-1.5 flex items-center flex-wrap gap-2 text-[11px]">
-              {riskBadge}
+            <div className="flex flex-wrap items-center gap-1.5">
               {getStatusBadge()}
-
-              {digest && (
-                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono bg-zinc-900 border border-zinc-800 text-zinc-400">
-                  <span>第 {digest.reviewRound} 轮</span>
-                </span>
-              )}
-
-              {reviewerLabel && (
-                <span className="inline-flex items-center space-x-1 px-1.5 py-0.5 rounded text-[10px] bg-zinc-900 border border-zinc-800 text-zinc-300">
-                  <Bot className="w-2.5 h-2.5 text-violet-400" />
-                  <span>审核代理: {reviewerLabel}</span>
-                </span>
-              )}
-
-              {digest?.commitSha && (
-                <span className="inline-flex items-center space-x-1 text-[10px] text-zinc-400 bg-zinc-900/80 px-1.5 py-0.5 rounded border border-zinc-850">
-                  <GitCommit className="w-2.5 h-2.5 text-zinc-500" />
-                  <span className="select-all" title={digest.commitSha}>
-                    {digest.commitSha.slice(0, 8)}
-                  </span>
-                </span>
-              )}
-
-              {(digest?.branch || digest?.worktree) && (
-                <span className="inline-flex items-center space-x-1 text-[10px] text-zinc-500">
-                  <GitBranch className="w-2.5 h-2.5 text-zinc-600" />
-                  <span>{digest.branch || digest.worktree}</span>
-                </span>
-              )}
-
-              {counts.map((count) => (
-                <span
-                  key={count.label}
-                  className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono bg-zinc-900/60 border border-zinc-850 text-zinc-400"
-                >
-                  {count.label} {count.value}
-                </span>
-              ))}
+              {riskBadge}
             </div>
           </div>
         </div>
 
         {/* Action Buttons */}
-        <div className="flex items-center space-x-1.5 shrink-0 pt-0.5 lg:col-start-3 lg:row-start-1">
+        <div className="flex flex-wrap items-center gap-1.5 shrink-0 lg:col-start-3 lg:row-start-1">
           <button
             onClick={() => {
               if (!isPassed) {
@@ -214,18 +179,10 @@ const ReviewTaskItem: React.FC<{
             <MessageSquare className="w-3 h-3" />
             <span>退回返工</span>
           </button>
-
-          <button
-            onClick={() => onSelectTask(task.id)}
-            className="p-1 text-zinc-500 hover:text-zinc-300 rounded transition-colors"
-            title="查看任务详情与完整证据"
-          >
-            <ArrowUpRight className="w-3.5 h-3.5" />
-          </button>
         </div>
       </div>
 
-      {/* Review summary: two lines only. Full text stays in the task detail modal. */}
+      {/* Layer 2: review summary only. Full text stays in the task detail modal. */}
       {digest?.summary ? (
         <div className="text-[11px] leading-relaxed text-zinc-300 bg-zinc-950/50 p-2 rounded border border-zinc-850 line-clamp-2">
           <span className="text-zinc-500 font-semibold mr-1">审核摘要：</span>
@@ -236,6 +193,27 @@ const ReviewTaskItem: React.FC<{
           {isPending ? "等待 AI 审核代理领取并出具审核结论" : "暂无审核摘要"}
         </div>
       )}
+
+      {/* Layer 3: low-weight review metadata on the left, detail entry on the right. */}
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[11px] text-zinc-500">
+        <span className="min-w-0 truncate">
+          {reviewMeta.map((item, index) => (
+            <React.Fragment key={item.text}>
+              {index > 0 && <span className="px-1">·</span>}
+              <span className={item.alert ? "text-amber-400/90" : undefined}>{item.text}</span>
+            </React.Fragment>
+          ))}
+        </span>
+
+        <button
+          onClick={() => onSelectTask(task.id)}
+          className="inline-flex shrink-0 items-center gap-1 text-zinc-500 hover:text-zinc-300 transition-colors"
+          title="查看任务详情与完整证据"
+        >
+          <span>查看详情</span>
+          <ArrowUpRight className="w-3 h-3" />
+        </button>
+      </div>
     </div>
   );
 };
