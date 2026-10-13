@@ -175,6 +175,36 @@ describe("CLI entry point", () => {
     expect(generatedInstructions).toContain(
       "Do not copy the general workflow, review, risk, or Git rules",
     );
+    expect(generatedInstructions).toContain("## Preserve concrete task constraints");
+    expect(generatedInstructions).toContain(
+      "When creating or updating a MileStack task, preserve developer-confirmed concrete examples as part of the task definition.",
+    );
+    expect(generatedInstructions).toContain(
+      "- Do not replace an approved wireframe, layout sketch, field mapping, workflow, example input/output, ordering rule, or state-specific behavior with only an abstract summary.",
+    );
+    expect(generatedInstructions).toContain("- Record both:");
+    expect(generatedInstructions).toContain("1. the design intent; and");
+    expect(generatedInstructions).toContain(
+      "2. the observable example or concrete structure that constrains implementation.",
+    );
+    expect(generatedInstructions).toContain(
+      "- For UI work, explicitly preserve information hierarchy, element ordering, grouping, conditional visibility, responsive behavior, and permitted deviations.",
+    );
+    expect(generatedInstructions).toContain(
+      "- Treat developer-confirmed examples as acceptance constraints unless the developer says they are illustrative only.",
+    );
+    expect(generatedInstructions).toContain(
+      "- Before creating the task, check that every material constraint from the approved proposal appears in the objective or acceptance criteria.",
+    );
+    expect(generatedInstructions).toContain(
+      "- Keep concrete examples concise, but prefer slight duplication over losing a requirement through abstraction.",
+    );
+    expect(generatedInstructions.indexOf("## Create well-scoped tasks")).toBeLessThan(
+      generatedInstructions.indexOf("## Preserve concrete task constraints"),
+    );
+    expect(generatedInstructions.indexOf("## Preserve concrete task constraints")).toBeLessThan(
+      generatedInstructions.indexOf("## Discover, claim, and execute work"),
+    );
     expect(generatedInstructions).toContain("start_task");
     expect(generatedInstructions).toContain(
       "After reading the task details and confirming that its status is ready, call start_task",
@@ -223,7 +253,11 @@ describe("CLI entry point", () => {
     const gitignore = readFileSync(path.join(projectRoot, ".gitignore"), "utf8");
     expect(gitignore.match(/^\.milestack\/$/gm)).toHaveLength(1);
     expect(second.stdout.join("")).toContain("Already initialized");
-    expect(readFileSync(agentInstructionsPath, "utf8")).toBe(generatedInstructions);
+    const regeneratedInstructions = readFileSync(agentInstructionsPath, "utf8");
+    expect(regeneratedInstructions).toBe(generatedInstructions);
+    expect(regeneratedInstructions.match(/## Preserve concrete task constraints/g)).toHaveLength(
+      1,
+    );
     expect(readFileSync(path.join(projectRoot, "AGENTS.md"), "utf8")).toBe(rootAgentsContent);
   });
 
