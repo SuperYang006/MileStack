@@ -27,3 +27,14 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #3f3f46;
 }
+
+/* Ensure transform property is set for slide-over drawer transitions */
+.translate-x-full {
+  transform: translateX(100%);
+  translate: 0 0;
+}
+
+.translate-x-0 {
+  transform: translateX(0);
+  translate: 0 0;
+}

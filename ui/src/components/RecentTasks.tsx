@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { ArrowUpRight, RotateCcw, Archive, X } from "lucide-react";
 import { EmptyState } from "./EmptyState";
 import type { TaskSummary } from "../types";
@@ -32,10 +32,37 @@ export const RecentTasks: React.FC<RecentTasksProps> = ({
   onReopenTask,
 }) => {
   const listRef = useRef<HTMLDivElement>(null);
+  const [isMounted, setIsMounted] = useState(isOpen);
+  const [isEntering, setIsEntering] = useState(false);
+
+  // Transition state machine for mount/slide-in and slide-out/unmount
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let animFrame: number | undefined;
+
+    if (isOpen) {
+      setIsMounted(true);
+      animFrame = requestAnimationFrame(() => {
+        timer = setTimeout(() => {
+          setIsEntering(true);
+        }, 16);
+      });
+    } else {
+      setIsEntering(false);
+      timer = setTimeout(() => {
+        setIsMounted(false);
+      }, 300);
+    }
+
+    return () => {
+      if (animFrame) cancelAnimationFrame(animFrame);
+      if (timer) clearTimeout(timer);
+    };
+  }, [isOpen]);
 
   // Close on Escape key
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isMounted) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         onClose();
@@ -43,25 +70,27 @@ export const RecentTasks: React.FC<RecentTasksProps> = ({
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, onClose]);
+  }, [isMounted, onClose]);
 
   // Lock body scroll while drawer is open
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isMounted) return;
     const originalOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = originalOverflow;
     };
-  }, [isOpen]);
+  }, [isMounted]);
 
-  if (!isOpen) return null;
+  if (!isMounted) return null;
 
   return (
     <div className="fixed inset-0 z-40 overflow-hidden">
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-black/70 backdrop-blur-xs transition-opacity"
+        className={`fixed inset-0 bg-black/70 backdrop-blur-xs transition-opacity duration-300 ease-out ${
+          isEntering ? "opacity-100" : "opacity-0"
+        }`}
         onClick={onClose}
         aria-hidden="true"
       />
@@ -72,7 +101,9 @@ export const RecentTasks: React.FC<RecentTasksProps> = ({
           role="dialog"
           aria-modal="true"
           aria-label="已完成归档"
-          className="w-screen max-w-md sm:max-w-lg lg:max-w-xl bg-zinc-950 border-l border-zinc-800 shadow-2xl flex flex-col pointer-events-auto"
+          className={`w-screen max-w-md sm:max-w-lg lg:max-w-xl h-full bg-zinc-950 border-l border-zinc-800 shadow-2xl flex flex-col pointer-events-auto transform transition-transform duration-300 ease-out ${
+            isEntering ? "translate-x-0" : "translate-x-full"
+          }`}
         >
           {/* Header */}
           <div className="px-5 py-3.5 border-b border-zinc-800/80 bg-zinc-900/60 flex items-center justify-between shrink-0">
