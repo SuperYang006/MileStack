@@ -134,14 +134,9 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({
   };
 
   return (
-    <div
-      className="fixed inset-0 z-[60] overflow-y-auto bg-black/80 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-100"
-      onClick={(e) => {
-        if (e.target === e.currentTarget && !isSubmitting) {
-          onClose();
-        }
-      }}
-    >
+    <div className="fixed inset-0 z-[60] overflow-y-auto bg-black/80 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-100">
+      {/* The backdrop deliberately does not close the dialog: a page-level overlay is easy to
+          hit by accident, and the input is often long. Close with 取消, the header close button, or Esc. */}
       <div
         className={`bg-zinc-950 rounded-lg border border-zinc-800 ${themeConfig.borderClass} max-w-lg w-full flex flex-col overflow-hidden shadow-2xl font-mono text-xs`}
         onClick={(e) => e.stopPropagation()}
