@@ -350,3 +350,7 @@ Tests use temporary projects and real SQLite databases where persistence or tran
 - [Product requirements](docs/requirements.md)
 - [Technical design](docs/technical-design.md)
 - [Bootstrap implementation history](docs/bootstrap-tasks.md)
+
+## License
+
+MileStack source code is licensed under the [Apache License 2.0](LICENSE).

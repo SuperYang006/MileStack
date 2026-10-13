@@ -348,3 +348,7 @@ pnpm build
 - [产品需求](docs/requirements.md)
 - [技术方案](docs/technical-design.md)
 - [自举开发历史](docs/bootstrap-tasks.md)
+
+## 许可证
+
+MileStack 源码采用 [Apache License 2.0](LICENSE) 授权。
