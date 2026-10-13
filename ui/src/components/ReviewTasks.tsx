@@ -41,18 +41,22 @@ const ReviewTaskItem: React.FC<{
   const isPending = !digest || reviewStatus === "pending";
   const canWaiveApproval = reviewStatus === "pending" || reviewStatus === "in_progress";
 
-  const getStatusBadge = () => {
+  // The review state is passive information, so it renders as plain text instead of a
+  // bordered pill; the action buttons carry the visual weight on their own row.
+  const getStatusLabel = () => {
     if (isPending) {
       return (
-        <span className="inline-flex items-center space-x-1 px-1.5 py-0.5 rounded text-[10px] font-mono bg-zinc-900 border border-zinc-750 text-zinc-400">
-          <Clock className="w-2.5 h-2.5 text-zinc-400" />
+        <span className="inline-flex items-center space-x-1 text-[10px] font-mono text-zinc-400">
+          <span className="text-zinc-600">·</span>
+          <Clock className="w-2.5 h-2.5 text-zinc-500" />
           <span>未领取 · 等待 AI 审核</span>
         </span>
       );
     }
     if (reviewStatus === "in_progress") {
       return (
-        <span className="inline-flex items-center space-x-1 px-1.5 py-0.5 rounded text-[10px] font-mono bg-cyan-950/60 border border-cyan-800 text-cyan-300">
+        <span className="inline-flex items-center space-x-1 text-[10px] font-mono text-cyan-300">
+          <span className="text-zinc-600">·</span>
           <Bot className="w-2.5 h-2.5 text-cyan-400 animate-pulse" />
           <span>AI 审核中</span>
         </span>
@@ -60,14 +64,16 @@ const ReviewTaskItem: React.FC<{
     }
     if (isPassed) {
       return (
-        <span className="inline-flex items-center space-x-1 px-1.5 py-0.5 rounded text-[10px] font-mono bg-emerald-950/60 border border-emerald-800 text-emerald-300 font-bold">
+        <span className="inline-flex items-center space-x-1 text-[10px] font-mono text-emerald-300 font-bold">
+          <span className="text-zinc-600">·</span>
           <CheckCircle2 className="w-2.5 h-2.5 text-emerald-400" />
           <span>AI 已通过 · 待人工批准</span>
         </span>
       );
     }
     return (
-      <span className="inline-flex items-center space-x-1 px-1.5 py-0.5 rounded text-[10px] font-mono bg-amber-950/60 border border-amber-800 text-amber-300">
+      <span className="inline-flex items-center space-x-1 text-[10px] font-mono text-amber-300">
+        <span className="text-zinc-600">·</span>
         <ShieldAlert className="w-2.5 h-2.5 text-amber-400" />
         <span>要求修改</span>
       </span>
@@ -76,7 +82,7 @@ const ReviewTaskItem: React.FC<{
 
   const riskBadge = (
     <span
-      className={`inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-mono shrink-0 ${
+      className={`inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-mono shrink-0 align-middle ${
         task.riskLevel === "low"
           ? "bg-emerald-950/60 border border-emerald-850 text-emerald-300"
           : task.riskLevel === "high"
@@ -101,9 +107,9 @@ const ReviewTaskItem: React.FC<{
 
   return (
     <div className="p-3.5 rounded-lg bg-zinc-950/80 border border-zinc-800 hover:border-violet-900/60 transition-colors space-y-2 font-mono">
-      {/* Layer 1: identity, review state, risk, and review actions. The card only
-          reaches about 550px of content width in the two-column dashboard, so
-          every row wraps instead of relying on a three-column grid. */}
+      {/* Layer 1: identity on its own row, then the passive review state on the left and the
+          review actions on the right. The card only reaches about 550px of content width in the
+          two-column dashboard, so the action group wraps as a unit and stays right-aligned. */}
       <div className="flex flex-wrap items-start gap-x-2 gap-y-2">
         <div
           role="button"
@@ -126,12 +132,11 @@ const ReviewTaskItem: React.FC<{
           </h3>
         </div>
 
-        <div className="flex flex-wrap items-center gap-1.5">
-          {getStatusBadge()}
-          {riskBadge}
+        <div className="flex w-full flex-wrap items-center gap-x-2 gap-y-2">
+          {getStatusLabel()}
 
           {/* Action Buttons */}
-          <div className="flex flex-wrap items-center gap-1.5">
+          <div className="flex flex-wrap items-center gap-1.5 ml-auto">
             <button
               onClick={() => {
                 if (!isPassed) {
@@ -156,7 +161,7 @@ const ReviewTaskItem: React.FC<{
               <button
                 type="button"
                 onClick={() => onOpenWaive(task)}
-                className="inline-flex items-center space-x-1 px-2.5 py-1 text-[11px] text-violet-300 hover:text-violet-200 bg-violet-950/40 hover:bg-violet-900/80 border border-violet-800/70 rounded transition-colors cursor-pointer"
+                className="inline-flex items-center space-x-1 px-2.5 py-1 text-[11px] text-violet-300 hover:text-violet-200 hover:bg-violet-950/50 border border-violet-800/70 rounded transition-colors cursor-pointer"
                 title="跳过 AI 审核结论直接验收，并记录验收原因"
               >
                 <ShieldCheck className="w-3 h-3" />
@@ -167,7 +172,7 @@ const ReviewTaskItem: React.FC<{
             <button
               type="button"
               onClick={() => onOpenRequestChanges(task)}
-              className="inline-flex items-center space-x-1 px-2.5 py-1 text-[11px] text-amber-300 hover:text-amber-200 bg-amber-950/40 hover:bg-amber-950/80 border border-amber-900/60 rounded transition-colors cursor-pointer"
+              className="inline-flex items-center space-x-1 px-2.5 py-1 text-[11px] text-amber-300 hover:text-amber-200 hover:bg-amber-950/50 border border-amber-900/60 rounded transition-colors cursor-pointer"
               title="填写审核反馈并退回返工"
             >
               <MessageSquare className="w-3 h-3" />
@@ -177,13 +182,14 @@ const ReviewTaskItem: React.FC<{
         </div>
       </div>
 
-      {/* Layer 2: low-weight review metadata on the left, detail entry on the right. The
-          review summary is intentionally not shown here; it stays in the task detail modal. */}
+      {/* Layer 2: risk level and low-weight review metadata on the left, detail entry on the
+          right. The review summary is intentionally not shown here; it stays in the task detail modal. */}
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[11px] text-zinc-500">
         <span className="min-w-0 truncate">
-          {reviewMeta.map((item, index) => (
+          {riskBadge}
+          {reviewMeta.map((item) => (
             <React.Fragment key={item.text}>
-              {index > 0 && <span className="px-1">·</span>}
+              <span className="px-1">·</span>
               <span className={item.alert ? "text-amber-400/90" : undefined}>{item.text}</span>
             </React.Fragment>
           ))}
