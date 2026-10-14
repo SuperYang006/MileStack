@@ -39,6 +39,13 @@ current tasks, progress, blockers, next steps, and handoffs belong in MileStack.
 
 - When review requests changes, add follow-up commits to the same task branch when practical. Do not rewrite published history.
 
+### npm releases and Git tags
+
+- Every published npm version must come from a clean, fixed Git commit.
+- After a successful npm publish, create an annotated Git tag named `v<version>` on the exact commit used to build the published package. The tag version must match `package.json`.
+- Never move, overwrite, or reuse a tag for a version that has already been published.
+- npm publish, pushing `main`, pushing a Git tag, and creating a GitHub Release are separate external actions. Each requires explicit developer authorization.
+
 ## Architecture boundaries
 
 Keep business behavior in one place:
