@@ -1,541 +1,104 @@
 # MileStack
 
-[English](README.md) | [简体中文](README.zh-CN.md)
+[简体中文](README.md) | [English](README.en.md)
 
-MileStack is a local-first project progress and task-context database for developers and coding agents. It keeps task state, dependencies, execution ownership, review artifacts, and semantic progress in one SQLite database instead of scattering them across temporary TODO files and chat handoffs.
+**不用翻找过期的 TODO 和历史对话，也能让开发者与编程 Agent 始终知道项目做到哪了、接下来该做什么。**
 
-MileStack is currently an early V0 intended for local development and agent-assisted workflows.
+MileStack 把项目进度和任务上下文统一保存在本地，让开发者与编程 Agent 始终基于同一份项目状态协作。它让每个新会话都能可靠回答三个问题：**项目目前进展如何？现在正在做什么？下一步该做什么？**
 
-## Why MileStack
+> MileStack 目前处于早期 V0 阶段，面向本地开发工作流。项目数据始终保存在你自己的机器上。
 
-Coding agents often lose context when work moves between conversations, models, or developers. MileStack gives every participant the same durable project view:
+![MileStack 项目状态面板](docs/assets/milestack-dashboard.png)
 
-- an ordered ready queue with dependency-aware `runnable` state;
-- atomic task claiming through short-lived `runId` credentials;
-- append-only semantic progress and handoff history;
-- review rounds pinned to exact 40-character Git commit SHAs;
-- independent review ownership through `reviewRunId` credentials;
-- low, medium, and high risk policies with developer approval boundaries;
-- CLI, MCP, HTTP, and web UI adapters backed by the same domain service;
-- local SQLite storage with forward migrations and automatic pre-migration backups.
+## MileStack 解决什么问题
 
-MileStack tracks meaningful project outcomes. It is not an agent identity system, command log, cloud service, or Git activity tracker.
+开发者通常会先与擅长深度推理的模型讨论需求和方案，但讨论结论很容易停留在对话里。随着项目在不同会话、模型和开发者之间切换，真实进度又会继续散落到 TODO、计划文档和交接记录中。这些信息很快就会互相矛盾，新的 Agent 必须先重新拼凑项目上下文，开发者也得反复确认哪份计划才是最新的。
 
-## Workflow
+MileStack 用一个共享、结构化的事实源代替这些临时进度文档：
+
+- 开发者可以在一个页面看到当前工作、待办顺序、阻塞、审核项和最近完成的任务；
+- 编程 Agent 有任务 ID 时直接读取指定任务；没有任务 ID 时通过 MCP 查询项目状态并选择队列中第一个可领取任务，然后建立本轮执行权、记录进展并留下交接信息；
+- 任务依赖和执行凭证明确展示哪些工作可以开始，并避免两个会话同时执行同一任务；
+- 每轮审核都绑定到确切的 Git commit，高风险工作仍由开发者把关；
+- 所有数据都保存在项目本地的 SQLite 数据库中，不需要账号、云服务或远程数据库。
+
+## 它如何融入开发流程
 
 ```mermaid
 flowchart LR
-    I[Inbox] -->|Developer confirms| R[Ready]
-    R -->|start_task| W[Running]
-    W -->|submit_for_review| V[In review]
-    V -->|request_changes| R
-    V -->|Low-risk AI pass| C[Completed]
-    V -->|Medium/high AI pass| A[Awaiting developer approval]
-    A -->|Developer approves| C
+    D[开发者与深度推理模型敲定需求和方案] --> T[AI 将共识创建为 MileStack 任务]
+    T --> C[开发者确认风险与顺序]
+    C --> I[开发者指定任务 ID，或 Agent 读取下一可领取任务]
+    I --> W[执行 Agent 建立执行权、实施并提交]
+    W --> Q[开发者把任务 ID 发给审核 Agent]
+    Q --> R[审核与交接留在 MileStack]
+    R --> N[下个会话从最新状态继续]
 ```
 
-Task execution and review use separate credentials. Submitting a task invalidates its `runId`; returning work for changes invalidates both old execution and review credentials. Rework must be claimed again and submitted as a new review round.
+一个项目通常按下面的闭环推进：
 
-For concurrent implementation, give every writing agent its own branch and worktree. A task being `runnable` means it is claimable—it does not make a shared checkout safe for parallel edits.
+1. 开发者与擅长深度推理的模型讨论需求和方案，直到双方确认目标与边界。
+2. AI 调用 MileStack，将已经确认的结论整理成结构化任务，而不是让开发者逐条手工录入。
+3. 开发者检查 AI 创建的草稿任务，确认风险、依赖和执行顺序。
+4. 有任务 ID 时，实施 Agent 直接读取指定任务；没有任务 ID 时，它先查询项目状态，选择 `next` 中第一个 `runnable = true` 的任务，再通过 `start_task` 建立本轮执行权。
+5. 实施 Agent 记录阶段成果、阻塞和交接上下文，并以固定 Git commit 提交。
+6. 开发者将任务 ID 发送给独立审核 Agent；审核 Agent 通过 `start_review` 建立审核权并检查制品。
+7. 审核结果进入 MileStack，页面和下一个被分派的 Agent 会话随即看到最新状态。
 
-## Architecture
+## 三分钟开始使用
 
-All adapters delegate business behavior to one service:
-
-```text
-CLI --------\
-MCP ---------> TaskService -> repository interface -> SQLite implementation
-HTTP -------/                                      \
-                                                     -> React UI via HTTP only
-```
-
-- `src/core` owns schemas, domain errors, repository interfaces, and state transitions.
-- `src/db` owns Drizzle schema, migrations, SQLite configuration, and repositories.
-- `src/cli`, `src/mcp`, and `src/server` are transport adapters.
-- `ui` communicates only with the HTTP API.
-- `tests` contains core, database, adapter, and real-process integration coverage.
-
-Task snapshot updates and `TaskEvent` appends happen in the same database transaction.
-
-## Requirements
-
-- Node.js 22 or newer
-- pnpm 10
-- Git, when submitting fixed review artifacts
-
-## Install from npm
+MileStack 需要 Node.js 22 或更高版本，以及请确保项目已初始化为 Git 仓库。
 
 ```bash
 npm install -g milestack
-milestack --help
+
+cd /你的项目绝对路径
+milestack init --client codex
+milestack serve
 ```
 
-A global install is the preferred way to consume MileStack. Persistent MCP
-configuration points at the `milestack` command, so the CLI has to stay on `PATH`
-for every client session.
+然后打开 [http://127.0.0.1:7331](http://127.0.0.1:7331)。
 
-A project devDependency is an optional alternative when a repository wants to pin
-the CLI version. Install it in the project itself, then let `init` write the client
-configuration, so each client receives its own supported format:
+如需配置其他支持项目级 MCP 的客户端，可以把 `codex` 替换为 `claude`、`cursor`、`grok` 或 `opencode`；也可以重复传入 `--client`，一次配置多个客户端。AGY（Gemini CLI）使用动态项目发现，需要进行一次手动全局注册，详见[用户指南](docs/user-guide.zh-CN.md#连接编程客户端)。
 
-```bash
-npm install --save-dev milestack
-./node_modules/.bin/milestack init --client claude --client cursor --client grok --client codex --client opencode \
-  --project /absolute/path/to/project
-```
-
-When `init` runs from the project's own `node_modules`, the entry is pinned to that
-installed copy even if another `milestack` is on `PATH`:
-
-```json
-"milestack": {
-  "command": "<absolute node path>",
-  "args": ["<project>/node_modules/.bin/milestack", "mcp", "--project", "<absolute project path>"]
-}
-```
-
-Codex and Grok receive the same command and arguments in their TOML files, and
-OpenCode receives its own `mcp.milestack` shape. When `init` runs from somewhere else,
-it records the `milestack` command if one is on `PATH`, and otherwise the CLI entry
-that is running `init`. See the client support matrix in
-[Initialize a project](#initialize-a-project).
-
-Run `init` through the project binary, not through `npx milestack` or `npm exec`.
-Those runners put a temporary `milestack` on `PATH`, so `init` would record the
-bare command, which stops working as soon as that cache is cleared. A one-off
-`npx milestack` run is likewise not a valid persistent MCP configuration.
-
-## Build from source
-
-```bash
-git clone git@github.com:SuperYang006/MileStack.git
-cd MileStack
-pnpm install
-pnpm build
-```
-
-Run the built application directly from the checkout; a global link is not required:
-
-```bash
-node dist/index.js --help
-pnpm serve
-```
-
-`pnpm serve` uses the current checkout as the managed project and serves the Web UI at
-`http://127.0.0.1:7331`. To manage another project with the development build, pass its
-absolute path explicitly:
-
-```bash
-node dist/index.js serve --project /absolute/path/to/project --port 7331
-```
-
-For Web UI development with hot reload, keep the API server running in one terminal and
-start Vite in another:
-
-```bash
-# Terminal 1
-pnpm serve
-
-# Terminal 2
-pnpm dev:ui
-```
-
-Open `http://localhost:5173`; Vite proxies `/api` to the service on port `7331`.
-Frontend edits are hot-reloaded. After backend edits, run `pnpm build` and restart the
-API server. When using the integrated UI at port `7331`, run `pnpm build:ui` and refresh
-the page after frontend edits.
-
-### Test a local package without sharing the checkout
-
-To verify the package that users will install, pack it and install that tarball into the
-test project. `milestack init` initializes the database and client configuration; it does
-not install the npm package or create `node_modules` for the project.
-
-```bash
-cd /absolute/path/to/MileStack
-pnpm pack
-
-cd /absolute/path/to/test-project
-# Run this first only if the test project has no package.json:
-npm init -y
-npm install --save-dev /absolute/path/to/MileStack/milestack-<version>.tgz
-./node_modules/.bin/milestack --help
-./node_modules/.bin/milestack init --project "$PWD"
-```
-
-For convenient repeated use, add project-local scripts to the test project's
-`package.json`:
-
-```json
-{
-  "scripts": {
-    "milestack:init": "milestack init --project .",
-    "milestack:serve": "milestack serve --project . --port 7332"
-  }
-}
-```
-
-Then start the installed test package with:
-
-```bash
-npm run milestack:serve
-```
-
-An npm script puts the project's own `node_modules/.bin` first on `PATH`, so these scripts
-keep using the tarball installed in the test project even when another version is
-installed globally. Port `7332` also lets the test service run alongside source development
-on the default port `7331`.
-
-The installed tarball contains its own `dist` and `dist/ui`. A later `pnpm build` in the
-MileStack checkout does not update that installed copy; repack, reinstall, and restart
-the test service to pick up a new build.
-
-| Workflow | Command | MileStack version used |
-| --- | --- | --- |
-| Source development | `pnpm serve` in the MileStack checkout | Current checkout's `dist` |
-| Local package test | `npm run milestack:serve` in the test project | Test project's `node_modules` |
-| Normal global use | `milestack serve` | Globally installed npm package |
-
-#### Refresh an existing local test package
-
-`pnpm pack` runs the `prepack` checks before writing the tarball. If type checking, the
-build, or tests fail, `dist` may already have been rebuilt while an older
-`milestack-<version>.tgz` remains on disk. Treat the pack as successful only when the
-command exits successfully and prints the tarball name.
-
-Inspect the package itself before reinstalling it:
-
-```bash
-cd /absolute/path/to/MileStack
-pnpm pack
-tar -xOf milestack-<version>.tgz package/package.json | grep '"version"'
-tar -xOf milestack-<version>.tgz package/dist/ui/index.html | grep '<title>'
-```
-
-When repacking the same version to the same path, npm may keep the already installed
-copy. Stop the running test service, remove that dependency, reinstall the tarball, and
-then restart it:
-
-```bash
-cd /absolute/path/to/test-project
-npm uninstall milestack
-npm install --save-dev /absolute/path/to/MileStack/milestack-<version>.tgz
-npm run milestack:serve
-```
-
-Repacking does not change the package version. If `package.json` still contains `0.1.0`,
-the Web UI correctly continues to display `v0.1.0` even when the packaged code is newer.
-Increment the package version when preparing an actual new release.
-
-### Optional global development link
-
-The global development link is available for convenience, but is not recommended for
-routine development or package-isolation testing:
-
-```bash
-pnpm setup        # Run once if pnpm has no global bin directory
-# Open a new shell after setup
-pnpm link --global
-milestack --help
-```
-
-This link makes the bare `milestack` command execute `dist/index.js` from the source
-checkout. Every project that starts MileStack through that bare command therefore shares
-the checkout's runtime and Web UI, and can see the latest local build. Project databases
-remain separate, but the installed application version is not isolated.
-
-Remove the pnpm global link with:
-
-```bash
-pnpm remove --global milestack
-which -a milestack
-```
-
-If `which -a` still lists a manually created launcher or symlink, remove that launcher
-separately. Removing launchers does not delete the source checkout, project-local npm
-packages, or `.milestack` data.
-
-## Initialize a project
-
-With a normal global npm installation:
-
-```bash
-milestack init --project /absolute/path/to/project
-```
-
-When developing from source, prefer running directly from the repository instead of
-creating a global development link:
-
-```bash
-node /absolute/path/to/MileStack/dist/index.js init \
-  --project /absolute/path/to/project
-```
-
-Initialization is idempotent. Without `--client`, it:
-
-- creates or migrates `.milestack/milestack.db`;
-- adds `.milestack/` to `.gitignore` without replacing existing content;
-- generates `.milestack/agent-instructions.md`;
-- prints the generic MCP JSON and manual Codex and AGY registration instructions;
-- does not create `.mcp.json`, `.cursor/mcp.json`, `.grok/config.toml`, `.codex/config.toml`, or `opencode.json`;
-- never creates, overwrites, or appends to the project's root `AGENTS.md`.
-
-To configure client MCP integration, explicitly select the clients for the current
-checkout. `--client` may be repeated or given as a comma-separated list (supports `claude`, `cursor`, `grok`, `codex`, `opencode`, `agy`):
-
-```bash
-milestack init --client claude --client cursor --client grok --client codex --client opencode --client agy \
-  --project /absolute/path/to/current/checkout
-```
-
-Client support matrix:
-
-| Client | Scope | Configuration file / mechanism | Behavior and notes |
-| --- | --- | --- | --- |
-| `claude` | Project-level | `.mcp.json` | Writes to current project directory, bound to checkout absolute path |
-| `cursor` | Project-level | `.cursor/mcp.json` | Writes to current project directory, bound to checkout absolute path |
-| `grok` | Project-level | `.grok/config.toml` | Writes to current project directory, bound to checkout absolute path |
-| `codex` | Project-level | `.codex/config.toml` | Writes to current project directory, bound to checkout absolute path |
-| `opencode` | Project-level | `opencode.json` | Writes top-level `mcp.milestack`: `type` `local`, `command` `milestack mcp --project <absolute checkout path>`, `enabled` true, no `--discover`; falls back to the running CLI entry when `milestack` is not on `PATH` |
-| `agy` | User-level | `~/.gemini/config/mcp_config.json` | Skips writing user-global files; outputs recommended `agy mcp` dynamic discovery command guidance |
-
-A newly created `opencode.json` also carries `$schema` `https://opencode.ai/config.json`. If only `opencode.jsonc` exists, `init` prints the `mcp.milestack` entry to add by hand and leaves that file untouched.
-
-`init` resolves the `milestack` command through `PATH`. When `milestack` is not installed globally, the entry it writes uses the CLI that is running `init` instead of the bare command, so it stays usable without a global install. A CLI started from the target project's own `node_modules` always wins over `PATH`, so a project devDependency stays pinned:
-
-```json
-"milestack": {
-  "type": "local",
-  "command": ["<absolute node path>", "<absolute path of the CLI entry running init>", "mcp", "--project", "<absolute checkout path>"],
-  "enabled": true
-}
-```
-
-JSON and TOML clients use the same fallback through `command` plus `args`, and `init` explains the choice in its per-client output. That fallback entry keeps working on its own. `init` never rewrites a different existing `milestack` entry, so switching an existing entry to the plain `milestack` command means deleting or editing that client's project-level `milestack` entry by hand and then running `init` again.
-
-`opencode.json` binds the absolute path of the checkout it was generated in, so it is a per-checkout local file. Add it to your ignore list; `milestack init` only maintains the `.milestack/` entry for you, and this repository ignores `opencode.json` in its own `.gitignore`.
-
-Before running or submitting the command, verify that `--project` is the absolute
-path of the current checkout. MileStack strictly enforces safety boundaries and **never modifies**
-global client configuration such as `~/.claude.json`, `~/.cursor`, `~/.grok`, `~/.codex`, `~/.config/opencode`, or `~/.gemini`,
-and it never runs `opencode mcp add`. OpenCode merges the project `opencode.json` with
-`~/.config/opencode/opencode.json` and prefers the project entry for the same MCP service
-name, so the project file alone is enough. An existing different `milestack` entry is preserved and not replaced. After writing a project file,
-reopen the corresponding client session. Codex project configuration takes effect
-only in trusted repositories, and Claude still requires user approval for the
-project `.mcp.json` configuration. See below for detailed AGY (Gemini CLI) connection, dynamic root discovery, and migration instructions.
-
-Add this line manually to the project's version-controlled root `AGENTS.md`:
+最后，在项目根目录的 `AGENTS.md` 中加入下面这行，让编程 Agent 读取 MileStack 生成的工作流规则：
 
 ```md
 Before working on tasks, read and follow `.milestack/agent-instructions.md`.
 ```
 
-`milestack init` only reads the root `AGENTS.md`. It never creates, appends, or
-overwrites that file, because existing project instructions must not be replaced
-without your review. Every `init` ends with a summary that reports whether the file
-already contains the literal path `.milestack/agent-instructions.md`; this is a path
-presence check only, so your own equivalent wording counts and the summary never
-claims to have verified what the sentence means. When the path is missing, the
-summary prints the exact line to paste, explains that a Coding Agent may not read the
-MileStack workflow rules without it, and lists the clients whose project MCP
-configuration actually succeeded in this run. Clients that were skipped, and AGY,
-which needs a manual registration command, are listed separately as pending work.
+初始化完成后重启编程客户端，并让它在开始工作前先查看 MileStack 项目状态。
 
-Every developer should run `milestack init` in their own checkout because `.milestack/` is intentionally local and ignored.
+## 你会得到什么
 
-## Connect Codex through MCP
-
-The commands below are an optional manual global registration path; `milestack init`
-does not run them. To keep the configuration project-local, use
-`milestack init --client codex --project /absolute/path/to/current/checkout` instead.
-
-When `milestack` is globally available:
-
-```bash
-codex mcp add milestack -- \
-  milestack mcp --project /absolute/path/to/project
-```
-
-Without a global link, use the built CLI directly:
-
-```bash
-codex mcp add milestack -- \
-  node /absolute/path/to/MileStack/dist/index.js \
-  mcp --project /absolute/path/to/project
-```
-
-Verify the registration:
-
-```bash
-codex mcp list
-codex mcp get milestack
-```
-
-Start a new Codex session after adding or changing MCP configuration so the updated tool list and server instructions are loaded.
-
-## Connect AGY (Gemini CLI) through MCP
-
-Gemini Antigravity CLI (`agy`) currently provides only user-level global MCP configuration (managing `~/.gemini/config/mcp_config.json`) and does not support project-level MCP files.
-
-### Why AGY cannot use a fixed project path
-
-If `--project /path/to/projectA` were recorded as a fixed path in global configuration, opening an AGY session in `projectB` or any other directory would still connect to `projectA`'s database, silently reading or modifying the wrong task database.
-
-To prevent cross-project state corruption, MileStack provides the `--discover` dynamic root-discovery mode: configure it **once globally** in AGY, and the single registration works across all initialized MileStack projects without project-specific re-registration.
-
-### Installation and registration
-
-When `milestack` is globally available, run:
-
-```bash
-agy mcp add milestack -- milestack mcp --discover
-```
-
-Without a global link, use the built CLI directly:
-
-```bash
-agy mcp add milestack -- \
-  node /absolute/path/to/MileStack/dist/index.js \
-  mcp --discover
-```
-
-Or manually add or update `milestack` under `mcpServers` in `~/.gemini/config/mcp_config.json`:
-
-```json
-"milestack": {
-  "command": "milestack",
-  "args": ["mcp", "--discover"]
-}
-```
-
-### How it works and safe startup
-
-- **Initial project source**: At process startup, `milestack mcp --discover` first validates non-empty roots supplied by `WORKSPACE_DIRS` or `ANTIGRAVITY_WORKSPACE_DIRS`. If neither variable supplies roots, it walks upward from the current working directory (or subdirectory) to locate the nearest ancestor containing `.milestack/milestack.db`, performing absolute path normalization and regular-file safety checks.
-- **Fail-close safety**: If the selected environment roots cannot be mapped to one initialized MileStack project, if no project is found from the environment roots or current directory and its ancestors, or if a database path is unsafe (such as a non-regular file), the service exits immediately with a clear error. It never falls back to historical projects or arbitrary databases.
-- **Multi-root workspace boundaries**: MileStack validates environment roots at startup and can validate client-provided roots after initialization when the client declares the MCP `roots` capability:
-  - If the client declares the `roots` capability, MileStack requests `roots/list` after initialization and validates the returned non-empty root list (attempting realpath canonicalization during multi-root identity comparisons). If all roots map to the exact same MileStack project (e.g. subdirectories within the same checkout), the service binds to that project; if workspace roots span multiple distinct MileStack projects or include uninitialized directories, MileStack **explicitly rejects and exits**, preventing ambiguous cross-project contamination;
-  - If the client does not declare the `roots` capability, the server cannot inspect or reject additional client workspace roots. When no environment roots are supplied either, cwd is the only project source; the session must be treated as a single-root workspace and started directly from the target project directory.
-
-### Verification
-
-1. **Verify CLI registration**:
-
-   ```bash
-   agy mcp list
-   ```
-
-   Verify that the `milestack` entry is present with the `--discover` argument.
-
-2. **Verify project binding**:
-   Start an AGY session in an initialized project directory, have the agent call `get_project_status`, or run directly in your terminal:
-
-   ```bash
-   milestack status --discover
-   ```
-
-   Confirm that the project name and task list displayed in the terminal output match the current checkout (when using `--json`, inspect the `project.name` field).
-
-### Migrate from legacy fixed-project configuration
-
-If you previously registered a global `milestack` entry tied to a specific project (e.g. containing `--project /path/to/projectA`):
-
-1. **Replace the registration** (`agy mcp add` automatically overwrites an existing entry with the same name):
-
-   ```bash
-   agy mcp add milestack -- milestack mcp --discover
-   ```
-
-   Or explicitly remove and re-add:
-
-   ```bash
-   agy mcp remove milestack
-   agy mcp add milestack -- milestack mcp --discover
-   ```
-
-2. **Restart the AGY session**: Close and reopen any running AGY session to load the updated configuration.
-3. **Verify the bound project**: Start AGY in different project directories and call `get_project_status` or run `milestack status --discover` to verify that each session independently inspects its own project and tasks rather than legacy project A.
-
-### Removal
-
-To remove the global MileStack MCP registration from AGY:
-
-```bash
-agy mcp remove milestack
-```
-
-## MCP tools
-
-The current MCP server exposes:
-
-| Area | Tools |
+| 能力 | 带来的变化 |
 | --- | --- |
-| Query | `get_project_status`, `list_tasks`, `get_task` |
-| Task creation | `create_task`, `create_tasks` |
-| Execution | `start_task`, `update_task`, `submit_for_review` |
-| Review | `start_review`, `approve_review`, `request_changes`, `complete_review` |
+| 统一的项目视图 | 当前任务、下一步、阻塞、草稿箱、待审核和已完成工作不再分散在多份文档里。 |
+| 跨会话接续 | 新 Agent 会话直接读取结构化任务上下文和语义历史，不必重放旧对话。 |
+| 感知依赖的队列 | 开发者决定执行顺序，MileStack 明确显示哪些任务现在真正可以开始。 |
+| 明确的选择与执行权 | Agent 优先处理开发者指定的任务；未指定时按队列选择下一可领取任务，并原子建立执行权。 |
+| 可审核的交付 | 每轮审核对应一个确切的 Git commit，执行权与审核权彼此分离。 |
+| 稳定的 Vibe Coding 心流 | 新需求先进入草稿箱，不会突然打断当前任务，当前进度和下一步都被保留下来，可以接着推进。 |
+| 清楚的多项目切换 | 每个项目都有独立的可视化进度页面，切换项目后也能迅速看清现状并下发任务，不必全靠大脑记忆。 |
+| 更小的 AI 实现偏差 | AI 将讨论结论整理成包含目标、约束和验收条件的结构化任务，相当于补全并增强了实施提示词，比临时在对话框中描述更完整。 |
 
-Agent-created tasks enter `inbox`. A developer must confirm their risk and queue position before they can be claimed.
+## 支持的使用方式
 
-## CLI
+- **Web UI**：管理待办队列、草稿箱、阻塞、审核和已完成任务。
+- **MCP**：让编程 Agent 读取指定任务或查询下一可领取任务、建立执行或审核权、更新进度，并提交审核结果。
+- **CLI**：初始化项目、查询状态、启动 MCP 和本地 Web 服务。
+- **HTTP API**：供 Web UI 使用，并与 CLI、MCP 共享同一套任务行为。
 
-```text
-milestack init [--project <path>] [--client <name>]...
-milestack status [--project <path>] [--discover] [--json]
-milestack mcp [--project <path>] [--discover]
-milestack serve [--project <path>] [--port <port>]
-```
+目前，MileStack 的初始化流程已适配 Claude Code、Cursor、Grok、Codex、OpenCode 和 AGY；其他支持 MCP 的客户端可参考各自文档手动接入 MileStack。
 
-Examples:
+## 进一步了解
 
-```bash
-milestack status --discover
-milestack status --project /absolute/path/to/project
-milestack status --project /absolute/path/to/project --json
-milestack mcp --discover
-milestack serve --project /absolute/path/to/project --port 7331
-```
+- [用户指南](docs/user-guide.zh-CN.md)：安装方式、客户端接入、日常使用、数据位置和常见问题
+- [开发指南](docs/development.zh-CN.md)：源码构建、Web UI 开发、安装包测试、架构和验证方式
+- [产品需求](docs/requirements.md)
+- [技术方案](docs/technical-design.md)
+- [自举开发历史](docs/bootstrap-tasks.md)
 
-The web UI and HTTP API are served at `http://127.0.0.1:7331` by default. The header
-shows `MileStack · v<version>` next to the service status, taken from
-`GET /api/health`. That value is baked into the running process at build time from the
-package version, so a running server never changes it: after upgrading the npm package,
-restart `milestack serve` to pick up the new version. MileStack does not contact the npm
-registry and never reports a "latest version".
+## 许可证
 
-## Risk and review policy
-
-| Risk | After an independent AI pass |
-| --- | --- |
-| `low` | Completes automatically only when risk was developer-confirmed and verification evidence is present |
-| `medium` | Remains `in_review` until a developer approves the latest passed review round |
-| `high` | Remains `in_review` until a developer approves the latest passed review round |
-
-Reviewers inspect the exact submitted commit, record the commands they actually ran, and return structured findings with a concrete issue, actionable suggestion, and severity when requesting changes.
-
-## Local data and migrations
-
-Project data is stored under `.milestack/` and must not be committed. SQLite connections enable WAL mode, foreign keys, and a busy timeout for safe access from the web server and multiple MCP processes.
-
-Before applying a pending migration to an existing non-empty database, MileStack creates a backup under `.milestack/backups/`. Existing databases should never need to be deleted to upgrade.
-
-## Development
-
-```bash
-pnpm typecheck
-pnpm typecheck:ui
-pnpm test
-pnpm build
-```
-
-Tests use temporary projects and real SQLite databases where persistence or transaction behavior matters. The integration suite also exercises a real stdio MCP process and shared MCP/HTTP review workflows.
-
-## Documentation
-
-- [Product requirements](docs/requirements.md)
-- [Technical design](docs/technical-design.md)
-- [Bootstrap implementation history](docs/bootstrap-tasks.md)
-
-## License
-
-MileStack source code is licensed under the [Apache License 2.0](LICENSE).
+MileStack 源码采用 [Apache License 2.0](LICENSE) 授权。
