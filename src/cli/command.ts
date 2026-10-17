@@ -1,7 +1,8 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import { runMcp } from "../mcp/server.js";
+import { runtimeVersion } from "../server/runtime-version.js";
 import { startHttpServer } from "../server/server.js";
 import {
   formatAgentIntegrationInstructions,
@@ -38,6 +39,7 @@ Options:
   --json               Output JSON format (for status command)
   --port <port>        Server port (for serve command)
   --client <name>      Project-only MCP config for init; repeatable or comma-separated (claude, cursor, grok, codex, opencode, agy)
+  -v, --version        Print the version number and the resolved entry path, then exit
   -h, --help           Show this help message
 `;
 
@@ -580,6 +582,18 @@ async function runStatus(
   }
 }
 
+function resolveEntryPath(): string {
+  const entry = process.argv[1];
+  if (entry === undefined || entry.length === 0) {
+    return path.resolve("");
+  }
+  try {
+    return realpathSync(entry);
+  } catch {
+    return path.resolve(entry);
+  }
+}
+
 export async function runCli(
   args: readonly string[],
   output: CliOutput = defaultOutput,
@@ -590,6 +604,14 @@ export async function runCli(
   }
 
   try {
+    if (args.includes("--version") || args.includes("-v")) {
+      if (args.length > 1) {
+        throw new Error("-v/--version must be used alone, without a command or other options.");
+      }
+      output.writeStdout(`${runtimeVersion} (${resolveEntryPath()})\n`);
+      return 0;
+    }
+
     const parsed = parseCommand(args);
     if (parsed.command === "init") {
       await runInit(parsed.projectPath, parsed.clients, output);

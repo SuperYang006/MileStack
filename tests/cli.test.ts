@@ -4,13 +4,14 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { helpText, runCli } from "../src/cli/command.js";
 import {
@@ -29,6 +30,12 @@ import {
 } from "../src/project/project-context.js";
 
 const temporaryProjects: string[] = [];
+
+const packageVersion = (
+  JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as {
+    version: string;
+  }
+).version;
 
 function createTemporaryProject(): string {
   const projectRoot = path.join(os.tmpdir(), `milestack-cli-${randomUUID()}`);
@@ -516,6 +523,123 @@ describe("CLI entry point", () => {
       } else {
         process.env.NO_COLOR = originalNoColor;
       }
+    }
+  });
+});
+
+describe("CLI version flag", () => {
+  const originalEntry = process.argv[1];
+  let restoreEntry = (): void => {};
+
+  afterEach(() => {
+    restoreEntry();
+    restoreEntry = () => {};
+  });
+
+  // Points process.argv[1] at a symlink to a fake entry file and returns the
+  // entry path after symlink resolution, which is what --version must print.
+  const useEntryPoint = (entryName: string): string => {
+    const entryRoot = createTemporaryProject();
+    const entryPath = path.join(entryRoot, entryName);
+    mkdirSync(path.dirname(entryPath), { recursive: true });
+    writeFileSync(entryPath, "// fake MileStack CLI entry\n", "utf8");
+    const symlinkPath = path.join(entryRoot, "milestack");
+    symlinkSync(entryPath, symlinkPath);
+    process.argv[1] = symlinkPath;
+    restoreEntry = () => {
+      if (originalEntry === undefined) {
+        process.argv.splice(1, 1);
+      } else {
+        process.argv[1] = originalEntry;
+      }
+    };
+    return realpathSync(entryPath);
+  };
+
+  it("prints the package version and the resolved entry path for --version alone", async () => {
+    const displayedEntryPath = useEntryPoint(path.join("dist", "index.js"));
+    const capture = outputCapture();
+    const originalCwd = process.cwd();
+    const workingDirectory = createTemporaryProject();
+    try {
+      process.chdir(workingDirectory);
+      expect(await runCli(["--version"], capture.output)).toBe(0);
+    } finally {
+      process.chdir(originalCwd);
+    }
+
+    expect(capture.stdout.join("")).toBe(`${packageVersion} (${displayedEntryPath})\n`);
+    expect(capture.stderr).toEqual([]);
+    expect(existsSync(path.join(workingDirectory, ".milestack"))).toBe(false);
+  });
+
+  it("prints the same line for -v alone", async () => {
+    const displayedEntryPath = useEntryPoint(path.join("dist", "index.js"));
+    const capture = outputCapture();
+
+    expect(await runCli(["-v"], capture.output)).toBe(0);
+
+    expect(capture.stdout.join("")).toBe(`${packageVersion} (${displayedEntryPath})\n`);
+    expect(capture.stderr).toEqual([]);
+  });
+
+  it("documents the version flag in the help text", () => {
+    expect(helpText).toContain("-v, --version");
+    expect(helpText).toContain("version number and the resolved entry path");
+  });
+
+  it("prints only help when -h or --help is combined with the version flag", async () => {
+    for (const args of [
+      ["--version", "--help"],
+      ["-v", "-h"],
+      ["--help", "--version"],
+      ["-h", "-v"],
+    ]) {
+      const capture = outputCapture();
+
+      expect(await runCli(args, capture.output)).toBe(0);
+
+      expect(capture.stdout.join("")).toBe(helpText);
+      expect(capture.stderr).toEqual([]);
+    }
+  });
+
+  it("rejects the version flag combined with a command or other options", async () => {
+    const projectRoot = createTemporaryProject();
+    for (const args of [
+      ["status", "-v"],
+      ["status", "--version", "--project", projectRoot],
+      ["-v", "status"],
+      ["--version", "--project", projectRoot],
+    ]) {
+      const capture = outputCapture();
+
+      expect(await runCli(args, capture.output)).toBe(1);
+
+      const stderr = capture.stderr.join("");
+      expect(stderr).toContain("-v/--version must be used alone");
+      expect(stderr).not.toContain("Unknown command");
+      expect(stderr).not.toContain("Unknown option");
+      expect(capture.stdout).toEqual([]);
+    }
+    expect(existsSync(path.join(projectRoot, ".milestack"))).toBe(false);
+  });
+
+  it("falls back to unknown when no version was injected at build time", async () => {
+    const displayedEntryPath = useEntryPoint(path.join("dist", "index.js"));
+    vi.resetModules();
+    vi.doMock("../src/server/runtime-version.js", () => ({ runtimeVersion: "unknown" }));
+    try {
+      const { runCli: runCliWithoutInjectedVersion } = await import("../src/cli/command.js");
+      const capture = outputCapture();
+
+      expect(await runCliWithoutInjectedVersion(["--version"], capture.output)).toBe(0);
+
+      expect(capture.stdout.join("")).toBe(`unknown (${displayedEntryPath})\n`);
+      expect(capture.stderr).toEqual([]);
+    } finally {
+      vi.doUnmock("../src/server/runtime-version.js");
+      vi.resetModules();
     }
   });
 });
