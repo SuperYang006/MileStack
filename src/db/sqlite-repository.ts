@@ -11,6 +11,12 @@ import type {
   TaskRepositoryTransaction,
 } from "../core/repositories.js";
 import {
+  completedWorkPayloadFor,
+  normalizeCompletedWorkPayload,
+  normalizeReviewFindingsPayload,
+  reviewFindingsPayloadFor,
+} from "../core/review-model.js";
+import {
   taskDependencies,
   taskEvents,
   taskReviews,
@@ -28,14 +34,57 @@ function mapTask(task: typeof tasks.$inferSelect): TaskRecord {
 }
 
 function mapTaskEvent(event: typeof taskEvents.$inferSelect): TaskEventRecord {
-  return event;
+  const normalized = normalizeCompletedWorkPayload(event.completedWork);
+  return {
+    ...event,
+    completedWork: normalized.completedWork,
+    criteriaResults: normalized.criteriaResults,
+  };
 }
 
 function mapReview(review: typeof taskReviews.$inferSelect): ReviewRecord {
+  const normalized = normalizeReviewFindingsPayload(review.findings);
   return {
     ...review,
-    findings: review.findings ?? [],
+    findings: normalized.findings,
+    findingClosures: normalized.findingClosures,
     verificationEvidence: review.verificationEvidence ?? [],
+  };
+}
+
+function taskEventRow(event: TaskEventRecord) {
+  const { criteriaResults, ...row } = event;
+  return {
+    ...row,
+    completedWork: completedWorkPayloadFor({
+      completedWork: row.completedWork,
+      criteriaResults: criteriaResults ?? null,
+    }),
+  };
+}
+
+function reviewRow(review: ReviewRecord) {
+  const { findingClosures, ...row } = review;
+  return {
+    ...row,
+    findings: reviewFindingsPayloadFor({
+      findings: row.findings,
+      findingClosures,
+    }),
+  };
+}
+
+function updateReviewRow(changes: Partial<ReviewRecord>) {
+  const { findingClosures, ...row } = changes;
+  if (findingClosures === undefined) {
+    return row;
+  }
+  return {
+    ...row,
+    findings: reviewFindingsPayloadFor({
+      findings: row.findings ?? [],
+      findingClosures,
+    }),
   };
 }
 
@@ -251,13 +300,25 @@ export class SqliteRepository implements MileStackRepository {
         insertTask: (task) =>
           mapTask(this.db.insert(tasks).values(task).returning().get()),
         insertTaskEvent: (event) =>
-          mapTaskEvent(this.db.insert(taskEvents).values(event).returning().get()),
+          mapTaskEvent(
+            this.db
+              .insert(taskEvents)
+              .values(taskEventRow(event))
+              .returning()
+              .get(),
+          ),
         insertReview: (review) =>
-          mapReview(this.db.insert(taskReviews).values(review).returning().get()),
+          mapReview(
+            this.db
+              .insert(taskReviews)
+              .values(reviewRow(review))
+              .returning()
+              .get(),
+          ),
         updateReview: (id, changes) => {
           const updated = this.db
             .update(taskReviews)
-            .set(changes)
+            .set(updateReviewRow(changes))
             .where(eq(taskReviews.id, id))
             .returning()
             .get();

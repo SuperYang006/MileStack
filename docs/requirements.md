@@ -110,6 +110,8 @@ MileStack 只负责保存和推进双方已确认的任务，不在 V0 中自行
 
 开发者在页面选择一个可执行任务并发送任务 ID 或任务简报时，实施 AI 直接调用 `get_task` 读取指定任务的完整定义、依赖状态和当前工作上下文，再调用 `start_task` 建立本轮执行权；只有需要检查完整审计时间线时才显式请求 `view: "full"`。
 
+`get_task` 的默认 `working` 视图按任务所处阶段返回当轮所需内容：实施轮返回完整目标、全部验收标准和当前工作上下文；审核轮返回固定审核提交和本轮逐条验收标准结果；上一轮被退回后的返工轮额外返回未关闭的发现，已关闭的发现不再作为本轮必须处理的问题。更早轮次的完整事件与审核历史只在显式请求 `view: "full"` 时返回。
+
 没有提供任务 ID 时，实施 AI 先调用 `get_project_status`，按 `next` 的队列顺序选择第一个 `runnable = true` 的任务，再读取详情并调用 `start_task`。等待依赖或风险未确认的任务不能被选择。
 
 任务提交后，开发者再将该任务 ID 发送给独立审核 AI。审核 AI 读取指定任务并调用 `start_review` 建立审核权，不自行选择待审核任务。
@@ -429,6 +431,15 @@ type TaskEvent = {
 
   summary: string
   completedWork?: string[]
+  // 仅 submitted_for_review 事件携带；存储在 completed_work JSON 中
+  criteriaResults?: Array<{
+    criterion: string
+    status: "met" | "not_met" | "unverifiable"
+    evidence: Array<{
+      command: string
+      result: string
+    }>
+  }>
   currentStep?: string
   nextStep?: string
   blocker?: string
@@ -441,6 +452,8 @@ type TaskEvent = {
 ```
 
 `TaskEvent` 只追加、不覆盖。修改 `Task` 当前状态和追加对应事件必须在同一个数据库事务中完成。
+
+`submitted_for_review` 事件必须在 JSON 中记录交付结果：当前每条验收标准有且只有一个结果，取值为 `met`、`not_met` 或 `unverifiable`；`met` 必须附带至少一条实际执行过的命令与结果。缺少结果、重复结果、未知验收标准或把未执行的检查标成 `met` 时，提交被拒绝。更早写入的纯 `completedWork` 字符串数组仍按旧形状读取。
 
 ### 8.4 TaskReview
 
@@ -462,6 +475,22 @@ type TaskReview = {
     issue: string
     suggestion: string
     severity: "low" | "medium" | "high"
+    // 本次改动之后写入的新发现必须包含触发条件、可观察影响和证据；
+    // 可定位时写出代码或文档位置。旧发现缺少这些字段仍可读取。
+    trigger?: string
+    impact?: string
+    evidence?: string
+    location?: string
+  }>
+  // 复审上一轮已退回的提交时，必须为上一轮每条发现给出关闭状态；
+  // 与 findings 一起存储在 findings JSON 中
+  findingClosures?: Array<{
+    findingIndex: number
+    status: "fixed" | "partially_fixed" | "not_fixed" | "unverifiable" | "invalidated"
+    evidence?: Array<{
+      command: string
+      result: string
+    }>
   }>
   verificationEvidence: Array<{
     command: string
@@ -482,6 +511,8 @@ type TaskReview = {
   updatedAt: string
 }
 ```
+
+新发现缺少触发条件、可观察影响或证据时，审核写入被拒绝。上一轮为 `changes_requested` 时，复审必须为上一轮每条发现给出且只给出一个关闭状态；存在 `not_fixed` 或 `partially_fixed` 的发现时不能判为通过。第一轮审核不要求关闭记录。存在 `not_met` 或 `unverifiable` 的交付结果时，任何审核都不能判为通过。
 
 ## 9. 执行身份与并发规则
 
@@ -529,7 +560,7 @@ V0 暂不实现请求幂等键和通用乐观锁；出现实际重复写入或�
 ### 10.1 查询
 
 - `get_project_status`：一次获取当前工作、下一任务、阻塞、收件箱和最近完成情况；
-- `get_task`：默认返回 `working` 视图，逐字保留完整任务定义与当前状态，并提供依赖状态、当前执行轮次进度、最新提交制品和最新审核；传入 `view: "full"` 时返回完整不可变事件与审核历史。HTTP 任务详情接口始终返回 `full`，供 WebUI 显示完整时间线。
+- `get_task`：默认返回 `working` 视图，逐字保留完整任务定义与当前状态，并按阶段返回当轮上下文：实施轮提供依赖状态和当前执行轮次进度；审核轮提供固定提交、本轮逐条验收标准结果和上一轮待关闭的发现；返工轮提供未关闭的发现。传入 `view: "full"` 时返回完整不可变事件与审核历史。HTTP 任务详情接口始终返回 `full`，供 WebUI 显示完整时间线。
 
 ### 10.2 任务记录与确认
 
@@ -544,9 +575,9 @@ V0 暂不实现请求幂等键和通用乐观锁；出现实际重复写入或�
 - `block_task`：报告阻塞原因和所需行动；
 - `resume_task`：阻塞解除后，使用当前 `runId` 恢复执行；
 - `release_task`：释放任务、写入交接说明并返回 `ready`；
-- `submit_for_review`：MCP 提交完成摘要和固定 commit 制品并将任务设为 `in_review`；提交本身不完成任务。后续审核按风险策略处理，任务需要 Git 集成时还须通过本地目标分支检查。
+- `submit_for_review`：MCP 提交完成摘要、固定 commit 制品和逐条验收标准交付结果并将任务设为 `in_review`；提交本身不完成任务。缺少结果、重复结果或 `met` 缺少证据的提交被拒绝。后续审核按风险策略处理，任务需要 Git 集成时还须通过本地目标分支检查。
 - `start_review`：原子领取最新审核记录并返回独立 `reviewRunId`；
-- `complete_review`：提交审核摘要、结构化 findings 和验证证据；低风险任务在本地集成条件满足后可自动完成，中高风险任务等待开发者批准。
+- `complete_review`：提交审核摘要、结构化 findings、复审关闭记录和验证证据；新发现必须包含触发条件、可观察影响和证据，上一轮退回的发现必须有且只有一个关闭状态。存在未满足或无法验证的交付结果、未修复或部分修复的发现时不能判为通过。低风险任务在本地集成条件满足后可自动完成，中高风险任务等待开发者批准。
 - `check_task_integration`：使用最新审核 ID 重试已验收任务的本地只读集成检查，不替换审核 SHA，也不执行合并、fetch 或 push。
 
 所有更新优先表达：
@@ -572,8 +603,8 @@ MileStack 应提供一段可加入项目 `AGENTS.md` 或其他 AI 指令文件�
 - 阻塞解除且继续原任务时调用 resume_task。
 - 执行中发现的新工作通过 create_task 记录到 inbox，不要写入新的任务文档。
 - 无法继续或需要其他 AI 接手时调用 release_task，并写明交接信息。
-- 只有在验收条件满足且验证完成后调用 `submit_for_review`；低风险审核通过也只有在本地集成检查通过后才自动完成，中高风险还需开发者批准。若已验收但集成待确认，使用最新审核 ID 调用 `check_task_integration` 重试。
-- 只有开发者明确提供待审核任务的 `taskId` 后，审核 Agent 才调用 `start_review` 保存 `reviewRunId`；不得自行选择待审核任务。提交 `complete_review` 时必须携带该凭证和验证命令结果。
+- 只有在验收条件满足且验证完成后调用 `submit_for_review`，并为每条验收标准记录满足、不满足或无法验证及实际证据；低风险审核通过也只有在本地集成检查通过后才自动完成，中高风险还需开发者批准。若已验收但集成待确认，使用最新审核 ID 调用 `check_task_integration` 重试。
+- 只有开发者明确提供待审核任务的 `taskId` 后，审核 Agent 才调用 `start_review` 保存 `reviewRunId`；不得自行选择待审核任务。提交 `complete_review` 时必须携带该凭证和验证命令结果；新发现必须写明触发条件、可观察影响和证据，复审上一轮退回的提交时必须关闭上一轮每条发现。
 - 不得自行修改或降低任务风险等级；发现问题时使用结构化 finding 记录问题和修改建议。
 ```
 

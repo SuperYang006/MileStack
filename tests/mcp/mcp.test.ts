@@ -159,9 +159,12 @@ describe("MCP task tools", () => {
     const workingDetails = JSON.parse(textContent(details));
     expect(workingDetails).toMatchObject({
       task: { id: createdTask.task.id, title: "Record discovered work" },
+      phase: "implementation",
       dependencies: [],
       currentRunEvents: [],
       latestSubmission: null,
+      previousFindings: [],
+      openFindings: [],
     });
     expect(workingDetails).not.toHaveProperty("events");
     expect(workingDetails).not.toHaveProperty("reviews");
@@ -288,18 +291,17 @@ describe("MCP task tools", () => {
         riskLevel: "medium",
         status: "in_review",
       },
+      phase: "review",
       latestSubmission: {
         summary: "Done",
+        criteriaResults: [],
         review: {
           reviewRound: 1,
           commitSha: "7777777777777777777777777777777777777777",
           status: "pending",
         },
       },
-      currentRunEvents: [
-        expect.objectContaining({ type: "started" }),
-        expect.objectContaining({ type: "progress" }),
-      ],
+      currentRunEvents: [],
     });
     expect(submittedWorkingDetails).not.toHaveProperty("events");
     expect(submittedWorkingDetails).not.toHaveProperty("reviews");
@@ -334,6 +336,9 @@ describe("MCP task tools", () => {
             issue: "No blocking issues found.",
             suggestion: "Keep the focused regression coverage.",
             severity: "low",
+            trigger: "The lifecycle workflow is exercised end to end.",
+            impact: "Dropping the regression coverage would let the lifecycle break silently.",
+            evidence: "pnpm test tests/mcp/mcp.test.ts: lifecycle workflow passes.",
           },
         ],
         verificationEvidence: [{ command: "pnpm test", result: "passed" }],

@@ -219,6 +219,13 @@ describe("review workflow integration", () => {
         worktree: projectRoot,
         summary: "The fixed local commit is ready for review.",
         completedWork: ["Created the review commit in the temporary repository."],
+        criteriaResults: [
+          {
+            criterion: "Only the current approved artifact completes",
+            status: "met",
+            evidence: [{ command: "pnpm typecheck", result: "passed" }],
+          },
+        ],
       });
       const latest = submitted.reviews?.at(-1);
       if (!latest) throw new Error("Submitted task did not return its review.");
@@ -371,6 +378,18 @@ describe("review workflow integration", () => {
       worktree: harness.projectRoot,
       summary: "The implementation is ready for independent review.",
       completedWork: ["Exercised the stdio submission boundary"],
+      criteriaResults: [
+        {
+          criterion: "HTTP and MCP expose the same review record",
+          status: "met",
+          evidence: [
+            {
+              command: "pnpm test tests/integration/review-workflow.test.ts",
+              result: "passed",
+            },
+          ],
+        },
+      ],
     });
     expect(submitted.task).toMatchObject({
       status: "in_review",
@@ -466,6 +485,13 @@ describe("review workflow integration", () => {
         runId: started.runId,
         commitSha: risk.commitSha,
         summary: `${risk.riskLevel} implementation submitted.`,
+        criteriaResults: [
+          {
+            criterion: "Risk behavior remains deterministic",
+            status: "met",
+            evidence: [{ command: "pnpm test", result: "passed" }],
+          },
+        ],
       });
       const review = await callMcp<StartedReview>(client, "start_review", {
         taskId: created.task.id,
@@ -552,6 +578,13 @@ describe("review workflow integration", () => {
       runId: started.runId,
       commitSha: "5555555555555555555555555555555555555555",
       summary: "First implementation submitted.",
+      criteriaResults: [
+        {
+          criterion: "Only one reviewer can claim a pending review",
+          status: "met",
+          evidence: [{ command: "pnpm test", result: "passed" }],
+        },
+      ],
     });
 
     const claims = await Promise.all(
@@ -580,6 +613,9 @@ describe("review workflow integration", () => {
             issue: "The stale credential path is not covered.",
             suggestion: "Retry the old runId and reviewRunId after returning to ready.",
             severity: "medium",
+            trigger: "An old execution or review credential is retried after rework.",
+            impact: "A stale credential could still mutate the next review round.",
+            evidence: "pnpm test tests/integration/review-workflow.test.ts: no stale-credential case.",
           },
         ],
       },
@@ -631,6 +667,13 @@ describe("review workflow integration", () => {
       runId: restarted.runId,
       commitSha: "6666666666666666666666666666666666666666",
       summary: "Reworked implementation submitted.",
+      criteriaResults: [
+        {
+          criterion: "Only one reviewer can claim a pending review",
+          status: "met",
+          evidence: [{ command: "pnpm test", result: "passed" }],
+        },
+      ],
     });
     const secondReview = await callMcp<StartedReview>(reclaimer, "start_review", {
       taskId: created.task.id,
@@ -652,6 +695,18 @@ describe("review workflow integration", () => {
       reviewRunId: secondReview.reviewRunId,
       decision: "passed",
       summary: "The reworked implementation passed review.",
+      findingClosures: [
+        {
+          findingIndex: 0,
+          status: "fixed",
+          evidence: [
+            {
+              command: "pnpm test tests/integration/review-workflow.test.ts",
+              result: "passed",
+            },
+          ],
+        },
+      ],
       verificationEvidence: [{ command: "pnpm test", result: "passed" }],
     });
     expect(passed.task.status).toBe("in_review");

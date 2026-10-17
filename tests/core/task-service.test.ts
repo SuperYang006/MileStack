@@ -1405,6 +1405,9 @@ describe("TaskService", () => {
           issue: "Missing rollback coverage",
           suggestion: "Add a regression test for rollback.",
           severity: "high",
+          trigger: "A rollback path is exercised without the new test.",
+          impact: "A regression in rollback behavior would ship undetected.",
+          evidence: "pnpm test tests/core: rollback path has no covering test.",
         },
       ],
     });
@@ -1418,6 +1421,9 @@ describe("TaskService", () => {
         issue: "Missing rollback coverage",
         suggestion: "Add a regression test for rollback.",
         severity: "high",
+        trigger: "A rollback path is exercised without the new test.",
+        impact: "A regression in rollback behavior would ship undetected.",
+        evidence: "pnpm test tests/core: rollback path has no covering test.",
       },
     ]);
     database.close();
@@ -1492,8 +1498,21 @@ describe("TaskService", () => {
       branch: "main",
       summary: "First implementation ready for review.",
       completedWork: ["Added working response fields", "Completed round 1."],
+      criteriaResults: [
+        {
+          criterion: "Criteria 1",
+          status: "met",
+          evidence: [{ command: "pnpm test tests/core", result: "passed" }],
+        },
+        {
+          criterion: "Criteria 2",
+          status: "met",
+          evidence: [{ command: "pnpm test tests/core", result: "passed" }],
+        },
+      ],
     });
     const inReviewWorking = service.getTask({ projectId: "project-1", taskId: task.task.id });
+    expect(inReviewWorking.phase).toBe("review");
     expect(inReviewWorking.latestSubmission).toMatchObject({
       summary: "First implementation ready for review.",
       completedWork: ["Added working response fields", "Completed round 1."],
@@ -1503,10 +1522,16 @@ describe("TaskService", () => {
         status: "pending",
       },
     });
-    expect(inReviewWorking.currentRunEvents.map((event) => event.type)).toEqual([
-      "started",
-      "progress",
+    expect(
+      inReviewWorking.latestSubmission?.criteriaResults?.map((result) => [
+        result.criterion,
+        result.status,
+      ]),
+    ).toEqual([
+      ["Criteria 1", "met"],
+      ["Criteria 2", "met"],
     ]);
+    expect(inReviewWorking.currentRunEvents).toEqual([]);
     const inReviewDetails = service.getTask({ projectId: "project-1", taskId: task.task.id, view: "full" });
     expect(inReviewDetails.task.status).toBe("in_review");
     expect(inReviewDetails.task.objective).toBe("Keep objective intact across review states");
@@ -1520,7 +1545,16 @@ describe("TaskService", () => {
       reviewRunId: review1.reviewRunId,
       decision: "changes_requested",
       summary: "Needs fixes.",
-      findings: [{ issue: "Defect found", suggestion: "Fix defect", severity: "high" }],
+      findings: [
+        {
+          issue: "Defect found",
+          suggestion: "Fix defect",
+          severity: "high",
+          trigger: "The defect path is exercised.",
+          impact: "The fix would remain unverified.",
+          evidence: "pnpm test tests/core: the defect path fails.",
+        },
+      ],
     });
     expect(returned.task.status).toBe("ready");
     expect(returned.task.objective).toBe("Keep objective intact across review states");
@@ -1534,11 +1568,26 @@ describe("TaskService", () => {
     expect(returnedDetails.reviews).toHaveLength(1);
     expect(returnedDetails.reviews[0]?.status).toBe("changes_requested");
     const returnedWorking = service.getTask({ projectId: "project-1", taskId: task.task.id });
+    expect(returnedWorking.phase).toBe("implementation");
     expect(returnedWorking.currentRunEvents).toEqual([]);
     expect(returnedWorking.task.handoffNote).toContain("Defect found");
+    expect(returnedWorking.openFindings).toEqual([
+      {
+        reviewRound: 1,
+        findingIndex: 0,
+        issue: "Defect found",
+        suggestion: "Fix defect",
+        severity: "high",
+        trigger: "The defect path is exercised.",
+        impact: "The fix would remain unverified.",
+        evidence: "pnpm test tests/core: the defect path fails.",
+        closureStatus: null,
+      },
+    ]);
     expect(returnedWorking.latestSubmission).toMatchObject({
       summary: null,
       completedWork: null,
+      criteriaResults: null,
     });
     expect(returnedWorking.latestSubmission?.review).toMatchObject({
       reviewRound: 1,
@@ -1582,8 +1631,22 @@ describe("TaskService", () => {
       branch: "main",
       summary: "Fixed defect in round 2.",
       completedWork: ["Fixed defect in round 2"],
+      criteriaResults: [
+        {
+          criterion: "Criteria 1",
+          status: "met",
+          evidence: [{ command: "pnpm test tests/core", result: "passed" }],
+        },
+        {
+          criterion: "Criteria 2",
+          status: "met",
+          evidence: [{ command: "pnpm test tests/core", result: "passed" }],
+        },
+      ],
     });
     const reSubmittedWorking = service.getTask({ projectId: "project-1", taskId: task.task.id });
+    expect(reSubmittedWorking.phase).toBe("review");
+    expect(reSubmittedWorking.currentRunEvents).toEqual([]);
     expect(reSubmittedWorking.latestSubmission).toMatchObject({
       summary: "Fixed defect in round 2.",
       completedWork: ["Fixed defect in round 2"],
@@ -1593,6 +1656,14 @@ describe("TaskService", () => {
         status: "pending",
       },
     });
+    expect(reSubmittedWorking.previousFindings).toMatchObject([
+      {
+        findingIndex: 0,
+        issue: "Defect found",
+        suggestion: "Fix defect",
+        severity: "high",
+      },
+    ]);
     const reSubmittedDetails = service.getTask({ projectId: "project-1", taskId: task.task.id, view: "full" });
     const workingSize = JSON.stringify(reSubmittedWorking).length;
     const fullSize = JSON.stringify(reSubmittedDetails).length;
@@ -1611,6 +1682,13 @@ describe("TaskService", () => {
       reviewRunId: review2.reviewRunId,
       decision: "passed",
       summary: "The second implementation round passed.",
+      findingClosures: [
+        {
+          findingIndex: 0,
+          status: "fixed",
+          evidence: [{ command: "pnpm test tests/core", result: "passed" }],
+        },
+      ],
       verificationEvidence: [{ command: "pnpm test", result: "passed" }],
     });
     const completedWorking = service.getTask({ projectId: "project-1", taskId: task.task.id });

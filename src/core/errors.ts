@@ -86,6 +86,33 @@ export class ReviewEvidenceIncompleteError extends DomainError {
   }
 }
 
+export class SubmissionCriteriaIncompleteError extends DomainError {
+  constructor(taskId: string, detail: string) {
+    super(
+      "SUBMISSION_CRITERIA_INCOMPLETE",
+      `Submission for task '${taskId}' must record exactly one result per current acceptance criterion: ${detail}`,
+    );
+  }
+}
+
+export class FindingClosureIncompleteError extends DomainError {
+  constructor(taskId: string, detail: string) {
+    super(
+      "FINDING_CLOSURE_INCOMPLETE",
+      `Review for task '${taskId}' must record exactly one closure per finding from the previous changes-requested round: ${detail}`,
+    );
+  }
+}
+
+export class ReviewCannotPassError extends DomainError {
+  constructor(taskId: string, reasons: string[]) {
+    super(
+      "REVIEW_CANNOT_PASS",
+      `Review for task '${taskId}' cannot pass: ${reasons.join("; ")}`,
+    );
+  }
+}
+
 export class IntegrationCheckStaleError extends DomainError {
   constructor(taskId: string) {
     super(

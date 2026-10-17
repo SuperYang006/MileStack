@@ -55,6 +55,7 @@ import {
   type StartTaskInput,
   type TaskDetails,
   type TaskWorkingDetails,
+  type TaskWorkingOpenFinding,
   type TaskCursor,
   type TaskPage,
   type TaskSummary,
@@ -77,6 +78,9 @@ import {
   ReviewRunOwnershipError,
   ReviewEvidenceIncompleteError,
   IntegrationCheckStaleError,
+  SubmissionCriteriaIncompleteError,
+  FindingClosureIncompleteError,
+  ReviewCannotPassError,
 } from "./errors.js";
 import type {
   IntegrationChecker,
@@ -84,6 +88,8 @@ import type {
 } from "./integration-checker.js";
 import type { IntegrationStatus } from "./integration-model.js";
 import type {
+  CriterionResult,
+  FindingClosure,
   ReviewFinding,
 } from "./review-model.js";
 import type {
@@ -245,35 +251,217 @@ function taskToWorkingDetails(
   const latestSubmissionEvent = events
     .filter((event) => event.type === "submitted_for_review")
     .at(-1);
+  const phase: TaskWorkingDetails["phase"] =
+    task.status === "in_review" ? "review" : "implementation";
+
+  const currentRunEvents =
+    phase === "implementation" && task.activeRunId
+      ? events.filter(
+          (event) =>
+            event.runId === task.activeRunId &&
+            event.type !== "submitted_for_review",
+        )
+      : [];
   const latestSubmission =
     latestReview && latestSubmissionEvent
       ? {
           review: latestReview,
           summary:
-            task.status === "in_review" ? latestSubmissionEvent.summary : null,
+            phase === "review" ? latestSubmissionEvent.summary : null,
           completedWork:
-            task.status === "in_review"
-              ? latestSubmissionEvent.completedWork
+            phase === "review" ? latestSubmissionEvent.completedWork : null,
+          criteriaResults:
+            phase === "review"
+              ? latestSubmissionEvent.criteriaResults ?? null
               : null,
         }
       : null;
-  const currentRunId =
-    task.activeRunId ??
-    (task.status === "in_review" ? latestSubmissionEvent?.runId ?? null : null);
-  const currentRunEvents = currentRunId
-    ? events.filter(
-        (event) =>
-          event.runId === currentRunId &&
-          event.type !== "submitted_for_review",
-      )
-    : [];
+  const previousReview = reviews.length >= 2 ? reviews.at(-2) ?? null : null;
+  const previousFindings =
+    phase === "review" && previousReview?.status === "changes_requested"
+      ? previousReview.findings.map((finding, findingIndex) => ({
+          findingIndex,
+          ...finding,
+        }))
+      : [];
+  const openFindings =
+    phase === "implementation" && task.status !== "completed"
+      ? collectOpenFindings(reviews)
+      : [];
 
   return taskWorkingDetailsSchema.parse({
     task: { ...task, dependencyIds },
+    phase,
     dependencies,
     currentRunEvents,
     latestSubmission,
+    previousFindings,
+    openFindings,
   });
+}
+
+/**
+ * Findings from changes-requested rounds that no later closure marked as fixed
+ * or invalidated. Closed findings stay out of the rework context.
+ */
+function collectOpenFindings(reviews: ReviewRecord[]): TaskWorkingOpenFinding[] {
+  type TrackedFinding = {
+    reviewRound: number;
+    findingIndex: number;
+    finding: ReviewFinding;
+    closure: FindingClosure | null;
+  };
+
+  const tracked: TrackedFinding[] = [];
+  for (const review of reviews) {
+    for (const closure of review.findingClosures) {
+      const target = tracked.find(
+        (candidate) =>
+          candidate.reviewRound === review.reviewRound - 1 &&
+          candidate.findingIndex === closure.findingIndex,
+      );
+      if (target) {
+        target.closure = closure;
+      }
+    }
+    if (review.status === "changes_requested") {
+      review.findings.forEach((finding, findingIndex) => {
+        tracked.push({
+          reviewRound: review.reviewRound,
+          findingIndex,
+          finding,
+          closure: null,
+        });
+      });
+    }
+  }
+
+  return tracked
+    .filter(
+      (candidate) =>
+        candidate.closure === null ||
+        candidate.closure.status === "not_fixed" ||
+        candidate.closure.status === "partially_fixed" ||
+        candidate.closure.status === "unverifiable",
+    )
+    .map((candidate) => ({
+      reviewRound: candidate.reviewRound,
+      findingIndex: candidate.findingIndex,
+      ...candidate.finding,
+      closureStatus: candidate.closure?.status ?? null,
+    }));
+}
+
+function validateSubmissionCriteria(
+  task: TaskRecord,
+  results: CriterionResult[],
+): void {
+  const criteria = task.acceptanceCriteria ?? [];
+  const seen = new Set<string>();
+  for (const result of results) {
+    if (!criteria.includes(result.criterion)) {
+      throw new SubmissionCriteriaIncompleteError(
+        task.id,
+        `criterion '${result.criterion}' is not part of the current task definition.`,
+      );
+    }
+    if (seen.has(result.criterion)) {
+      throw new SubmissionCriteriaIncompleteError(
+        task.id,
+        `criterion '${result.criterion}' has more than one result.`,
+      );
+    }
+    seen.add(result.criterion);
+  }
+
+  const missing = criteria.filter((criterion) => !seen.has(criterion));
+  if (missing.length > 0) {
+    throw new SubmissionCriteriaIncompleteError(
+      task.id,
+      `missing results for: ${missing.join("; ")}.`,
+    );
+  }
+}
+
+function validateFindingClosures(
+  taskId: string,
+  previousReview: ReviewRecord | null,
+  closures: FindingClosure[],
+): void {
+  const previousFindings =
+    previousReview?.status === "changes_requested"
+      ? previousReview.findings
+      : [];
+  if (previousFindings.length === 0) {
+    if (closures.length > 0) {
+      throw new FindingClosureIncompleteError(
+        taskId,
+        "there are no findings from a changes-requested previous round to close.",
+      );
+    }
+    return;
+  }
+
+  const seen = new Set<number>();
+  for (const closure of closures) {
+    if (closure.findingIndex >= previousFindings.length) {
+      throw new FindingClosureIncompleteError(
+        taskId,
+        `finding index ${closure.findingIndex} is out of range.`,
+      );
+    }
+    if (seen.has(closure.findingIndex)) {
+      throw new FindingClosureIncompleteError(
+        taskId,
+        `finding index ${closure.findingIndex} has more than one closure.`,
+      );
+    }
+    seen.add(closure.findingIndex);
+  }
+
+  const missing = previousFindings
+    .map((_, index) => index)
+    .filter((index) => !seen.has(index));
+  if (missing.length > 0) {
+    throw new FindingClosureIncompleteError(
+      taskId,
+      `missing closures for finding indices: ${missing.join(", ")}.`,
+    );
+  }
+}
+
+function reviewPassBlockers(
+  submissionEvent: TaskEventRecord | undefined,
+  closures: FindingClosure[],
+): string[] {
+  const reasons: string[] = [];
+  const criteriaResults = submissionEvent?.criteriaResults ?? null;
+  if (criteriaResults) {
+    const unresolved = criteriaResults.filter(
+      (result) => result.status !== "met",
+    );
+    if (unresolved.length > 0) {
+      reasons.push(
+        `acceptance criteria without a satisfied result: ${unresolved
+          .map((result) => `${result.criterion} (${result.status})`)
+          .join("; ")}`,
+      );
+    }
+  }
+
+  const blocking = closures.filter(
+    (closure) =>
+      closure.status === "not_fixed" || closure.status === "partially_fixed",
+  );
+  if (blocking.length > 0) {
+    reasons.push(
+      `previous findings still unresolved: ${blocking
+        .map((closure) => `#${closure.findingIndex} (${closure.status})`)
+        .join("; ")}`,
+    );
+  }
+
+  return reasons;
 }
 
 function dependencyIdsForTask(
@@ -1015,6 +1203,7 @@ export class TaskService {
       if (task.status !== "running") {
         throw new InvalidTaskStateError(task.id, "running", task.status);
       }
+      validateSubmissionCriteria(task, parsed.criteriaResults);
       const now = this.now().toISOString();
       const actorLabel =
         parsed.actorLabel ??
@@ -1046,6 +1235,7 @@ export class TaskService {
         reviewerActorLabel: null,
         summary: null,
         findings: [],
+        findingClosures: [],
         verificationEvidence: [],
         integrationRequired: task.integrationRequired,
         integrationTargetBranch: task.integrationTargetBranch,
@@ -1069,6 +1259,7 @@ export class TaskService {
         type: "submitted_for_review",
         summary: parsed.summary,
         completedWork: parsed.completedWork,
+        criteriaResults: parsed.criteriaResults,
         currentStep: null,
         nextStep: null,
         blocker: null,
@@ -1157,7 +1348,8 @@ export class TaskService {
         throw new ReviewRunOwnershipError(task.id);
       }
 
-      const review = transaction.listReviewsByTaskId(task.id).at(-1);
+      const reviews = transaction.listReviewsByTaskId(task.id);
+      const review = reviews.at(-1);
       if (
         !review ||
         review.status !== "in_progress" ||
@@ -1167,6 +1359,21 @@ export class TaskService {
       }
       if (parsed.decision === "passed" && parsed.verificationEvidence.length === 0) {
         throw new ReviewEvidenceIncompleteError(task.id);
+      }
+      const previousReview = reviews.length >= 2 ? reviews.at(-2) ?? null : null;
+      validateFindingClosures(task.id, previousReview, parsed.findingClosures);
+      if (parsed.decision === "passed") {
+        const submissionEvent = transaction
+          .listEventsByTaskId(task.id)
+          .filter((event) => event.type === "submitted_for_review")
+          .at(-1);
+        const reasons = reviewPassBlockers(
+          submissionEvent,
+          parsed.findingClosures,
+        );
+        if (reasons.length > 0) {
+          throw new ReviewCannotPassError(task.id, reasons);
+        }
       }
 
       const now = this.now().toISOString();
@@ -1178,6 +1385,7 @@ export class TaskService {
         reviewerActorLabel: actorLabel,
         summary: parsed.summary,
         findings: parsed.findings,
+        findingClosures: parsed.findingClosures,
         verificationEvidence: parsed.verificationEvidence,
         concludedAt: now,
         updatedAt: now,

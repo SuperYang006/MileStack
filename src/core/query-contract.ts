@@ -5,8 +5,18 @@ import {
   taskStatuses,
 } from "./task-model.js";
 import {
+  criterionResultSchema,
+  findingClosureSchema,
+  findingClosureStatuses,
+  reviewFindingInputSchema,
+  reviewFindingSchema,
   reviewStatuses,
   riskLevels,
+  verificationEvidenceSchema,
+} from "./review-model.js";
+import type {
+  CriterionResult,
+  FindingClosure,
 } from "./review-model.js";
 import { integrationStatuses } from "./integration-model.js";
 
@@ -29,21 +39,13 @@ export const taskEventTypeSchema = z.enum(taskEventTypes);
 export const riskLevelSchema = z.enum(riskLevels);
 export const reviewStatusSchema = z.enum(reviewStatuses);
 export const integrationStatusSchema = z.enum(integrationStatuses);
-
-export const reviewFindingSchema = z
-  .object({
-    issue: z.string().trim().min(1),
-    suggestion: z.string().trim().min(1),
-    severity: riskLevelSchema.default("medium"),
-  })
-  .strict();
-
-export const verificationEvidenceSchema = z
-  .object({
-    command: z.string().trim().min(1),
-    result: z.string().trim().min(1),
-  })
-  .strict();
+export {
+  criterionResultSchema,
+  findingClosureSchema,
+  reviewFindingInputSchema,
+  reviewFindingSchema,
+};
+export type { CriterionResult, FindingClosure };
 
 export const reviewSchema = z
   .object({
@@ -59,6 +61,7 @@ export const reviewSchema = z
     reviewerActorLabel: nullableTextSchema,
     summary: nullableTextSchema,
     findings: z.array(reviewFindingSchema),
+    findingClosures: z.array(findingClosureSchema).default([]),
     verificationEvidence: z.array(verificationEvidenceSchema),
     integrationRequired: z.boolean(),
     integrationTargetBranch: z.string().min(1),
@@ -185,6 +188,7 @@ export const taskEventSchema = z
     type: taskEventTypeSchema,
     summary: z.string().min(1),
     completedWork: z.array(z.string()).nullable(),
+    criteriaResults: z.array(criterionResultSchema).nullable().optional(),
     currentStep: nullableTextSchema,
     nextStep: nullableTextSchema,
     blocker: nullableTextSchema,
@@ -270,20 +274,52 @@ export const taskWorkingDependencySchema = z
   })
   .strict();
 
+export const taskWorkingPhaseSchema = z.enum(["implementation", "review"]);
+
 export const taskWorkingSubmissionSchema = z
   .object({
     review: reviewSchema,
     summary: nullableTextSchema,
     completedWork: z.array(z.string()).nullable(),
+    criteriaResults: z.array(criterionResultSchema).nullable(),
+  })
+  .strict();
+
+const taskWorkingFindingFields = {
+  issue: z.string().min(1),
+  suggestion: z.string().min(1),
+  severity: riskLevelSchema,
+  trigger: z.string().min(1).optional(),
+  impact: z.string().min(1).optional(),
+  evidence: z.string().min(1).optional(),
+  location: z.string().min(1).optional(),
+};
+
+export const taskWorkingPreviousFindingSchema = z
+  .object({
+    findingIndex: z.number().int().nonnegative(),
+    ...taskWorkingFindingFields,
+  })
+  .strict();
+
+export const taskWorkingOpenFindingSchema = z
+  .object({
+    reviewRound: z.number().int().positive(),
+    findingIndex: z.number().int().nonnegative(),
+    ...taskWorkingFindingFields,
+    closureStatus: z.enum(findingClosureStatuses).nullable(),
   })
   .strict();
 
 export const taskWorkingDetailsSchema = z
   .object({
     task: taskSchema,
+    phase: taskWorkingPhaseSchema,
     dependencies: z.array(taskWorkingDependencySchema),
     currentRunEvents: z.array(taskEventSchema),
     latestSubmission: taskWorkingSubmissionSchema.nullable(),
+    previousFindings: z.array(taskWorkingPreviousFindingSchema),
+    openFindings: z.array(taskWorkingOpenFindingSchema),
   })
   .strict();
 
@@ -402,6 +438,7 @@ export const submitForReviewInputSchema = z
     worktree: z.string().trim().min(1).optional(),
     summary: z.string().trim().min(1),
     completedWork: z.array(z.string().trim().min(1)).default([]),
+    criteriaResults: z.array(criterionResultSchema).default([]),
     actorLabel: z.string().trim().min(1).optional(),
   })
   .strict();
@@ -482,7 +519,7 @@ export const requestTaskChangesInputSchema = z
     taskId: identifierSchema,
     reviewRunId: identifierSchema.optional(),
     feedback: z.string().trim().min(1).optional(),
-    findings: z.array(reviewFindingSchema).default([]),
+    findings: z.array(reviewFindingInputSchema).default([]),
     actorLabel: z.string().trim().min(1).optional(),
   })
   .strict()
@@ -511,7 +548,8 @@ export const completeReviewInputSchema = z
     reviewRunId: identifierSchema,
     decision: z.enum(["passed", "changes_requested"]),
     summary: z.string().trim().min(1),
-    findings: z.array(reviewFindingSchema).default([]),
+    findings: z.array(reviewFindingInputSchema).default([]),
+    findingClosures: z.array(findingClosureSchema).default([]),
     verificationEvidence: z.array(verificationEvidenceSchema).default([]),
     actorLabel: z.string().trim().min(1).optional(),
   })
@@ -565,6 +603,13 @@ export type ProjectSummary = z.infer<typeof projectSummarySchema>;
 export type TaskSummary = z.infer<typeof taskSummarySchema>;
 export type TaskDetails = z.infer<typeof taskDetailsSchema>;
 export type TaskWorkingDetails = z.infer<typeof taskWorkingDetailsSchema>;
+export type TaskWorkingPhase = z.infer<typeof taskWorkingPhaseSchema>;
+export type TaskWorkingPreviousFinding = z.infer<
+  typeof taskWorkingPreviousFindingSchema
+>;
+export type TaskWorkingOpenFinding = z.infer<
+  typeof taskWorkingOpenFindingSchema
+>;
 export type Review = z.infer<typeof reviewSchema>;
 export type ReviewDigest = z.infer<typeof reviewDigestSchema>;
 export type ProjectStatus = z.infer<typeof projectStatusSchema>;

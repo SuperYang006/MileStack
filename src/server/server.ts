@@ -22,6 +22,8 @@ import {
   TaskRunOwnershipError,
   ReviewRunOwnershipError,
   ReviewEvidenceIncompleteError,
+  FindingClosureIncompleteError,
+  ReviewCannotPassError,
   IntegrationCheckStaleError,
 } from "../core/errors.js";
 import {
@@ -30,7 +32,7 @@ import {
   setTaskIntegrationPolicyInputSchema,
   checkTaskIntegrationInputSchema,
 } from "../core/query-contract.js";
-import type { ReviewFinding, VerificationEvidence } from "../core/review-model.js";
+import type { ReviewFindingInput, VerificationEvidence } from "../core/review-model.js";
 import { runtimeVersion } from "./runtime-version.js";
 
 export type HttpServerOptions = {
@@ -432,7 +434,7 @@ export async function createHttpServer(
     const { id } = request.params as { id: string };
     const body = (request.body || {}) as {
       feedback?: string;
-      findings?: ReviewFinding[];
+      findings?: ReviewFindingInput[];
       reviewRunId?: string;
       projectId?: string;
     };
@@ -502,7 +504,17 @@ export async function createHttpServer(
       reviewRunId?: string;
       decision?: "passed" | "changes_requested";
       summary?: string;
-      findings?: ReviewFinding[];
+      findings?: ReviewFindingInput[];
+      findingClosures?: Array<{
+        findingIndex: number;
+        status:
+          | "fixed"
+          | "partially_fixed"
+          | "not_fixed"
+          | "unverifiable"
+          | "invalidated";
+        evidence?: VerificationEvidence[];
+      }>;
       verificationEvidence?: VerificationEvidence[];
       actorLabel?: string;
     };
@@ -516,6 +528,7 @@ export async function createHttpServer(
         decision: body.decision as "passed" | "changes_requested",
         summary: body.summary as string,
         findings: body.findings,
+        findingClosures: body.findingClosures,
         verificationEvidence: body.verificationEvidence,
         actorLabel: body.actorLabel as string | undefined,
       });
@@ -527,6 +540,8 @@ export async function createHttpServer(
         err instanceof InvalidTaskStateError ||
         err instanceof ReviewRunOwnershipError ||
         err instanceof ReviewEvidenceIncompleteError ||
+        err instanceof FindingClosureIncompleteError ||
+        err instanceof ReviewCannotPassError ||
         err instanceof IntegrationCheckStaleError ||
         err instanceof z.ZodError
       ) {

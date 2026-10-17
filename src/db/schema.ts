@@ -13,7 +13,11 @@ import {
   taskStatuses,
 } from "../core/task-model.js";
 import { reviewStatuses, riskLevels } from "../core/review-model.js";
-import type { ReviewFinding, VerificationEvidence } from "../core/review-model.js";
+import type {
+  CompletedWorkPayload,
+  ReviewFindingsPayload,
+  VerificationEvidence,
+} from "../core/review-model.js";
 import { integrationStatuses } from "../core/integration-model.js";
 import type { IntegrationStatus } from "../core/integration-model.js";
 
@@ -118,7 +122,7 @@ export const taskEvents = sqliteTable(
     runId: text("run_id"),
     type: text("type", { enum: taskEventTypes }).notNull(),
     summary: text("summary").notNull(),
-    completedWork: text("completed_work", { mode: "json" }).$type<string[]>(),
+    completedWork: text("completed_work", { mode: "json" }).$type<CompletedWorkPayload | null>(),
     currentStep: text("current_step"),
     nextStep: text("next_step"),
     blocker: text("blocker"),
@@ -157,7 +161,7 @@ export const taskReviews = sqliteTable(
       .default("pending"),
     reviewerActorLabel: text("reviewer_actor_label"),
     summary: text("summary"),
-    findings: text("findings", { mode: "json" }).$type<ReviewFinding[]>(),
+    findings: text("findings", { mode: "json" }).$type<ReviewFindingsPayload | null>(),
     verificationEvidence: text("verification_evidence", { mode: "json" }).$type<
       VerificationEvidence[]
     >(),

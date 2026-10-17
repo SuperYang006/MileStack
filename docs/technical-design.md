@@ -211,6 +211,8 @@ WAL 允许 Web 服务和多个 MCP 进程并发读取，并串行完成短事务
 
 每次 `submit_for_review` 都创建新的 `TaskReview`，并清除执行 `activeRunId`。审核使用独立的 `activeReviewRunId`/`reviewRunId`，领取和完成都必须在短事务中校验当前凭证；审核退回或结束后凭证立即失效。新的提交创建新的 review round，旧审核结论不再决定当前任务。
 
+`submit_for_review` 把逐条验收标准交付结果写入 `submitted_for_review` 事件的 `completed_work` JSON；审核的新发现字段（触发条件、可观察影响、证据、可选位置）与复审关闭记录写入 `task_reviews.findings` JSON。读取时同时接受旧形状（纯字符串数组、只含问题/建议/严重程度的发现），不新增表或列，已有数据库无需迁移或回填。`TaskService` 校验交付结果与关闭记录的完整性，并阻止存在未满足或无法验证交付结果、未修复或部分修复发现的审核通过。`get_task` 的 working 视图按阶段生成：实施轮返回目标、全部验收标准、当前执行轮次进度和未关闭发现；审核轮返回固定提交、逐条交付结果和上一轮待关闭的发现；`view: "full"` 才返回完整事件与审核历史。
+
 审核策略和本地交付门槛如下：
 
 | 风险 | AI 审核通过条件 | 通过后的状态 |
@@ -269,7 +271,10 @@ MCP Tool ------/
 - 更新任务当前快照；
 - 追加 `TaskEvent`；
 - 固定提交审核的 commit SHA 和 branch/worktree 元数据；
+- 校验提交的逐条验收标准交付结果，拒绝缺失、重复、未知或缺少证据的结果；
 - 原子领取独立的 AI 审核会话，保存结构化结论和验证证据；
+- 校验复审关闭记录，拒绝存在未满足或无法验证交付结果、未修复或部分修复发现的通过结论；
+- 按阶段生成 working 上下文，只返回当轮所需的进度、提交、待关闭发现和未关闭发现；
 - 按风险策略记录自动验收或开发者批准事实，并统一执行本地集成完成门槛；
 - 支持无重复审核或批准地重试失败或不可用的集成检查；
 - 接受开发者在审核无结论时的直接验收，把审核记为 `waived` 并保留原因，再经过集成完成门槛；
@@ -326,7 +331,7 @@ input.runId == task.activeRunId
 
 `start_review` 只允许领取最新的 `pending` 审核记录，并生成独立的 `reviewRunId`。同一任务已有 `activeReviewRunId` 时，第二个审核者必须失败；`complete_review` 必须同时匹配任务和最新审核记录上的 `reviewRunId`，否则拒绝过期凭证。通过结论必须至少带一条 `{ command, result }` 验证证据。审核结束或退回后清除 `activeReviewRunId`。
 
-审核者的 actor label、摘要、结构化 finding（问题、建议、严重度）和验证证据都属于审计数据；actor label 只是展示和审计信息，不能替代 `reviewRunId` 的并发所有权。
+审核者的 actor label、摘要、结构化 finding（问题、建议、严重度、触发条件、可观察影响、证据和可选位置）、复审关闭记录和验证证据都属于审计数据；actor label 只是展示和审计信息，不能替代 `reviewRunId` 的并发所有权。上一轮为 `changes_requested` 时，复审必须为上一轮每条发现给出且只给出一个关闭状态；第一轮不要求关闭记录。存在 `not_met`/`unverifiable` 交付结果或 `not_fixed`/`partially_fixed` 发现时，`passed` 结论被拒绝。
 
 ### 6.3.1 开发者直接验收（waived）
 

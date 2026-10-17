@@ -7,7 +7,7 @@ const taskClaimRule =
 const taskClaimValidationRule =
   "start_task is the final atomic claim boundary: the server validates task status, developer-confirmed risk, completed dependencies, and concurrent claims. Do not expect get_task to expose runnable.";
 const taskCompletionRule =
-  "After the acceptance criteria and required verification pass, call submit_for_review with an exact 40-character commit SHA. Submission moves the task to in_review and invalidates the execution runId. A reviewer must then call start_review and conclude the review with approve_review, request_changes, or complete_review using the returned reviewRunId. Required local Git integration is checked against the fixed review commit and the developer-confirmed local target branch. A low-risk task may complete automatically only after that check; medium- and high-risk tasks require developer approval and the same integration gate.";
+  "After the acceptance criteria and required verification pass, call submit_for_review with an exact 40-character commit SHA and exactly one delivery result per acceptance criterion (met, not_met, or unverifiable; met requires at least one recorded command and result). Submission moves the task to in_review and invalidates the execution runId. A reviewer must then call start_review and conclude the review with approve_review, request_changes, or complete_review using the returned reviewRunId. Required local Git integration is checked against the fixed review commit and the developer-confirmed local target branch. A low-risk task may complete automatically only after that check; medium- and high-risk tasks require developer approval and the same integration gate.";
 
 export const projectAgentInstructionsPath = ".milestack/agent-instructions.md";
 
@@ -93,9 +93,10 @@ export function formatProjectAgentInstructions(): string {
     "",
     "- Review the exact submitted commit, not an uncommitted working tree or a moving branch tip. Use a separate reviewer context when available; actorLabel alone does not prove independence.",
     "- Call start_review(taskId, actorLabel?) to atomically claim the latest pending review and save its independent reviewRunId. Never substitute the implementer's runId.",
-    "- A passing review must record the commands actually run and their results. Do not claim verification that was not performed.",
+    "- A passing review must record the commands actually run and their results. Do not claim verification that was not performed. A review cannot pass while a submitted acceptance criterion is not_met or unverifiable.",
     "- Use approve_review(taskId, reviewRunId, summary, findings, verificationEvidence, actorLabel?) or complete_review with decision=passed to pass a review.",
-    "- Use request_changes(taskId, reviewRunId, summary, findings, actorLabel?) or complete_review with decision=changes_requested to return work. Each finding must contain a concrete issue, an actionable suggestion, and a severity.",
+    "- Use request_changes(taskId, reviewRunId, summary, findings, actorLabel?) or complete_review with decision=changes_requested to return work. Every new finding must record a concrete issue, an actionable suggestion, a severity, a trigger condition, an observable impact, and evidence; add a location when one can be identified.",
+    "- When re-reviewing a round that requested changes, record a closure status (fixed, partially_fixed, not_fixed, unverifiable, or invalidated) for every previous finding. A review cannot pass while a previous finding remains not_fixed or partially_fixed.",
     "- request_changes returns the task to ready and invalidates old execution and review credentials. Rework must be claimed with a new runId and submitted as a new fixed commit.",
     "",
     "## Apply the risk policy",
@@ -146,6 +147,6 @@ export function formatKnownTaskBriefInstructions(taskId: string): string {
     "4. If the claim fails, do not modify the project; report the returned error and required action.",
     "5. Record meaningful progress with update_task and the current runId. Include a summary and, when they change, currentStep and nextStep.",
     "6. If you are blocked or cannot continue, call update_task with the current runId, blocker, requiredAction, and handoffNote, then stop. Do not invent a separate release or block tool.",
-    "7. After the acceptance criteria and required verification pass, call submit_for_review with the current runId, an existing full 40-character commit SHA, and the actual branch and worktree. Submission moves the task to in_review and invalidates the runId. A verified low-risk review may complete automatically only after the fixed review commit is verified on the developer-confirmed local target branch; medium- and high-risk tasks also require developer approval. If accepted but waiting for integration, retry with check_task_integration and the latest review id after an authorized local merge.",
+    "7. After the acceptance criteria and required verification pass, call submit_for_review with the current runId, an existing full 40-character commit SHA, the actual branch and worktree, and exactly one delivery result per acceptance criterion (met, not_met, or unverifiable; met requires recorded evidence). Submission moves the task to in_review and invalidates the runId. A verified low-risk review may complete automatically only after the fixed review commit is verified on the developer-confirmed local target branch; medium- and high-risk tasks also require developer approval. If accepted but waiting for integration, retry with check_task_integration and the latest review id after an authorized local merge.",
   ].join("\n");
 }

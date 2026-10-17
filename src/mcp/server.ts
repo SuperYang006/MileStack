@@ -20,7 +20,7 @@ import {
   getProjectStatusInputSchema,
   getTaskInputSchema,
   listTasksInputSchema,
-  reviewFindingSchema,
+  reviewFindingInputSchema,
   startReviewInputSchema,
   startTaskInputSchema,
   checkTaskIntegrationInputSchema,
@@ -60,7 +60,7 @@ const reviewDecisionArgumentsSchema = completeReviewArgumentsSchema.omit({
 });
 const requestChangesArgumentsSchema = reviewDecisionArgumentsSchema
   .omit({ verificationEvidence: true })
-  .extend({ findings: z.array(reviewFindingSchema).min(1) });
+  .extend({ findings: z.array(reviewFindingInputSchema).min(1) });
 
 const toolDefinitions: Tool[] = [
   {
@@ -78,7 +78,7 @@ const toolDefinitions: Tool[] = [
   {
     name: "get_task",
     description:
-      "Read a known taskId's full task definition, dependency state, and current work context before claiming it. The default working view includes current-run progress and the latest submission and review; pass view='full' to retrieve the complete immutable event and review histories. This does not require get_project_status first.",
+      "Read a known taskId's definition and the context for its current phase. The default working view returns the phase (implementation or review), dependency state, the current run's progress, the latest submission with per-criterion delivery results, previous-round findings awaiting closure, and unclosed findings from changes-requested rounds. Pass view='full' to retrieve the complete immutable event and review histories. This does not require get_project_status first.",
     inputSchema: toJSONSchema(taskArgumentsSchema) as Tool["inputSchema"],
   },
   {
@@ -108,7 +108,7 @@ const toolDefinitions: Tool[] = [
   {
     name: "submit_for_review",
     description:
-      "Submit a running task for review with a completion summary and fixed commit SHA. The task changes to in_review and the runId becomes invalid after submission.",
+      "Submit a running task for review with a completion summary, an exact 40-character commit SHA, and exactly one delivery result per acceptance criterion (met, not_met, or unverifiable; met requires recorded evidence). The task changes to in_review and the runId becomes invalid after submission.",
     inputSchema: toJSONSchema(submitForReviewArgumentsSchema) as Tool["inputSchema"],
   },
   {
@@ -120,19 +120,19 @@ const toolDefinitions: Tool[] = [
   {
     name: "approve_review",
     description:
-      "Pass the claimed review with a summary, structured findings, and verification evidence. The reviewRunId must own the current review; low-risk tasks may complete automatically while medium- and high-risk tasks wait for developer approval.",
+      "Pass the claimed review with a summary, structured findings, finding closures, and verification evidence. Every new finding records issue, suggestion, severity, trigger, impact, and evidence, plus a location when one can be identified. When the previous round requested changes, record a closure status for every previous finding; unresolved or partially fixed findings and not_met or unverifiable delivery results block passing. The reviewRunId must own the current review; low-risk tasks may complete automatically while medium- and high-risk tasks wait for developer approval.",
     inputSchema: toJSONSchema(reviewDecisionArgumentsSchema) as Tool["inputSchema"],
   },
   {
     name: "request_changes",
     description:
-      "Return the claimed review for rework with actionable feedback and structured findings. The reviewRunId must own the current review; the task returns to ready and requires a new execution runId.",
+      "Return the claimed review for rework with actionable findings and finding closures. Findings require trigger, impact, and evidence; a re-review must close every finding from the previous changes-requested round. The reviewRunId must own the current review; the task returns to ready and requires a new execution runId.",
     inputSchema: toJSONSchema(requestChangesArgumentsSchema) as Tool["inputSchema"],
   },
   {
     name: "complete_review",
     description:
-      "Record a passed or changes-requested AI review with structured findings and verification evidence. Completion also requires the fixed review commit to be present on the developer-confirmed local target branch; low-risk tasks may complete automatically only after that check, while medium- and high-risk tasks wait for developer approval.",
+      "Record a passed or changes-requested AI review with structured findings, finding closures, and verification evidence. Passing is rejected when submitted acceptance criteria are not met or unverifiable, or when a previous-round finding remains not_fixed or partially_fixed. Completion also requires the fixed review commit to be present on the developer-confirmed local target branch; low-risk tasks may complete automatically only after that check, while medium- and high-risk tasks wait for developer approval.",
     inputSchema: toJSONSchema(completeReviewArgumentsSchema) as Tool["inputSchema"],
   },
   {

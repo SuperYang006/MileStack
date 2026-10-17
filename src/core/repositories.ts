@@ -1,5 +1,7 @@
 import type { TaskEventType, TaskStatus } from "./task-model.js";
 import type {
+  CriterionResult,
+  FindingClosure,
   ReviewFinding,
   ReviewStatus,
   RiskLevel,
@@ -60,6 +62,7 @@ export type ReviewRecord = {
   reviewerActorLabel: string | null;
   summary: string | null;
   findings: ReviewFinding[];
+  findingClosures: FindingClosure[];
   verificationEvidence: VerificationEvidence[];
   integrationRequired: boolean;
   integrationTargetBranch: string;
@@ -84,6 +87,7 @@ export type TaskEventRecord = {
   type: TaskEventType;
   summary: string;
   completedWork: string[] | null;
+  criteriaResults?: CriterionResult[] | null;
   currentStep: string | null;
   nextStep: string | null;
   blocker: string | null;
