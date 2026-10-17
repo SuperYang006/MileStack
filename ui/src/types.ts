@@ -66,6 +66,13 @@ export interface TaskSummary {
 
 export type RiskLevel = "low" | "medium" | "high";
 export type IntegrationStatus = "integrated" | "not_integrated" | "unavailable" | "not_required";
+export type CriterionResultStatus = "met" | "not_met" | "unverifiable";
+export type FindingClosureStatus =
+  | "fixed"
+  | "partially_fixed"
+  | "not_fixed"
+  | "unverifiable"
+  | "invalidated";
 
 export interface TaskStatusCounts {
   inbox: number;
@@ -81,11 +88,28 @@ export interface ReviewFinding {
   issue: string;
   suggestion: string;
   severity: RiskLevel;
+  /** Structured review fields; absent on records written before they existed. */
+  trigger?: string;
+  impact?: string;
+  evidence?: string;
+  location?: string;
 }
 
 export interface VerificationEvidence {
   command: string;
   result: string;
+}
+
+export interface CriterionResult {
+  criterion: string;
+  status: CriterionResultStatus;
+  evidence: VerificationEvidence[];
+}
+
+export interface FindingClosure {
+  findingIndex: number;
+  status: FindingClosureStatus;
+  evidence?: VerificationEvidence[];
 }
 
 export interface TaskReview {
@@ -101,6 +125,8 @@ export interface TaskReview {
   reviewerActorLabel: string | null;
   summary: string | null;
   findings: ReviewFinding[];
+  /** Closures recorded by this round for the previous changes-requested round. */
+  findingClosures?: FindingClosure[];
   verificationEvidence: VerificationEvidence[];
   integrationRequired: boolean;
   integrationTargetBranch: string;
@@ -179,6 +205,8 @@ export interface TaskEvent {
   type: TaskEventType;
   summary: string;
   completedWork: string[] | null;
+  /** Per-criterion delivery results; absent on records written before they existed. */
+  criteriaResults?: CriterionResult[] | null;
   currentStep: string | null;
   nextStep: string | null;
   blocker: string | null;

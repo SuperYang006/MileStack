@@ -10,6 +10,25 @@ import {
   formatDuration,
   type RunExecution,
 } from "../utils/runExecutions";
+import {
+  buildCriterionResultDisplays,
+  buildFindingClosureDisplays,
+  buildFindingDisplays,
+  type DisplayTone,
+} from "../utils/reviewRecords";
+
+const toneBadgeClass = (tone: DisplayTone): string => {
+  switch (tone) {
+    case "positive":
+      return "bg-emerald-950 border border-emerald-800 text-emerald-300";
+    case "negative":
+      return "bg-rose-950 border border-rose-800 text-rose-300";
+    case "warning":
+      return "bg-amber-950 border border-amber-800 text-amber-300";
+    default:
+      return "bg-zinc-900 border border-zinc-700 text-zinc-300";
+  }
+};
 
 interface TaskDetailModalProps {
   details: TaskDetails | null;
@@ -831,40 +850,115 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                         )}
 
                         {/* Findings */}
-                        {rev.findings && rev.findings.length > 0 && (
-                          <div className="space-y-1.5">
-                            <div className="text-[10px] font-semibold text-amber-400 flex items-center space-x-1">
-                              <ShieldAlert className="w-3 h-3 text-amber-400" />
-                              <span>发现的问题与改进建议 ({rev.findings.length})：</span>
-                            </div>
-                            <div className="space-y-1">
-                              {rev.findings.map((f, i) => (
-                                <div
-                                  key={i}
-                                  className="p-2 rounded bg-amber-950/20 border border-amber-900/40 text-[11px] space-y-1"
-                                >
-                                  <div className="flex items-center space-x-1.5">
-                                    <span
-                                      className={`px-1 py-0.2 rounded text-[9px] uppercase font-bold ${
-                                        f.severity === "high"
-                                          ? "bg-rose-950 border border-rose-800 text-rose-300"
-                                          : f.severity === "low"
-                                          ? "bg-emerald-950 border border-emerald-800 text-emerald-300"
-                                          : "bg-amber-950 border border-amber-800 text-amber-300"
-                                      }`}
-                                    >
-                                      {f.severity}
-                                    </span>
-                                    <span className="text-zinc-200 font-medium">{f.issue}</span>
+                        {(() => {
+                          const findingDisplays = buildFindingDisplays(rev);
+                          if (findingDisplays.length === 0) return null;
+                          return (
+                            <div className="space-y-1.5">
+                              <div className="text-[10px] font-semibold text-amber-400 flex items-center space-x-1">
+                                <ShieldAlert className="w-3 h-3 text-amber-400" />
+                                <span>发现的问题与改进建议 ({findingDisplays.length})：</span>
+                              </div>
+                              <div className="space-y-1">
+                                {findingDisplays.map((f) => (
+                                  <div
+                                    key={f.key}
+                                    className="p-2 rounded bg-amber-950/20 border border-amber-900/40 text-[11px] space-y-1"
+                                  >
+                                    <div className="flex items-center space-x-1.5">
+                                      <span
+                                        className={`px-1 py-0.2 rounded text-[9px] uppercase font-bold ${
+                                          f.severity === "high"
+                                            ? "bg-rose-950 border border-rose-800 text-rose-300"
+                                            : f.severity === "low"
+                                            ? "bg-emerald-950 border border-emerald-800 text-emerald-300"
+                                            : "bg-amber-950 border border-amber-800 text-amber-300"
+                                        }`}
+                                      >
+                                        {f.severity}
+                                      </span>
+                                      <span className="text-zinc-200 font-medium">{f.issue}</span>
+                                    </div>
+                                    <div className="text-zinc-400 text-[10px] pl-2">
+                                      建议：{f.suggestion}
+                                    </div>
+                                    {f.trigger && (
+                                      <div className="text-zinc-400 text-[10px] pl-2">
+                                        触发条件：{f.trigger}
+                                      </div>
+                                    )}
+                                    {f.impact && (
+                                      <div className="text-zinc-400 text-[10px] pl-2">
+                                        可观察影响：{f.impact}
+                                      </div>
+                                    )}
+                                    {f.evidence && (
+                                      <div className="text-zinc-400 text-[10px] pl-2">
+                                        证据：{f.evidence}
+                                      </div>
+                                    )}
+                                    {f.location && (
+                                      <div className="text-zinc-500 text-[10px] pl-2">
+                                        位置：{f.location}
+                                      </div>
+                                    )}
                                   </div>
-                                  <div className="text-zinc-400 text-[10px] pl-2">
-                                    建议：{f.suggestion}
-                                  </div>
-                                </div>
-                              ))}
+                                ))}
+                              </div>
                             </div>
-                          </div>
-                        )}
+                          );
+                        })()}
+
+                        {/* Finding Closures */}
+                        {(() => {
+                          const closureDisplays = buildFindingClosureDisplays(
+                            details.reviews ?? [],
+                            rev,
+                          );
+                          if (closureDisplays.length === 0) return null;
+                          return (
+                            <div className="space-y-1.5">
+                              <div className="text-[10px] font-semibold text-cyan-300 flex items-center space-x-1">
+                                <ShieldCheck className="w-3 h-3 text-cyan-300" />
+                                <span>上一轮发现关闭情况 ({closureDisplays.length})：</span>
+                              </div>
+                              <div className="space-y-1">
+                                {closureDisplays.map((closure) => (
+                                  <div
+                                    key={closure.key}
+                                    className="p-2 rounded bg-cyan-950/20 border border-cyan-900/40 text-[11px] space-y-1"
+                                  >
+                                    <div className="flex items-center space-x-1.5">
+                                      <span
+                                        className={`shrink-0 px-1 py-0.2 rounded text-[9px] font-bold ${toneBadgeClass(closure.tone)}`}
+                                      >
+                                        {closure.statusLabel}
+                                      </span>
+                                      <span className="text-zinc-200 font-medium">
+                                        {closure.issue ??
+                                          `上一轮发现 #${closure.findingIndex + 1}`}
+                                      </span>
+                                    </div>
+                                    {closure.evidence.length > 0 && (
+                                      <div className="pl-2 space-y-0.5">
+                                        {closure.evidence.map((evidence, evidenceIndex) => (
+                                          <div
+                                            key={`${closure.key}-evidence-${evidenceIndex}`}
+                                            className="text-[10px] text-zinc-400"
+                                          >
+                                            <span className="text-zinc-600 select-none">$ </span>
+                                            <span className="text-cyan-300/80">{evidence.command}</span>
+                                            <span className="text-zinc-500"> · {evidence.result}</span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })()}
                       </div>
                     ))}
                   </div>
@@ -915,6 +1009,49 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                               </div>
                             </div>
                           )}
+
+                          {(() => {
+                            const criterionDisplays = buildCriterionResultDisplays(evt);
+                            if (criterionDisplays.length === 0) return null;
+                            return (
+                              <div className="mt-1 bg-cyan-950/20 p-1.5 rounded border border-cyan-900/30 space-y-1">
+                                <span className="font-semibold text-cyan-300">
+                                  验收标准交付结果:
+                                </span>
+                                <div className="space-y-1">
+                                  {criterionDisplays.map((result) => (
+                                    <div
+                                      key={result.key}
+                                      className="space-y-0.5 border-b border-cyan-900/20 last:border-b-0 pb-1 last:pb-0"
+                                    >
+                                      <div className="flex items-start space-x-1.5">
+                                        <span
+                                          className={`shrink-0 px-1 py-0.2 rounded text-[9px] font-bold ${toneBadgeClass(result.tone)}`}
+                                        >
+                                          {result.statusLabel}
+                                        </span>
+                                        <span className="text-zinc-200">{result.criterion}</span>
+                                      </div>
+                                      {result.evidence.length > 0 && (
+                                        <div className="pl-2 space-y-0.5">
+                                          {result.evidence.map((evidence, evidenceIndex) => (
+                                            <div
+                                              key={`${result.key}-evidence-${evidenceIndex}`}
+                                              className="text-[10px] text-zinc-400"
+                                            >
+                                              <span className="text-zinc-600 select-none">$ </span>
+                                              <span className="text-cyan-300/80">{evidence.command}</span>
+                                              <span className="text-zinc-500"> · {evidence.result}</span>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          })()}
 
                           {evt.currentStep && (
                             <div className="mt-1 text-zinc-300">
