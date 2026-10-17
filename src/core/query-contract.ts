@@ -520,6 +520,7 @@ export const requestTaskChangesInputSchema = z
     reviewRunId: identifierSchema.optional(),
     feedback: z.string().trim().min(1).optional(),
     findings: z.array(reviewFindingInputSchema).default([]),
+    findingClosures: z.array(findingClosureSchema).default([]),
     actorLabel: z.string().trim().min(1).optional(),
   })
   .strict()

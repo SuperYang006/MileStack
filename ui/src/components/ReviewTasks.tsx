@@ -11,16 +11,26 @@ import {
   GitBranch,
   RefreshCw,
 } from "lucide-react";
-import type { TaskSummary } from "../types";
+import type { FindingClosureInput, TaskSummary } from "../types";
+import { apiClient } from "../api/client";
 import { TaskIdBadge } from "./CopyTaskIdButton";
 import { EmptyState } from "./EmptyState";
-import { FeedbackModal, useFeedbackDialog } from "./FeedbackModal";
+import {
+  FeedbackModal,
+  useFeedbackDialog,
+  type FeedbackClosureOption,
+} from "./FeedbackModal";
+import { findingsAwaitingClosure } from "../utils/reviewRecords";
 
 interface ReviewTasksProps {
   tasks: TaskSummary[];
   onApprove: (taskId: string) => void;
   onWaiveApproval: (taskId: string, reason: string) => void;
-  onRequestChanges: (taskId: string, feedback: string) => void;
+  onRequestChanges: (
+    taskId: string,
+    feedback: string,
+    findingClosures?: FindingClosureInput[],
+  ) => void;
   onCheckIntegration: (taskId: string, reviewId: string) => void;
   checkingTaskId?: string | null;
   onSelectTask: (taskId: string) => void;
@@ -292,7 +302,19 @@ export const ReviewTasks: React.FC<ReviewTasksProps> = ({
     });
   };
 
-  const handleOpenRequestChanges = (task: TaskSummary) => {
+  const handleOpenRequestChanges = async (task: TaskSummary) => {
+    // The closure requirement lives in the service; read the previous round so
+    // the dialog can collect one status per finding instead of failing on submit.
+    let closures: FeedbackClosureOption[] = [];
+    try {
+      const details = await apiClient.getTaskDetails(task.id);
+      closures = findingsAwaitingClosure(details.reviews).map((finding, index) => ({
+        key: String(index),
+        label: finding.issue,
+      }));
+    } catch {
+      // Opening the dialog without closure inputs still surfaces the service error.
+    }
     openFeedbackDialog({
       taskId: task.id,
       taskTitle: task.title,
@@ -301,7 +323,18 @@ export const ReviewTasks: React.FC<ReviewTasksProps> = ({
       theme: "amber",
       confirmLabel: "退回返工",
       placeholder: "请输入审核反馈意见与具体修改建议...",
-      onSubmit: (feedback) => onRequestChanges(task.id, feedback),
+      closures,
+      onSubmit: (feedback, selections) =>
+        onRequestChanges(
+          task.id,
+          feedback,
+          selections.length > 0
+            ? selections.map((selection) => ({
+                findingIndex: Number(selection.key),
+                status: selection.status,
+              }))
+            : undefined,
+        ),
     });
   };
 

@@ -2,6 +2,7 @@ import type {
   ProjectStatus,
   TaskDetails,
   CreateTaskPayload,
+  FindingClosureInput,
   TaskSummary,
   EditInboxTaskPayload,
   TaskPage,
@@ -270,11 +271,18 @@ export const apiClient = {
   async requestTaskChanges(
     taskId: string,
     feedback: string,
+    findingClosures?: FindingClosureInput[],
     projectId?: string,
   ): Promise<void> {
     await sendVoid(`/api/tasks/${encodeURIComponent(taskId)}/request-changes`, {
       method: "POST",
-      body: { feedback, projectId },
+      body: {
+        feedback,
+        ...(findingClosures && findingClosures.length > 0
+          ? { findingClosures }
+          : {}),
+        projectId,
+      },
       timeoutMs: WRITE_TIMEOUT_MS,
     });
   },

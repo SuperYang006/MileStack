@@ -1,6 +1,7 @@
 import type {
   CriterionResultStatus,
   FindingClosureStatus,
+  ReviewFinding,
   RiskLevel,
   TaskEvent,
   TaskReview,
@@ -140,4 +141,18 @@ export function buildFindingClosureDisplays(
     tone: findingClosureStatusTone(closure.status),
     evidence: closure.evidence ?? [],
   }));
+}
+
+/**
+ * The findings a return for changes must close: only the immediately previous
+ * round qualifies, and only when it requested changes.
+ */
+export function findingsAwaitingClosure(
+  reviews: TaskReview[] | undefined,
+): ReviewFinding[] {
+  if (!reviews || reviews.length < 2) {
+    return [];
+  }
+  const previous = reviews[reviews.length - 2];
+  return previous?.status === "changes_requested" ? previous.findings : [];
 }

@@ -32,6 +32,7 @@ import type {
   TaskSummary,
   CreateTaskPayload,
   EditInboxTaskPayload,
+  FindingClosureInput,
   TaskDetails,
   RiskLevel,
 } from "../types";
@@ -303,11 +304,21 @@ export const DashboardPage: React.FC = () => {
   });
 
   const requestChangesMutation = useMutation({
-    mutationFn: ({ taskId, feedback }: { taskId: string; feedback: string }) =>
-      apiClient.requestTaskChanges(taskId, feedback),
+    mutationFn: ({
+      taskId,
+      feedback,
+      findingClosures,
+    }: {
+      taskId: string;
+      feedback: string;
+      findingClosures?: FindingClosureInput[];
+    }) => apiClient.requestTaskChanges(taskId, feedback, findingClosures),
     onSuccess: (_, variables) => {
       invalidateProjectQueries();
       queryClient.invalidateQueries({ queryKey: ["taskDetails", variables.taskId] });
+    },
+    onError: (error: Error) => {
+      alert(`退回返工失败：${error.message}`);
     },
   });
 
@@ -451,8 +462,8 @@ export const DashboardPage: React.FC = () => {
               onWaiveApproval={(taskId, reason) =>
                 waiveTaskApprovalMutation.mutate({ taskId, reason })
               }
-              onRequestChanges={(taskId, feedback) =>
-                requestChangesMutation.mutate({ taskId, feedback })
+              onRequestChanges={(taskId, feedback, findingClosures) =>
+                requestChangesMutation.mutate({ taskId, feedback, findingClosures })
               }
               onSelectTask={(id) => setSelectedTaskId(id)}
             />
@@ -517,8 +528,8 @@ export const DashboardPage: React.FC = () => {
         onWaiveApproval={(taskId, reason) =>
           waiveTaskApprovalMutation.mutate({ taskId, reason })
         }
-        onRequestChanges={(taskId, feedback) =>
-          requestChangesMutation.mutate({ taskId, feedback })
+        onRequestChanges={(taskId, feedback, findingClosures) =>
+          requestChangesMutation.mutate({ taskId, feedback, findingClosures })
         }
       />
       <EditInboxModal

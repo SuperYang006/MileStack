@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { X, GitCommit, CheckCircle2, Clock, Timer, Edit3, GitFork, ArrowRight, Zap, ShieldAlert, ShieldCheck, Terminal, Bot, Check, MessageSquare, GitBranch, RefreshCw } from "lucide-react";
 import { EmptyState } from "./EmptyState";
-import type { TaskDetails, TaskEvent, TaskSummary } from "../types";
+import type { FindingClosureInput, TaskDetails, TaskEvent, TaskSummary } from "../types";
 import { TaskIdBadge } from "./CopyTaskIdButton";
 import { FeedbackModal, useFeedbackDialog } from "./FeedbackModal";
 import { buildDownstreamMap } from "../utils/dependencyGraph";
@@ -14,6 +14,7 @@ import {
   buildCriterionResultDisplays,
   buildFindingClosureDisplays,
   buildFindingDisplays,
+  findingsAwaitingClosure,
   type DisplayTone,
 } from "../utils/reviewRecords";
 
@@ -41,7 +42,11 @@ interface TaskDetailModalProps {
   onSelectTask?: (taskId: string) => void;
   onApprove?: (taskId: string) => void;
   onWaiveApproval?: (taskId: string, reason: string) => void;
-  onRequestChanges?: (taskId: string, feedback: string) => void;
+  onRequestChanges?: (
+    taskId: string,
+    feedback: string,
+    findingClosures?: FindingClosureInput[],
+  ) => void;
   onCheckIntegration?: (taskId: string, reviewId: string) => void;
   onSetIntegrationPolicy?: (
     taskId: string,
@@ -97,6 +102,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
 
   const handleOpenRequestChanges = () => {
     if (!details) return;
+    const previousFindings = findingsAwaitingClosure(details.reviews);
     openFeedbackDialog({
       taskId: details.task.id,
       taskTitle: details.task.title,
@@ -105,7 +111,21 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
       theme: "amber",
       confirmLabel: "退回返工",
       placeholder: "请输入退回返工的修改意见与具体建议...",
-      onSubmit: (fb) => onRequestChanges?.(details.task.id, fb),
+      closures: previousFindings.map((finding, index) => ({
+        key: String(index),
+        label: finding.issue,
+      })),
+      onSubmit: (fb, selections) =>
+        onRequestChanges?.(
+          details.task.id,
+          fb,
+          selections.length > 0
+            ? selections.map((selection) => ({
+                findingIndex: Number(selection.key),
+                status: selection.status,
+              }))
+            : undefined,
+        ),
     });
   };
 

@@ -2,18 +2,25 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { MessageSquare, RotateCcw, ShieldCheck, X } from "lucide-react";
 
 import {
+  FINDING_CLOSURE_STATUS_OPTIONS,
+  type FeedbackClosureOption,
+  type FeedbackClosureSelection,
   type FeedbackTheme,
   getFeedbackThemeConfig,
   isValidFeedback,
 } from "../utils/feedbackDialog.js";
+import type { FindingClosureStatus } from "../types.js";
 
-export type { FeedbackTheme };
+export type { FeedbackClosureOption, FeedbackClosureSelection, FeedbackTheme };
 export { getFeedbackThemeConfig, isValidFeedback };
 
 export interface FeedbackModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (value: string) => void | Promise<void>;
+  onSubmit: (
+    value: string,
+    closures: FeedbackClosureSelection[],
+  ) => void | Promise<void>;
   taskId: string;
   taskTitle: string;
   title?: string;
@@ -24,6 +31,7 @@ export interface FeedbackModalProps {
   cancelLabel?: string;
   initialValue?: string;
   badgeLabel?: string;
+  closures?: FeedbackClosureOption[];
 }
 
 export interface FeedbackDialogOptions {
@@ -37,7 +45,11 @@ export interface FeedbackDialogOptions {
   cancelLabel?: string;
   initialValue?: string;
   badgeLabel?: string;
-  onSubmit: (value: string) => void | Promise<void>;
+  closures?: FeedbackClosureOption[];
+  onSubmit: (
+    value: string,
+    closures: FeedbackClosureSelection[],
+  ) => void | Promise<void>;
 }
 
 const ICONS = {
@@ -60,8 +72,12 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({
   cancelLabel = "取消",
   initialValue = "",
   badgeLabel,
+  closures = [],
 }) => {
   const [value, setValue] = useState(initialValue);
+  const [closureSelections, setClosureSelections] = useState<
+    Record<string, FindingClosureStatus | "">
+  >({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -70,11 +86,15 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({
   const effectiveTitle = title || themeConfig.defaultTitle;
   const effectiveConfirmLabel = confirmLabel || themeConfig.defaultConfirmLabel;
   const effectiveBadgeLabel = badgeLabel || themeConfig.badgeLabel;
-  const isValid = value.trim().length > 0;
+  const allClosuresChosen = closures.every((closure) =>
+    Boolean(closureSelections[closure.key]),
+  );
+  const isValid = value.trim().length > 0 && allClosuresChosen;
 
   useEffect(() => {
     if (isOpen) {
       setValue(initialValue);
+      setClosureSelections({});
       setIsSubmitting(false);
       const timer = setTimeout(() => {
         if (textareaRef.current) {
@@ -106,11 +126,19 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({
 
   const handleConfirm = async () => {
     const trimmed = value.trim();
-    if (!trimmed || isSubmitting) return;
+    if (!trimmed || !allClosuresChosen || isSubmitting) return;
 
     setIsSubmitting(true);
     try {
-      await onSubmit(trimmed);
+      await onSubmit(
+        trimmed,
+        closures
+          .filter((closure) => closureSelections[closure.key])
+          .map((closure) => ({
+            key: closure.key,
+            status: closureSelections[closure.key] as FindingClosureStatus,
+          })),
+      );
       onClose();
     } catch {
       // Error handling is managed by the caller/mutation
@@ -194,6 +222,42 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({
             </div>
           )}
 
+          {/* Previous-round findings that must be closed by this return. */}
+          {closures.length > 0 && (
+            <div className="p-3 rounded bg-amber-950/20 border border-amber-900/40 space-y-2">
+              <div className="text-[11px] font-semibold text-amber-300">
+                上一轮发现关闭状态（每条必选）
+              </div>
+              <div className="space-y-1.5">
+                {closures.map((closure) => (
+                  <div key={closure.key} className="flex items-start space-x-2">
+                    <span className="min-w-0 flex-1 text-[11px] text-zinc-300 line-clamp-2 leading-relaxed">
+                      {closure.label}
+                    </span>
+                    <select
+                      value={closureSelections[closure.key] ?? ""}
+                      onChange={(e) =>
+                        setClosureSelections((previous) => ({
+                          ...previous,
+                          [closure.key]: e.target.value as FindingClosureStatus | "",
+                        }))
+                      }
+                      disabled={isSubmitting}
+                      className="shrink-0 bg-zinc-900 border border-zinc-800 text-zinc-200 rounded px-1.5 py-1 text-[11px] outline-none focus:border-amber-500/70"
+                    >
+                      <option value="">请选择</option>
+                      {FINDING_CLOSURE_STATUS_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Multi-line Textarea */}
           <div>
             <textarea
@@ -257,9 +321,9 @@ export function useFeedbackDialog() {
     () => ({
       isOpen: !!dialogOptions,
       onClose: closeFeedbackDialog,
-      onSubmit: async (value: string) => {
+      onSubmit: async (value: string, closures: FeedbackClosureSelection[]) => {
         if (dialogOptions?.onSubmit) {
-          await dialogOptions.onSubmit(value);
+          await dialogOptions.onSubmit(value, closures);
         }
         closeFeedbackDialog();
       },
@@ -273,6 +337,7 @@ export function useFeedbackDialog() {
       cancelLabel: dialogOptions?.cancelLabel,
       initialValue: dialogOptions?.initialValue ?? "",
       badgeLabel: dialogOptions?.badgeLabel,
+      closures: dialogOptions?.closures ?? [],
     }),
     [dialogOptions, closeFeedbackDialog],
   );

@@ -1812,7 +1812,10 @@ export class TaskService {
         throw new ReviewRunOwnershipError(task.id);
       }
       const now = this.now().toISOString();
-      const review = transaction.listReviewsByTaskId(task.id).at(-1);
+      const reviews = transaction.listReviewsByTaskId(task.id);
+      const review = reviews.at(-1);
+      const previousReview = reviews.length >= 2 ? reviews.at(-2) ?? null : null;
+      validateFindingClosures(task.id, previousReview, parsed.findingClosures);
       const feedback = formatReviewFeedback(parsed.feedback, parsed.findings);
       if (review) {
         transaction.updateReview(review.id, {
@@ -1821,6 +1824,7 @@ export class TaskService {
             parsed.actorLabel ?? review.reviewerActorLabel ?? "developer",
           summary: feedback,
           findings: parsed.findings,
+          findingClosures: parsed.findingClosures,
           concludedAt: now,
           updatedAt: now,
         });

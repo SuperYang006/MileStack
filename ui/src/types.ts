@@ -112,6 +112,12 @@ export interface FindingClosure {
   evidence?: VerificationEvidence[];
 }
 
+/** A closure recorded when returning a task for rework; evidence is optional. */
+export interface FindingClosureInput {
+  findingIndex: number;
+  status: FindingClosureStatus;
+}
+
 export interface TaskReview {
   id: string;
   projectId: string;

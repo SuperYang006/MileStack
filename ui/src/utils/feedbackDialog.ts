@@ -1,4 +1,31 @@
+import type { FindingClosureStatus } from "../types.js";
+import { findingClosureStatusLabel } from "./reviewRecords.js";
+
 export type FeedbackTheme = "amber" | "violet" | "cyan";
+
+/** A previous-round finding that must be closed when returning for rework. */
+export interface FeedbackClosureOption {
+  key: string;
+  label: string;
+}
+
+export interface FeedbackClosureSelection {
+  key: string;
+  status: FindingClosureStatus;
+}
+
+const closureStatusOrder: FindingClosureStatus[] = [
+  "fixed",
+  "partially_fixed",
+  "not_fixed",
+  "unverifiable",
+  "invalidated",
+];
+
+export const FINDING_CLOSURE_STATUS_OPTIONS = closureStatusOrder.map((status) => ({
+  value: status,
+  label: findingClosureStatusLabel(status),
+}));
 
 export interface ThemeConfig {
   badgeLabel: string;

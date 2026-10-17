@@ -435,6 +435,16 @@ export async function createHttpServer(
     const body = (request.body || {}) as {
       feedback?: string;
       findings?: ReviewFindingInput[];
+      findingClosures?: Array<{
+        findingIndex: number;
+        status:
+          | "fixed"
+          | "partially_fixed"
+          | "not_fixed"
+          | "unverifiable"
+          | "invalidated";
+        evidence?: VerificationEvidence[];
+      }>;
       reviewRunId?: string;
       projectId?: string;
     };
@@ -447,6 +457,7 @@ export async function createHttpServer(
         reviewRunId: body.reviewRunId,
         feedback: body.feedback ?? "",
         findings: body.findings,
+        findingClosures: body.findingClosures,
         actorLabel: "developer",
       });
       return { success: true };
@@ -457,6 +468,7 @@ export async function createHttpServer(
       if (
         err instanceof InvalidTaskStateError ||
         err instanceof ReviewRunOwnershipError ||
+        err instanceof FindingClosureIncompleteError ||
         err instanceof z.ZodError
       ) {
         return reply

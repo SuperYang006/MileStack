@@ -737,6 +737,123 @@ describe("HTTP API Server", () => {
     });
   });
 
+  it("requires finding closures when a developer returns a task over HTTP", async () => {
+    const createdRes = await serverInstance.app.inject({
+      method: "POST",
+      url: "/api/tasks",
+      payload: {
+        title: "Developer closure over HTTP",
+        status: "ready",
+        acceptanceCriteria: ["The rework covers the previous finding"],
+      },
+    });
+    const created = JSON.parse(createdRes.payload).task;
+    serverInstance.context.service.setTaskIntegrationPolicy({
+      projectId: serverInstance.context.project.id,
+      taskId: created.id,
+      integrationRequired: false,
+      integrationTargetBranch: "main",
+      integrationNotRequiredReason: "This HTTP test isolates the developer return contract.",
+    });
+    const criteriaResults = [
+      {
+        criterion: "The rework covers the previous finding",
+        status: "met" as const,
+        evidence: [{ command: "pnpm test", result: "passed" }],
+      },
+    ];
+    const firstRun = serverInstance.context.service.startTask({
+      projectId: serverInstance.context.project.id,
+      taskId: created.id,
+    });
+    serverInstance.context.service.submitForReview({
+      projectId: serverInstance.context.project.id,
+      taskId: created.id,
+      runId: firstRun.runId,
+      commitSha: "7777777777777777777777777777777777777777",
+      summary: "First submission",
+      criteriaResults,
+    });
+    const review = serverInstance.context.service.startReview({
+      projectId: serverInstance.context.project.id,
+      taskId: created.id,
+    });
+    serverInstance.context.service.completeReview({
+      projectId: serverInstance.context.project.id,
+      taskId: created.id,
+      reviewRunId: review.reviewRunId,
+      decision: "changes_requested",
+      summary: "Returned with one finding",
+      findings: [
+        {
+          issue: "The rework misses the edge case",
+          suggestion: "Add an edge-case regression test",
+          severity: "medium",
+          trigger: "The edge case is retried after rework",
+          impact: "The regression can return unnoticed",
+          evidence: "pnpm test: no edge-case coverage",
+        },
+      ],
+    });
+    const secondRun = serverInstance.context.service.startTask({
+      projectId: serverInstance.context.project.id,
+      taskId: created.id,
+    });
+    serverInstance.context.service.submitForReview({
+      projectId: serverInstance.context.project.id,
+      taskId: created.id,
+      runId: secondRun.runId,
+      commitSha: "8888888888888888888888888888888888888888",
+      summary: "Second submission",
+      criteriaResults,
+    });
+
+    const missingClosures = await serverInstance.app.inject({
+      method: "POST",
+      url: `/api/tasks/${created.id}/request-changes`,
+      payload: { feedback: "The edge case is still missing." },
+    });
+    expect(missingClosures.statusCode).toBe(400);
+    expect(JSON.parse(missingClosures.payload).error).toContain(
+      "exactly one closure per finding",
+    );
+
+    const unstructuredFindings = await serverInstance.app.inject({
+      method: "POST",
+      url: `/api/tasks/${created.id}/request-changes`,
+      payload: {
+        feedback: "The edge case is still missing.",
+        findings: [{ issue: "No trigger", suggestion: "Fix it", severity: "low" }],
+        findingClosures: [{ findingIndex: 0, status: "not_fixed", evidence: [] }],
+      },
+    });
+    expect(unstructuredFindings.statusCode).toBe(400);
+
+    const accepted = await serverInstance.app.inject({
+      method: "POST",
+      url: `/api/tasks/${created.id}/request-changes`,
+      payload: {
+        feedback: "The edge case is still missing.",
+        findingClosures: [{ findingIndex: 0, status: "not_fixed", evidence: [] }],
+      },
+    });
+    expect(accepted.statusCode).toBe(200);
+
+    const returned = JSON.parse(
+      (
+        await serverInstance.app.inject({
+          method: "GET",
+          url: `/api/tasks/${created.id}`,
+        })
+      ).payload,
+    );
+    expect(returned.task).toMatchObject({ status: "ready", activeReviewRunId: null });
+    expect(returned.reviews.at(-1)).toMatchObject({
+      status: "changes_requested",
+      findingClosures: [{ findingIndex: 0, status: "not_fixed" }],
+    });
+  });
+
   it("handles risk level setting in creation/edit and enforces risk-based review workflow", async () => {
     // 1. Create inbox task with default riskLevel (medium)
     const createRes = await serverInstance.app.inject({

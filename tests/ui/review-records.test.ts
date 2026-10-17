@@ -5,6 +5,7 @@ import {
   buildCriterionResultDisplays,
   buildFindingClosureDisplays,
   buildFindingDisplays,
+  findingsAwaitingClosure,
 } from "../../ui/src/utils/reviewRecords.js";
 
 function taskEvent(overrides: Partial<TaskEvent> = {}): TaskEvent {
@@ -244,5 +245,39 @@ describe("task detail structured review records", () => {
     expect(displays[0]?.location).toBeUndefined();
 
     expect(buildFindingClosureDisplays([legacyReview], legacyReview)).toEqual([]);
+  });
+
+  it("collects closure inputs only from the immediately previous changes-requested round", () => {
+    expect(findingsAwaitingClosure(undefined)).toEqual([]);
+
+    const singleReview = [taskReview({ status: "pending" })];
+    expect(findingsAwaitingClosure(singleReview)).toEqual([]);
+
+    const passedPrevious = [
+      taskReview({
+        id: "review-1",
+        reviewRound: 1,
+        status: "passed",
+        findings: [{ issue: "不该收集", suggestion: "A", severity: "low" }],
+      }),
+      taskReview({ id: "review-2", reviewRound: 2, status: "pending" }),
+    ];
+    expect(findingsAwaitingClosure(passedPrevious)).toEqual([]);
+
+    const returnedPrevious = [
+      taskReview({
+        id: "review-1",
+        reviewRound: 1,
+        status: "changes_requested",
+        findings: [
+          { issue: "上一轮发现一", suggestion: "A", severity: "high" },
+          { issue: "上一轮发现二", suggestion: "B", severity: "medium" },
+        ],
+      }),
+      taskReview({ id: "review-2", reviewRound: 2, status: "pending" }),
+    ];
+    expect(
+      findingsAwaitingClosure(returnedPrevious).map((finding) => finding.issue),
+    ).toEqual(["上一轮发现一", "上一轮发现二"]);
   });
 });

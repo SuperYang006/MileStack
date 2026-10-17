@@ -505,6 +505,203 @@ describe("structured delivery and review records", () => {
     database.close();
   });
 
+  it("requires developer returns to close every previous finding and drops closed ones from rework", async () => {
+    const { database, service } = await createService(createTemporaryProject());
+    const task = createReadyTask(service);
+    const taskId = task.task.id;
+    const run1 = service.startTask({ projectId: "project-1", taskId });
+    service.submitForReview({
+      projectId: "project-1",
+      taskId,
+      runId: run1.runId,
+      commitSha: "8".repeat(40),
+      summary: "Round 1 submission",
+      criteriaResults: [
+        criterionResult("First criterion", "met"),
+        criterionResult("Second criterion", "met"),
+      ],
+    });
+    const review1 = service.startReview({ projectId: "project-1", taskId });
+    service.completeReview({
+      projectId: "project-1",
+      taskId,
+      reviewRunId: review1.reviewRunId,
+      decision: "changes_requested",
+      summary: "Round 1 findings",
+      findings: [
+        finding("Defect A"),
+        finding("Defect B"),
+        finding("Defect C"),
+        finding("Defect D"),
+        finding("Defect E"),
+      ],
+    });
+
+    const run2 = service.startTask({ projectId: "project-1", taskId });
+    service.submitForReview({
+      projectId: "project-1",
+      taskId,
+      runId: run2.runId,
+      commitSha: "9".repeat(40),
+      summary: "Round 2 submission",
+      criteriaResults: [
+        criterionResult("First criterion", "met"),
+        criterionResult("Second criterion", "met"),
+      ],
+    });
+
+    const developerReturn = (input: {
+      feedback: string;
+      findings?: unknown;
+      findingClosures?: unknown;
+    }) =>
+      service.requestTaskChanges({
+        projectId: "project-1",
+        taskId,
+        ...input,
+      } as Parameters<typeof service.requestTaskChanges>[0]);
+
+    expect(() =>
+      developerReturn({ feedback: "Still broken." }),
+    ).toThrow(FindingClosureIncompleteError);
+    expect(() =>
+      developerReturn({
+        feedback: "Still broken.",
+        findingClosures: [{ findingIndex: 0, status: "fixed", evidence: [] }],
+      }),
+    ).toThrow(FindingClosureIncompleteError);
+    expect(() =>
+      developerReturn({
+        feedback: "Still broken.",
+        findingClosures: [
+          { findingIndex: 0, status: "fixed", evidence: [] },
+          { findingIndex: 1, status: "fixed", evidence: [] },
+          { findingIndex: 2, status: "fixed", evidence: [] },
+          { findingIndex: 3, status: "fixed", evidence: [] },
+          { findingIndex: 9, status: "fixed", evidence: [] },
+        ],
+      }),
+    ).toThrow(FindingClosureIncompleteError);
+    expect(() =>
+      developerReturn({
+        feedback: "Still broken.",
+        findingClosures: [
+          { findingIndex: 0, status: "fixed", evidence: [] },
+          { findingIndex: 0, status: "fixed", evidence: [] },
+          { findingIndex: 2, status: "fixed", evidence: [] },
+          { findingIndex: 3, status: "fixed", evidence: [] },
+          { findingIndex: 4, status: "fixed", evidence: [] },
+        ],
+      }),
+    ).toThrow(FindingClosureIncompleteError);
+    expect(() =>
+      developerReturn({
+        feedback: "Still broken.",
+        findings: [{ issue: "Unstructured", suggestion: "Fix it", severity: "low" }],
+        findingClosures: [
+          { findingIndex: 0, status: "fixed", evidence: [] },
+          { findingIndex: 1, status: "fixed", evidence: [] },
+          { findingIndex: 2, status: "fixed", evidence: [] },
+          { findingIndex: 3, status: "fixed", evidence: [] },
+          { findingIndex: 4, status: "fixed", evidence: [] },
+        ],
+      }),
+    ).toThrow(/trigger/);
+
+    const returned = developerReturn({
+      feedback: "One defect remains.",
+      findings: [finding("New defect")],
+      findingClosures: [
+        {
+          findingIndex: 0,
+          status: "fixed",
+          evidence: [{ command: "pnpm test", result: "passed" }],
+        },
+        { findingIndex: 1, status: "not_fixed", evidence: [] },
+        { findingIndex: 2, status: "partially_fixed", evidence: [] },
+        { findingIndex: 3, status: "unverifiable", evidence: [] },
+        { findingIndex: 4, status: "invalidated", evidence: [] },
+      ],
+    });
+    expect(returned.task).toMatchObject({ status: "ready", queuePosition: 1 });
+    expect(returned.reviews.at(-1)).toMatchObject({
+      status: "changes_requested",
+      findingClosures: [
+        { findingIndex: 0, status: "fixed" },
+        { findingIndex: 1, status: "not_fixed" },
+        { findingIndex: 2, status: "partially_fixed" },
+        { findingIndex: 3, status: "unverifiable" },
+        { findingIndex: 4, status: "invalidated" },
+      ],
+    });
+
+    const rework = service.getTask({ projectId: "project-1", taskId });
+    expect(rework.phase).toBe("implementation");
+    expect(
+      rework.openFindings.map((open) => [open.issue, open.closureStatus]),
+    ).toEqual([
+      ["Defect B", "not_fixed"],
+      ["Defect C", "partially_fixed"],
+      ["Defect D", "unverifiable"],
+      ["New defect", null],
+    ]);
+    expect(rework.openFindings.some((open) => open.issue === "Defect A")).toBe(false);
+    expect(rework.openFindings.some((open) => open.issue === "Defect E")).toBe(false);
+
+    database.close();
+  });
+
+  it("keeps first-round developer returns closure-free and rejects unstructured findings", async () => {
+    const { database, service } = await createService(createTemporaryProject());
+    const task = createReadyTask(service);
+    const taskId = task.task.id;
+    const run = service.startTask({ projectId: "project-1", taskId });
+    service.submitForReview({
+      projectId: "project-1",
+      taskId,
+      runId: run.runId,
+      commitSha: "b".repeat(40),
+      summary: "Round 1 submission",
+      criteriaResults: [
+        criterionResult("First criterion", "met"),
+        criterionResult("Second criterion", "met"),
+      ],
+    });
+
+    expect(() =>
+      service.requestTaskChanges({
+        projectId: "project-1",
+        taskId,
+        feedback: "Please rework.",
+        findings: [{ issue: "Unstructured", suggestion: "Fix it", severity: "low" }],
+      } as Parameters<typeof service.requestTaskChanges>[0]),
+    ).toThrow(/trigger/);
+    expect(() =>
+      service.requestTaskChanges({
+        projectId: "project-1",
+        taskId,
+        feedback: "Please rework.",
+        findingClosures: [{ findingIndex: 0, status: "fixed", evidence: [] }],
+      }),
+    ).toThrow(FindingClosureIncompleteError);
+
+    const returned = service.requestTaskChanges({
+      projectId: "project-1",
+      taskId,
+      feedback: "Please rework.",
+      findings: [finding("First defect")],
+    });
+    expect(returned.task).toMatchObject({ status: "ready", queuePosition: 1 });
+    expect(returned.reviews.at(-1)).toMatchObject({
+      status: "changes_requested",
+      findingClosures: [],
+    });
+    const rework = service.getTask({ projectId: "project-1", taskId });
+    expect(rework.openFindings.map((open) => open.issue)).toEqual(["First defect"]);
+
+    database.close();
+  });
+
   it("keeps pre-change submission and review JSON readable without migration", async () => {
     const { database, service } = await createService(createTemporaryProject());
     const task = createReadyTask(service);
