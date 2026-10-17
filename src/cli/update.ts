@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import {
@@ -12,18 +12,24 @@ import { runtimeVersion } from "../server/runtime-version.js";
 import { isInsideDirectory, resolveEntryPath } from "./entry-path.js";
 import type { CliOutput } from "./output.js";
 
-export type NpmCommandResult = {
+export type CommandResult = {
   status: number | null;
   stdout: string;
   stderr: string;
   error?: Error;
 };
 
-export type NpmRunner = (args: readonly string[]) => NpmCommandResult;
+export type CommandInvocation = {
+  command: string;
+  args: readonly string[];
+  cwd?: string | undefined;
+};
+
+export type CommandRunner = (invocation: CommandInvocation) => CommandResult;
 
 export type UpdateDependencies = {
   resolveEntryPath: () => string;
-  runNpm: NpmRunner;
+  runCommand: CommandRunner;
 };
 
 export type UpdateOptions = {
@@ -33,17 +39,23 @@ export type UpdateOptions = {
 
 const queryTimeoutMs = 60_000;
 const installTimeoutMs = 300_000;
-const maxNpmOutputBytes = 16 * 1024 * 1024;
+const maxCommandOutputBytes = 16 * 1024 * 1024;
 
 export function npmExecutable(platform: NodeJS.Platform): string {
   return platform === "win32" ? "npm.cmd" : "npm";
 }
 
-function defaultRunNpm(args: readonly string[]): NpmCommandResult {
-  const result = spawnSync(npmExecutable(process.platform), [...args], {
+export function pnpmExecutable(platform: NodeJS.Platform): string {
+  return platform === "win32" ? "pnpm.cmd" : "pnpm";
+}
+
+function defaultRunCommand(invocation: CommandInvocation): CommandResult {
+  const isQuery = invocation.args[0] === "prefix" || invocation.args[0] === "view";
+  const result = spawnSync(invocation.command, [...invocation.args], {
+    ...(invocation.cwd !== undefined ? { cwd: invocation.cwd } : {}),
     encoding: "utf8",
-    timeout: args[0] === "install" ? installTimeoutMs : queryTimeoutMs,
-    maxBuffer: maxNpmOutputBytes,
+    timeout: isQuery ? queryTimeoutMs : installTimeoutMs,
+    maxBuffer: maxCommandOutputBytes,
     windowsHide: true,
   });
   return {
@@ -56,11 +68,15 @@ function defaultRunNpm(args: readonly string[]): NpmCommandResult {
 
 export const defaultUpdateDependencies: UpdateDependencies = {
   resolveEntryPath,
-  runNpm: defaultRunNpm,
+  runCommand: defaultRunCommand,
 };
+
+type PackageManager = "npm" | "pnpm";
 
 type EntryLocation =
   | { kind: "npm-global" }
+  | { kind: "project-local"; projectRoot: string; packageManager: PackageManager }
+  | { kind: "project-local-ambiguous"; projectRoot: string }
   | { kind: "source-repo"; packageRoot: string }
   | { kind: "pnpm-global" }
   | { kind: "npx" }
@@ -130,8 +146,64 @@ function isPnpmGlobalEntry(entryPath: string): boolean {
   );
 }
 
-function classifyEntry(entryPath: string, runNpm: NpmRunner): EntryLocation {
-  const prefixResult = runNpm(["prefix", "--global"]);
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+// True when the project's package.json declares milestack as a regular or
+// development dependency, which is what makes a node_modules/milestack entry
+// a project-local install this command may upgrade.
+function declaresMileStack(projectRoot: string): boolean {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(readFileSync(path.join(projectRoot, "package.json"), "utf8"));
+  } catch {
+    return false;
+  }
+  if (!isRecord(parsed)) {
+    return false;
+  }
+  return ["dependencies", "devDependencies"].some((field) => {
+    const section = parsed[field];
+    return isRecord(section) && Object.prototype.hasOwnProperty.call(section, "milestack");
+  });
+}
+
+// Walks up the node_modules ancestors of the installed package to find the
+// project that declares the dependency.  For pnpm installs the resolved entry
+// lives in the virtual store (<project>/node_modules/.pnpm/<pkg>/node_modules/
+// milestack), so the declaring package.json is the outer project root, not the
+// inner virtual-store directory.
+function findDeclaringProjectRoot(packageRoot: string): string | undefined {
+  let current = path.dirname(packageRoot);
+  while (true) {
+    if (path.basename(current) === "node_modules" && declaresMileStack(path.dirname(current))) {
+      return path.dirname(current);
+    }
+    const parent = path.dirname(current);
+    if (parent === current) {
+      return undefined;
+    }
+    current = parent;
+  }
+}
+
+// Only one of the two supported lockfiles may be present: with both, or with
+// neither, the package manager is ambiguous and no installer is run.
+function detectPackageManager(projectRoot: string): PackageManager | undefined {
+  const hasNpmLock = existsSync(path.join(projectRoot, "package-lock.json"));
+  const hasPnpmLock = existsSync(path.join(projectRoot, "pnpm-lock.yaml"));
+  if (hasNpmLock === hasPnpmLock) {
+    return undefined;
+  }
+  return hasNpmLock ? "npm" : "pnpm";
+}
+
+function classifyEntry(entryPath: string, runCommand: CommandRunner): EntryLocation {
+  const prefixResult = runCommand({
+    command: npmExecutable(process.platform),
+    args: ["prefix", "--global"],
+  });
   if (prefixResult.status === 0 && !prefixResult.error) {
     const globalPrefix = prefixResult.stdout.trim();
     if (globalPrefix.length > 0) {
@@ -157,6 +229,13 @@ function classifyEntry(entryPath: string, runNpm: NpmRunner): EntryLocation {
   }
   if (isPnpmGlobalEntry(entryPath)) {
     return { kind: "pnpm-global" };
+  }
+  const projectRoot = findDeclaringProjectRoot(packageRoot.packageRoot);
+  if (projectRoot !== undefined) {
+    const packageManager = detectPackageManager(projectRoot);
+    return packageManager === undefined
+      ? { kind: "project-local-ambiguous", projectRoot }
+      : { kind: "project-local", projectRoot, packageManager };
   }
   return { kind: "unknown" };
 }
@@ -241,7 +320,7 @@ function compareSemver(left: string, right: string): number | undefined {
   return 0;
 }
 
-function npmFailureDetail(result: NpmCommandResult): string {
+function commandFailureDetail(result: CommandResult): string {
   if (result.error?.message !== undefined) {
     return result.error.message;
   }
@@ -251,27 +330,54 @@ function npmFailureDetail(result: NpmCommandResult): string {
 
 type LatestVersionQuery = { version: string } | { error: string };
 
-function queryLatestVersion(runNpm: NpmRunner): LatestVersionQuery {
-  const result = runNpm(["view", "milestack", "version"]);
+function queryLatestVersion(command: string, runCommand: CommandRunner): LatestVersionQuery {
+  const result = runCommand({ command, args: ["view", "milestack", "version"] });
   if (result.status !== 0 || result.error) {
-    return { error: npmFailureDetail(result) };
+    return { error: commandFailureDetail(result) };
   }
   const matches = result.stdout.match(/\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?/g);
   const version = matches?.at(-1) ?? "";
   if (parseSemver(version) === undefined) {
-    return { error: `npm view 返回了无法解析的版本：'${result.stdout.trim()}'` };
+    return { error: `查询命令返回了无法解析的版本：'${result.stdout.trim()}'` };
   }
   return { version };
 }
 
+type LatestEvaluation =
+  | { kind: "error"; line: string }
+  | { kind: "latest"; latest: string }
+  | { kind: "update-available"; latest: string }
+  | { kind: "not-newer"; latest: string };
+
+function evaluateLatest(command: string, runCommand: CommandRunner): LatestEvaluation {
+  const latest = queryLatestVersion(command, runCommand);
+  if ("error" in latest) {
+    return { kind: "error", line: `  ✗ 查询最新版本失败：${latest.error}` };
+  }
+  const comparison = compareSemver(latest.version, runtimeVersion);
+  if (comparison === undefined) {
+    return {
+      kind: "error",
+      line: `  ✗ 无法比较当前版本与最新版本（当前：${runtimeVersion}，最新：${latest.version}）；未执行安装。`,
+    };
+  }
+  if (comparison === 0) {
+    return { kind: "latest", latest: latest.version };
+  }
+  if (comparison > 0) {
+    return { kind: "update-available", latest: latest.version };
+  }
+  return { kind: "not-newer", latest: latest.version };
+}
+
 type InstallResult = { ok: true } | { ok: false; error: string };
 
-function installLatest(runNpm: NpmRunner): InstallResult {
-  const result = runNpm(["install", "--global", "milestack@latest"]);
+function runInstaller(invocation: CommandInvocation, runCommand: CommandRunner): InstallResult {
+  const result = runCommand(invocation);
   if (result.status === 0 && !result.error) {
     return { ok: true };
   }
-  return { ok: false, error: npmFailureDetail(result) };
+  return { ok: false, error: commandFailureDetail(result) };
 }
 
 type ProjectRefreshTarget =
@@ -361,29 +467,24 @@ function cliUpdateSection(
   location: EntryLocation,
   entryPath: string,
   options: UpdateOptions,
-  runNpm: NpmRunner,
+  runCommand: CommandRunner,
 ): ReportSection {
   const lines: string[] = [];
 
   if (location.kind === "npm-global") {
     lines.push(`  当前版本：${runtimeVersion}`);
     lines.push(`  入口：${entryPath}（npm 全局安装）`);
-    const latest = queryLatestVersion(runNpm);
-    if ("error" in latest) {
-      lines.push(`  ✗ 查询最新版本失败：${latest.error}`);
+    const evaluation = evaluateLatest(npmExecutable(process.platform), runCommand);
+    if (evaluation.kind === "error") {
+      lines.push(evaluation.line);
       return { lines, failed: true };
     }
-    lines.push(`  最新版本：${latest.version}`);
-    const comparison = compareSemver(latest.version, runtimeVersion);
-    if (comparison === undefined) {
-      lines.push("  ✗ 无法比较当前版本与最新版本；未执行安装。");
-      return { lines, failed: true };
-    }
-    if (comparison === 0) {
+    lines.push(`  最新版本：${evaluation.latest}`);
+    if (evaluation.kind === "latest") {
       lines.push("  ✓ 已是最新版本，未执行安装。");
       return { lines, failed: false };
     }
-    if (comparison < 0) {
+    if (evaluation.kind === "not-newer") {
       lines.push("  → registry 的最新版本不高于当前版本，未执行安装。");
       return { lines, failed: false };
     }
@@ -392,18 +493,81 @@ function cliUpdateSection(
       return { lines, failed: false };
     }
     lines.push("  执行：npm install --global milestack@latest");
-    const install = installLatest(runNpm);
+    const install = runInstaller(
+      {
+        command: npmExecutable(process.platform),
+        args: ["install", "--global", "milestack@latest"],
+      },
+      runCommand,
+    );
     if (!install.ok) {
       lines.push(`  ✗ 安装失败：${install.error}`);
       return { lines, failed: true };
     }
-    lines.push(`  ✓ 升级完成：${runtimeVersion} -> ${latest.version}`);
+    lines.push(`  ✓ 升级完成：${runtimeVersion} -> ${evaluation.latest}`);
     lines.push("  提醒：请新开终端后运行 milestack -v 确认版本，并重启 MCP 客户端和 serve。");
+    return { lines, failed: false };
+  }
+
+  if (location.kind === "project-local") {
+    lines.push(`  当前版本：${runtimeVersion}`);
+    lines.push(`  入口：${entryPath}（项目内安装：${location.projectRoot}）`);
+    const executable =
+      location.packageManager === "npm"
+        ? npmExecutable(process.platform)
+        : pnpmExecutable(process.platform);
+    const evaluation = evaluateLatest(executable, runCommand);
+    if (evaluation.kind === "error") {
+      lines.push(evaluation.line);
+      return { lines, failed: true };
+    }
+    lines.push(`  最新版本：${evaluation.latest}`);
+    if (evaluation.kind === "latest") {
+      lines.push("  ✓ 已是最新版本，未执行安装。");
+      return { lines, failed: false };
+    }
+    if (evaluation.kind === "not-newer") {
+      lines.push("  → registry 的最新版本不高于当前版本，未执行安装。");
+      return { lines, failed: false };
+    }
+    if (options.check) {
+      lines.push("  → 有可用更新；--check 未执行安装。");
+      return { lines, failed: false };
+    }
+    const installArgs =
+      location.packageManager === "npm"
+        ? ["install", "milestack@latest"]
+        : ["update", "milestack", "--latest"];
+    lines.push(
+      `  执行：${location.packageManager} ${installArgs.join(" ")}（目录：${location.projectRoot}）`,
+    );
+    const install = runInstaller(
+      { command: executable, args: installArgs, cwd: location.projectRoot },
+      runCommand,
+    );
+    if (!install.ok) {
+      lines.push(`  ✗ 安装失败：${install.error}`);
+      return { lines, failed: true };
+    }
+    lines.push(`  ✓ 升级完成：${runtimeVersion} -> ${evaluation.latest}`);
+    lines.push(
+      "  提醒：请新开终端后运行 ./node_modules/.bin/milestack -v 确认版本，并重启 MCP 客户端和 serve。",
+    );
+    lines.push(
+      "  说明：本次只升级项目内依赖；若 MCP 配置使用全局命令 milestack，其版本不会改变。",
+    );
     return { lines, failed: false };
   }
 
   lines.push(`  当前版本：${runtimeVersion}`);
 
+  if (location.kind === "project-local-ambiguous") {
+    lines.push(`  入口：${entryPath}（项目内安装：${location.projectRoot}）`);
+    lines.push(
+      "  未执行自动安装：无法确定单一包管理器（需要且只需要 package-lock.json 或 pnpm-lock.yaml 之一）。",
+    );
+    return { lines, failed: !options.check };
+  }
   if (location.kind === "source-repo") {
     lines.push(`  入口：${entryPath}（源码仓库内）`);
     lines.push(
@@ -427,7 +591,7 @@ function cliUpdateSection(
   }
   lines.push(`  入口：${entryPath}`);
   lines.push(
-    "  未执行自动安装：无法确认当前入口来自 npm 全局安装；请使用安装该 CLI 的包管理器升级，本命令不会静默改跑 npm。",
+    "  未执行自动安装：无法确认当前入口的安装方式；请使用安装该 CLI 的包管理器升级，本命令不会静默改跑 npm。",
   );
   return { lines, failed: !options.check };
 }
@@ -438,10 +602,10 @@ export function runUpdate(
   dependencies: UpdateDependencies = defaultUpdateDependencies,
 ): number {
   const entryPath = dependencies.resolveEntryPath();
-  const location = classifyEntry(entryPath, dependencies.runNpm);
+  const location = classifyEntry(entryPath, dependencies.runCommand);
   const target = resolveRefreshTarget(options.projectPath);
 
-  const cli = cliUpdateSection(location, entryPath, options, dependencies.runNpm);
+  const cli = cliUpdateSection(location, entryPath, options, dependencies.runCommand);
   const project = options.check
     ? checkProjectSection(target)
     : refreshProjectSection(target);
