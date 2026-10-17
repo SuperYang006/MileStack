@@ -135,6 +135,8 @@ milestack init --project /absolute/path/to/current/checkout
 - 确保 `.milestack/` 被项目的 `.gitignore` 忽略；
 - 输出带 `MILESTACK_START` 和 `MILESTACK_END` 标记的 AI 接入规则。
 
+通用 `.milestack/agent-instructions.md` 的版本控制生成源为 `src/core/agent-instructions.ts` 中的 `formatProjectAgentInstructions()`；维护生成规则时应修改并测试该源文件，不编辑项目本地生成文件。重复运行 `init` 会按生成源修复该文件，同时保留根 `AGENTS.md` 和既有客户端配置。
+
 默认不传 `--client` 时，`init` 只把通用 MCP JSON 和手动执行 Codex/AGY 注册命令打印到终端，不会创建项目级客户端配置文件。
 
 显式传入一个或多个 `--client` 时（支持 `claude`、`cursor`、`grok`、`codex`、`opencode`、`agy`，可重复或使用逗号分隔）：

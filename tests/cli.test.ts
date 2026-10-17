@@ -124,7 +124,9 @@ describe("CLI entry point", () => {
     const projectRoot = createTemporaryProject();
     writeFileSync(path.join(projectRoot, ".gitignore"), "dist/\n.milestack/\n");
     const rootAgentsContent = "# Existing project instructions\nKeep this file unchanged.\n";
+    const clientConfigContent = '{"mcpServers":{"existing":{"command":"preserve-me"}}}\n';
     writeFileSync(path.join(projectRoot, "AGENTS.md"), rootAgentsContent);
+    writeFileSync(path.join(projectRoot, ".mcp.json"), clientConfigContent);
     const first = outputCapture();
 
     expect(await runCli(["init", "--project", projectRoot], first.output)).toBe(0);
@@ -148,8 +150,10 @@ describe("CLI entry point", () => {
       "Before working on tasks, read and follow .milestack/agent-instructions.md",
     );
     expect(firstOutput).toContain("Agent instructions:");
+    expect(readFileSync(path.join(projectRoot, ".mcp.json"), "utf8")).toBe(
+      clientConfigContent,
+    );
     for (const relativePath of [
-      ".mcp.json",
       ".cursor/mcp.json",
       ".grok/config.toml",
       ".codex/config.toml",
@@ -201,10 +205,29 @@ describe("CLI entry point", () => {
     expect(generatedInstructions).toContain(
       "- Keep concrete examples concise, but prefer slight duplication over losing a requirement through abstraction.",
     );
+    expect(generatedInstructions).toContain("## Calibrate task specificity");
+    expect(generatedInstructions).toContain(
+      "- Make task definitions concrete about observable behavior, developer-confirmed examples, external contracts, architectural boundaries, compatibility requirements, and verification outcomes.",
+    );
+    expect(generatedInstructions).toContain(
+      "- Do not invent or prescribe internal file lists, private functions, helper types, algorithms, test fixture names, or implementation steps unless the developer confirmed them, an existing public contract requires them, or they are necessary for architecture or safety.",
+    );
+    expect(generatedInstructions).toContain(
+      "- Prefer “scenario → expected result → verification” over a step-by-step implementation blueprint.",
+    );
+    expect(generatedInstructions).toContain(
+      "- Distinguish acceptance constraints from implementation suggestions. Put only confirmed constraints in the objective and acceptance criteria; omit unconfirmed implementation ideas or label them explicitly as non-binding.",
+    );
+    expect(generatedInstructions).toContain(
+      "- Treat developer-confirmed UI layouts, field order, workflows, state behavior, and API/protocol fields as mandatory acceptance constraints. Do not lock down unconfirmed file lists, private function boundaries, internal JSON nesting, matching algorithms, or test fixture names.",
+    );
     expect(generatedInstructions.indexOf("## Create well-scoped tasks")).toBeLessThan(
       generatedInstructions.indexOf("## Preserve concrete task constraints"),
     );
     expect(generatedInstructions.indexOf("## Preserve concrete task constraints")).toBeLessThan(
+      generatedInstructions.indexOf("## Calibrate task specificity"),
+    );
+    expect(generatedInstructions.indexOf("## Calibrate task specificity")).toBeLessThan(
       generatedInstructions.indexOf("## Discover, claim, and execute work"),
     );
     expect(generatedInstructions).toContain("start_task");
@@ -260,7 +283,11 @@ describe("CLI entry point", () => {
     expect(regeneratedInstructions.match(/## Preserve concrete task constraints/g)).toHaveLength(
       1,
     );
+    expect(regeneratedInstructions.match(/## Calibrate task specificity/g)).toHaveLength(1);
     expect(readFileSync(path.join(projectRoot, "AGENTS.md"), "utf8")).toBe(rootAgentsContent);
+    expect(readFileSync(path.join(projectRoot, ".mcp.json"), "utf8")).toBe(
+      clientConfigContent,
+    );
   });
 
   it("writes only selected project MCP clients and preserves their order", async () => {
