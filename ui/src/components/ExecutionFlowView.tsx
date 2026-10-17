@@ -105,7 +105,7 @@ export const ExecutionFlowView: React.FC<ExecutionFlowViewProps> = ({
             执行关系拓扑 ({graphs.length})
           </h2>
           <span className="text-[11px] font-mono text-zinc-500 hidden sm:inline">
-            · 连通有向无环图谱、并行分支与汇合路径
+            · 按最终目标分组的未完成依赖与并行前置
           </span>
         </div>
         <div className="flex items-center space-x-2">
@@ -272,6 +272,14 @@ export const ExecutionFlowView: React.FC<ExecutionFlowViewProps> = ({
                               >
                                 {task.title}
                               </h4>
+
+                              {/* 共用前置：还被其他目标依赖 */}
+                              {task.otherGoalCount > 0 && (
+                                <div className="flex items-center space-x-1 text-[10px] text-amber-300/90">
+                                  <GitMerge className="w-2.5 h-2.5 text-amber-400/80 shrink-0" />
+                                  <span>还被另外 {task.otherGoalCount} 个目标依赖</span>
+                                </div>
+                              )}
 
                               {/* 小屏下折行显示的等待项 */}
                               {task.waitingCount > 0 && (

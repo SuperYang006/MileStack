@@ -207,7 +207,8 @@ describe("dependencyGraph calculation utils", () => {
     expect(graphs).toEqual([]);
   });
 
-  it("handles simple chain without duplicate nodes or pseudo-parallelism", () => {
+  it("groups a chain only by the final goal task", () => {
+    // 未完成直线链：任务 A <- 任务 B <- 任务 C
     const taskA = makeSummary({ id: "t-a", title: "任务 A", status: "ready" });
     const taskB = makeSummary({ id: "t-b", title: "任务 B", status: "inbox", dependencyIds: ["t-a"] });
     const taskC = makeSummary({ id: "t-c", title: "任务 C", status: "inbox", dependencyIds: ["t-b"] });
@@ -224,26 +225,207 @@ describe("dependencyGraph calculation utils", () => {
     };
 
     const graphs = buildConnectedDagGraphs(status);
+
+    // 只有最终任务 C 成组；A、B 作为前置留在同一组里，不另外成组
     expect(graphs).toHaveLength(1);
-
     const graph = graphs[0]!;
+    expect(graph.title).toBe("任务 C");
     expect(graph.taskIds).toEqual(["t-a", "t-b", "t-c"]);
+
+    // 每个任务只出现一次，三个阶段各一个任务，没有伪并行
     expect(graph.stages).toHaveLength(3);
-
-    // Each stage has exactly 1 task, no parallel labels
     expect(graph.stages[0]?.tasks.map((t) => t.id)).toEqual(["t-a"]);
-    expect(graph.stages[0]?.isParallel).toBe(false);
     expect(graph.stages[1]?.tasks.map((t) => t.id)).toEqual(["t-b"]);
-    expect(graph.stages[1]?.isParallel).toBe(false);
     expect(graph.stages[2]?.tasks.map((t) => t.id)).toEqual(["t-c"]);
-    expect(graph.stages[2]?.isParallel).toBe(false);
+    expect(graph.stages.every((stage) => !stage.isParallel)).toBe(true);
 
-    // Every taskId appears exactly once
-    const allRenderedTaskIds = graph.stages.flatMap((s) => s.tasks.map((t) => t.id));
-    expect(allRenderedTaskIds).toEqual(["t-a", "t-b", "t-c"]);
+    // 直线中间任务不是共用前置
+    expect(graph.stages.flatMap((s) => s.tasks).every((t) => t.otherGoalCount === 0)).toBe(true);
   });
 
-  it("handles single fork with true parallel stage", () => {
+  it("splits goals that only share one incomplete prerequisite", () => {
+    // 共用前置 R 同时被互不依赖的目标 G1 与 G2 依赖
+    const shared = makeSummary({ id: "shared", title: "共用前置 R", status: "ready" });
+    const goal1 = makeSummary({
+      id: "goal-1",
+      title: "目标 G1",
+      status: "inbox",
+      dependencyIds: ["shared"],
+    });
+    const goal2 = makeSummary({
+      id: "goal-2",
+      title: "目标 G2",
+      status: "inbox",
+      dependencyIds: ["shared"],
+    });
+
+    const status: ProjectStatus = {
+      project: { id: "proj-1", name: "Test", goal: null },
+      counts: testCounts,
+      current: [],
+      next: [shared],
+      inReview: [],
+      blocked: [],
+      inbox: [goal1, goal2],
+      recentlyCompleted: [],
+    };
+
+    const graphs = buildConnectedDagGraphs(status);
+
+    // 只共用前置的目标拆成两组，标题是各自的目标标题
+    expect(graphs).toHaveLength(2);
+    expect(graphs.map((g) => g.title)).toEqual(["目标 G1", "目标 G2"]);
+    for (const graph of graphs) {
+      expect(graph.title).not.toBe("共用前置 R");
+      expect(graph.title).not.toContain("多源输入");
+      expect(graph.taskIds).toHaveLength(2);
+      expect(graph.taskIds).toContain("shared");
+
+      // 共用前置在每组里都注明还被另外 1 个目标依赖
+      const sharedTask = graph.stages.flatMap((s) => s.tasks).find((t) => t.id === "shared");
+      expect(sharedTask?.otherGoalCount).toBe(1);
+
+      // 不同目标不合并成一张图，也不互相标成并行
+      expect(graph.stages.every((stage) => !stage.isParallel)).toBe(true);
+    }
+
+    // R 在两组里都出现，两个目标各自只出现在自己的组里
+    expect(graphs.flatMap((g) => g.taskIds).filter((id) => id === "shared")).toHaveLength(2);
+    expect(graphs[0]?.taskIds).not.toContain("goal-2");
+    expect(graphs[1]?.taskIds).not.toContain("goal-1");
+  });
+
+  it("keeps branches that converge on one task in a single group", () => {
+    // S 被 A、B 依赖，C 同时依赖 A 与 B：多条线汇合到 C 仍是一组
+    const taskS = makeSummary({ id: "s", title: "共用前置 S", status: "ready" });
+    const taskA = makeSummary({ id: "a", title: "分支 A", status: "inbox", dependencyIds: ["s"] });
+    const taskB = makeSummary({ id: "b", title: "分支 B", status: "inbox", dependencyIds: ["s"] });
+    const taskC = makeSummary({
+      id: "c",
+      title: "汇合目标 C",
+      status: "inbox",
+      dependencyIds: ["a", "b"],
+    });
+
+    const status: ProjectStatus = {
+      project: { id: "proj-1", name: "Test", goal: null },
+      counts: testCounts,
+      current: [],
+      next: [taskS],
+      inReview: [],
+      blocked: [],
+      inbox: [taskA, taskB, taskC],
+      recentlyCompleted: [],
+    };
+
+    const graphs = buildConnectedDagGraphs(status);
+
+    // 汇合后的任务 C 是唯一目标，整条汇聚线只有一组
+    expect(graphs).toHaveLength(1);
+    const graph = graphs[0]!;
+    expect(graph.title).toBe("汇合目标 C");
+    expect(new Set(graph.taskIds).size).toBe(4);
+    expect([...graph.taskIds].sort()).toEqual(["a", "b", "c", "s"]);
+
+    // S 是公共入口，A、B 是同一目标下互不依赖的并行前置，C 是最终目标
+    expect(graph.stages).toHaveLength(3);
+    expect(graph.stages[0]?.tasks.map((t) => t.id)).toEqual(["s"]);
+    expect(graph.stages[1]?.tasks.map((t) => t.id).sort()).toEqual(["a", "b"]);
+    expect(graph.stages[1]?.isParallel).toBe(true);
+    expect(graph.stages[1]?.tasks.every((t) => t.isParallelStageTask)).toBe(true);
+    expect(graph.stages[2]?.tasks.map((t) => t.id)).toEqual(["c"]);
+    expect(graph.stages[2]?.label).toContain("最终目标");
+
+    const branchA = graph.stages[1]?.tasks.find((t) => t.id === "a");
+    const branchB = graph.stages[1]?.tasks.find((t) => t.id === "b");
+    expect(branchA?.upstreamIds).toEqual(["s"]);
+    expect(branchB?.upstreamIds).toEqual(["s"]);
+    expect(branchA?.downstreamIds).toEqual(["c"]);
+    expect(branchB?.downstreamIds).toEqual(["c"]);
+    expect(branchA?.upstreamIds).not.toContain("b");
+    expect(branchB?.upstreamIds).not.toContain("a");
+
+    // 汇合边保留，不同目标不会被标成并行（这里只有一组）
+    expect(graph.edges).toContainEqual({ from: "s", to: "a" });
+    expect(graph.edges).toContainEqual({ from: "s", to: "b" });
+    expect(graph.edges).toContainEqual({ from: "a", to: "c" });
+    expect(graph.edges).toContainEqual({ from: "b", to: "c" });
+  });
+
+  it("does not pull completed prerequisites or their goals into one topology", () => {
+    // 已完成任务 C 同时被两个互不依赖的未完成目标依赖，两个目标没有其他未完成前置
+    const completed = makeSummary({ id: "done-c", title: "已完成前置 C", status: "completed" });
+    const goal1 = makeSummary({
+      id: "goal-1",
+      title: "目标 G1",
+      status: "ready",
+      dependencyIds: ["done-c"],
+    });
+    const goal2 = makeSummary({
+      id: "goal-2",
+      title: "目标 G2",
+      status: "ready",
+      dependencyIds: ["done-c"],
+    });
+
+    const status: ProjectStatus = {
+      project: { id: "proj-1", name: "Test", goal: null },
+      counts: testCounts,
+      current: [],
+      next: [goal1, goal2],
+      inReview: [],
+      blocked: [],
+      inbox: [],
+      recentlyCompleted: [completed],
+    };
+
+    const graphs = buildConnectedDagGraphs(status);
+
+    // 没有未完成关联时不显示拓扑组：C 不进入拓扑，两个目标也不会被粘到同一张图里
+    expect(graphs).toEqual([]);
+  });
+
+  it("annotates a shared prerequisite with the number of other goals", () => {
+    // 同一个未完成前置被 3 个互不依赖的目标依赖
+    const shared = makeSummary({ id: "shared", title: "共用前置 R", status: "ready" });
+    const goalTasks = [1, 2, 3].map((n) =>
+      makeSummary({
+        id: `goal-${n}`,
+        title: `目标 ${n}`,
+        status: "inbox",
+        dependencyIds: ["shared"],
+      }),
+    );
+
+    const status: ProjectStatus = {
+      project: { id: "proj-1", name: "Test", goal: null },
+      counts: testCounts,
+      current: [],
+      next: [shared],
+      inReview: [],
+      blocked: [],
+      inbox: goalTasks,
+      recentlyCompleted: [],
+    };
+
+    const graphs = buildConnectedDagGraphs(status);
+
+    expect(graphs).toHaveLength(3);
+    expect([...graphs.map((g) => g.title)].sort()).toEqual(["目标 1", "目标 2", "目标 3"]);
+    for (const graph of graphs) {
+      const stageTasks = graph.stages.flatMap((s) => s.tasks);
+      // 共用前置在每一组里都注明还被另外 2 个目标依赖
+      const sharedTask = stageTasks.find((t) => t.id === "shared");
+      expect(sharedTask?.otherGoalCount).toBe(2);
+
+      // 目标本身不属于其他目标
+      const goalTask = stageTasks.find((t) => t.id !== "shared");
+      expect(goalTask?.otherGoalCount).toBe(0);
+      expect(graph.taskIds).toHaveLength(2);
+    }
+  });
+
+  it("splits a fork into one group per downstream goal", () => {
     const root = makeSummary({ id: "root", title: "根任务", status: "ready" });
     const branch1 = makeSummary({ id: "b1", title: "分支 1", status: "inbox", dependencyIds: ["root"] });
     const branch2 = makeSummary({ id: "b2", title: "分支 2", status: "inbox", dependencyIds: ["root"] });
@@ -260,25 +442,24 @@ describe("dependencyGraph calculation utils", () => {
     };
 
     const graphs = buildConnectedDagGraphs(status);
-    expect(graphs).toHaveLength(1);
 
-    const graph = graphs[0]!;
-    expect(graph.stages).toHaveLength(2);
-
-    expect(graph.stages[0]?.tasks.map((t) => t.id)).toEqual(["root"]);
-    expect(graph.stages[0]?.isParallel).toBe(false);
-
-    expect(graph.stages[1]?.tasks.map((t) => t.id).sort()).toEqual(["b1", "b2"]);
-    expect(graph.stages[1]?.isParallel).toBe(true);
-    expect(graph.stages[1]?.tasks.every((t) => t.isParallelStageTask)).toBe(true);
+    expect(graphs).toHaveLength(2);
+    expect([...graphs.map((g) => g.title)].sort()).toEqual(["分支 1", "分支 2"]);
+    for (const graph of graphs) {
+      expect(graph.taskIds).toHaveLength(2);
+      expect(graph.taskIds).toContain("root");
+      expect(graph.stages).toHaveLength(2);
+      const rootTask = graph.stages.flatMap((s) => s.tasks).find((t) => t.id === "root");
+      expect(rootTask?.otherGoalCount).toBe(1);
+    }
   });
 
-  it("handles multiple disjoint subgraphs into independent connected graphs", () => {
-    // Subgraph 1: X -> Y
+  it("keeps unrelated goals in separate groups", () => {
+    // 链 1：X -> Y
     const taskX = makeSummary({ id: "x", title: "任务 X", status: "ready" });
     const taskY = makeSummary({ id: "y", title: "任务 Y", status: "inbox", dependencyIds: ["x"] });
 
-    // Subgraph 2: M -> N, M -> P
+    // 分叉 2：M -> N、M -> P
     const taskM = makeSummary({ id: "m", title: "任务 M", status: "ready" });
     const taskN = makeSummary({ id: "n", title: "任务 N", status: "inbox", dependencyIds: ["m"] });
     const taskP = makeSummary({ id: "p", title: "任务 P", status: "inbox", dependencyIds: ["m"] });
@@ -295,19 +476,26 @@ describe("dependencyGraph calculation utils", () => {
     };
 
     const graphs = buildConnectedDagGraphs(status);
-    expect(graphs).toHaveLength(2);
 
-    const graph1 = graphs.find((g) => g.taskIds.includes("x"));
-    const graph2 = graphs.find((g) => g.taskIds.includes("m"));
+    expect(graphs).toHaveLength(3);
+    expect([...graphs.map((g) => g.title)].sort()).toEqual(["任务 N", "任务 P", "任务 Y"]);
 
-    expect(graph1).toBeDefined();
-    expect(graph2).toBeDefined();
+    const graphY = graphs.find((g) => g.taskIds.includes("y"));
+    expect([...graphY!.taskIds].sort()).toEqual(["x", "y"]);
 
-    expect(graph1?.taskIds.sort()).toEqual(["x", "y"]);
-    expect(graph2?.taskIds.sort()).toEqual(["m", "n", "p"]);
+    const graphN = graphs.find((g) => g.taskIds.includes("n"));
+    const graphP = graphs.find((g) => g.taskIds.includes("p"));
+    expect([...graphN!.taskIds].sort()).toEqual(["m", "n"]);
+    expect([...graphP!.taskIds].sort()).toEqual(["m", "p"]);
+
+    // 共用前置 M 在它的两个目标组里都注明还被另外 1 个目标依赖
+    for (const graph of [graphN, graphP]) {
+      const sharedTask = graph?.stages.flatMap((s) => s.tasks).find((t) => t.id === "m");
+      expect(sharedTask?.otherGoalCount).toBe(1);
+    }
   });
 
-  it("regression: correctly computes the 5-node asymmetric AI review DAG without duplicate nodes or pseudo-parallelism (AC 1, AC 2, AC 3, AC 4, AC 5, AC 10)", () => {
+  it("regression: groups the 5-node asymmetric AI review DAG under its final goal", () => {
     // 1. 核心审核模型 (completed root, forks into HTTP/UI and MCP)
     const coreModel = makeSummary({
       id: "946dd1d9-01fc-4ac2-a56e-9b6493ba7ec8",
@@ -315,7 +503,7 @@ describe("dependencyGraph calculation utils", () => {
       status: "completed",
     });
 
-    // 2. HTTP 与 UI (ready, depends on coreModel and an older unrelated task)
+    // 2. HTTP 与 UI (ready, depends on coreModel)
     const httpUi = makeSummary({
       id: "46d81d34-9b67-4161-adb5-35d9a452d2b4",
       title: "在 HTTP 与 UI 中呈现风险等级和 AI 审核结果",
@@ -372,81 +560,52 @@ describe("dependencyGraph calculation utils", () => {
 
     const graphs = buildConnectedDagGraphs(status);
 
-    // AC 2: 同一连通依赖图只显示为一个拓扑
+    // 只有最终目标 endToEnd 成组；已完成的核心模型不进入拓扑，孤立任务不成组
     expect(graphs).toHaveLength(1);
     const graph = graphs[0]!;
-
-    // AC 2: 同一 taskId 在该拓扑中只出现一次
-    expect(graph.taskIds).toHaveLength(5);
-    expect(new Set(graph.taskIds).size).toBe(5);
-    expect(graph.taskIds).toContain("946dd1d9-01fc-4ac2-a56e-9b6493ba7ec8");
+    expect(graph.title).toBe("验证 AI 审核与风险策略的端到端闭环");
+    expect(graph.taskIds).toHaveLength(4);
+    expect(new Set(graph.taskIds).size).toBe(4);
     expect(graph.taskIds).toContain("46d81d34-9b67-4161-adb5-35d9a452d2b4");
     expect(graph.taskIds).toContain("e7714038-094a-47b8-bfe5-012f0a49c52a");
     expect(graph.taskIds).toContain("f3b55a8c-3fd0-48b1-aeeb-7165028571c5");
     expect(graph.taskIds).toContain("c04642b7-bdeb-4bae-9f7e-e57aac026804");
+    expect(graph.taskIds).not.toContain("946dd1d9-01fc-4ac2-a56e-9b6493ba7ec8");
     expect(graph.taskIds).not.toContain("isolated-1");
 
-    // All rendered tasks across all stages must be unique and sum to exactly 5
-    const allStageTasks = graph.stages.flatMap((s) => s.tasks.map((t) => t.id));
-    expect(allStageTasks).toHaveLength(5);
-    expect(new Set(allStageTasks).size).toBe(5);
+    // 3 个阶段：并行分支 -> 中间任务 -> 汇合验证目标
+    expect(graph.stages).toHaveLength(3);
 
-    // AC 1 & AC 3: 4 distinct stages for asymmetric DAG
-    expect(graph.stages).toHaveLength(4);
-
-    // Stage 0: 核心审核模型 (root)
     const stage0 = graph.stages[0]!;
-    expect(stage0.tasks).toHaveLength(1);
-    expect(stage0.tasks[0]?.id).toBe("946dd1d9-01fc-4ac2-a56e-9b6493ba7ec8");
-    expect(stage0.tasks[0]?.status).toBe("completed");
-    expect(stage0.isParallel).toBe(false);
-
-    // Stage 1: HTTP/UI 与 MCP 两条首阶段并行分支 (AC 1 & AC 4)
-    const stage1 = graph.stages[1]!;
-    expect(stage1.tasks).toHaveLength(2);
-    const stage1Ids = stage1.tasks.map((t) => t.id).sort();
-    expect(stage1Ids).toEqual([
+    expect(stage0.tasks.map((t) => t.id).sort()).toEqual([
       "46d81d34-9b67-4161-adb5-35d9a452d2b4",
       "e7714038-094a-47b8-bfe5-012f0a49c52a",
     ]);
-    expect(stage1.isParallel).toBe(true);
-    expect(stage1.tasks.every((t) => t.isParallelStageTask)).toBe(true);
+    expect(stage0.isParallel).toBe(true);
+    expect(stage0.tasks.every((t) => t.isParallelStageTask)).toBe(true);
     // Both are runnable since root coreModel is completed
-    expect(stage1.tasks.every((t) => t.isRunnable)).toBe(true);
+    expect(stage0.tasks.every((t) => t.isRunnable)).toBe(true);
 
-    // Stage 2: MCP 后接 Agent 指引 (AC 1 & AC 4: 依赖另一分支的任务不得计入同一并行组)
+    const stage1 = graph.stages[1]!;
+    expect(stage1.tasks).toHaveLength(1);
+    expect(stage1.tasks[0]?.id).toBe("f3b55a8c-3fd0-48b1-aeeb-7165028571c5");
+    expect(stage1.isParallel).toBe(false);
+    expect(stage1.tasks[0]?.isParallelStageTask).toBe(false);
+
     const stage2 = graph.stages[2]!;
     expect(stage2.tasks).toHaveLength(1);
-    expect(stage2.tasks[0]?.id).toBe("f3b55a8c-3fd0-48b1-aeeb-7165028571c5");
+    expect(stage2.tasks[0]?.id).toBe("c04642b7-bdeb-4bae-9f7e-e57aac026804");
     expect(stage2.isParallel).toBe(false);
-    expect(stage2.tasks[0]?.isParallelStageTask).toBe(false);
+    expect(stage2.label).toContain("最终目标");
 
-    // Stage 3: 端到端验证汇合目标 (AC 1)
-    const stage3 = graph.stages[3]!;
-    expect(stage3.tasks).toHaveLength(1);
-    expect(stage3.tasks[0]?.id).toBe("c04642b7-bdeb-4bae-9f7e-e57aac026804");
-    expect(stage3.isParallel).toBe(false);
-
-    // AC 5: 传递归约生效，冗余边 coreModel -> endToEnd 在显示层忽略
-    const rawHasTransitive = graph.rawEdges.some(
-      (e) => e.from === "946dd1d9-01fc-4ac2-a56e-9b6493ba7ec8" && e.to === "c04642b7-bdeb-4bae-9f7e-e57aac026804",
-    );
-    expect(rawHasTransitive).toBe(true);
-
-    const reducedHasTransitive = graph.edges.some(
-      (e) => e.from === "946dd1d9-01fc-4ac2-a56e-9b6493ba7ec8" && e.to === "c04642b7-bdeb-4bae-9f7e-e57aac026804",
-    );
-    expect(reducedHasTransitive).toBe(false);
-
-    // Verify key edges present in reduced edges
-    expect(graph.edges).toContainEqual({
+    // 已完成任务不出现在边里；端到端的冗余直接依赖 (coreModel -> endToEnd) 自然消失
+    expect(graph.rawEdges).not.toContainEqual({
       from: "946dd1d9-01fc-4ac2-a56e-9b6493ba7ec8",
-      to: "e7714038-094a-47b8-bfe5-012f0a49c52a",
+      to: "c04642b7-bdeb-4bae-9f7e-e57aac026804",
     });
-    expect(graph.edges).toContainEqual({
-      from: "946dd1d9-01fc-4ac2-a56e-9b6493ba7ec8",
-      to: "46d81d34-9b67-4161-adb5-35d9a452d2b4",
-    });
+
+    // 组内没有冗余边，传递归约不改变边集
+    expect(graph.edges).toEqual(graph.rawEdges);
     expect(graph.edges).toContainEqual({
       from: "e7714038-094a-47b8-bfe5-012f0a49c52a",
       to: "f3b55a8c-3fd0-48b1-aeeb-7165028571c5",
