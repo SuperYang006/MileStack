@@ -799,6 +799,10 @@ export class TaskService {
     const parsed = deleteTaskInputSchema.parse(input);
     const project = this.requireProject(parsed.projectId);
     this.repository.transaction((transaction) => {
+      const transactionProject = transaction.findProjectById(project.id);
+      if (!transactionProject) {
+        throw new ProjectNotFoundError(project.id);
+      }
       const task = transaction.findTaskById(parsed.taskId);
       if (!task || task.projectId !== project.id) {
         throw new TaskNotFoundError(parsed.taskId);
@@ -813,9 +817,9 @@ export class TaskService {
       if (dependentTaskIds.length > 0) {
         throw new TaskHasDependentsError(task.id, dependentTaskIds);
       }
+      const projectTasks = transaction.listByProjectId(project.id);
       const readyTasks = task.status === "ready"
-        ? transaction
-            .listByProjectId(project.id)
+        ? projectTasks
             .filter((candidate) => candidate.status === "ready" && candidate.id !== task.id)
             .sort(compareQueuePosition)
         : [];
@@ -827,6 +831,26 @@ export class TaskService {
           updatedAt: now,
         });
       });
+
+      const latestTaskUpdatedAt = transaction
+        .listByProjectId(project.id)
+        .reduce<string | null>(
+          (latest, candidate) =>
+            latest === null || candidate.updatedAt > latest
+              ? candidate.updatedAt
+              : latest,
+          null,
+        );
+      const nextProjectUpdatedAt = new Date(
+        Math.max(
+          Date.parse(now),
+          Date.parse(transactionProject.updatedAt),
+          latestTaskUpdatedAt === null
+            ? Number.NEGATIVE_INFINITY
+            : Date.parse(latestTaskUpdatedAt),
+        ) + 1,
+      ).toISOString();
+      transaction.updateProject(project.id, { updatedAt: nextProjectUpdatedAt });
     });
   }
 

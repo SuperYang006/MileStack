@@ -2,7 +2,9 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { eq } from "drizzle-orm";
 import { createHttpServer } from "../../src/server/server.js";
+import { tasks } from "../../src/db/schema.js";
 
 const packageVersion = (
   JSON.parse(readFileSync(path.resolve("package.json"), "utf8")) as { version: string }
@@ -229,6 +231,56 @@ describe("HTTP API Server", () => {
     });
     expect(changed.statusCode).toBe(200);
     expect(JSON.parse(changed.payload).inbox).toHaveLength(2);
+  });
+
+  it("returns a full status after deleting an older task with a stale since cursor", async () => {
+    const olderTaskResponse = await serverInstance.app.inject({
+      method: "POST",
+      url: "/api/tasks",
+      payload: { title: "Task to delete", status: "inbox" },
+    });
+    const newerTaskResponse = await serverInstance.app.inject({
+      method: "POST",
+      url: "/api/tasks",
+      payload: { title: "Task to keep", status: "inbox" },
+    });
+    const olderTaskId = JSON.parse(olderTaskResponse.payload).task.id as string;
+    const newerTaskId = JSON.parse(newerTaskResponse.payload).task.id as string;
+    serverInstance.context.database.db
+      .update(tasks)
+      .set({ updatedAt: "2026-10-16T00:00:00.000Z" })
+      .where(eq(tasks.id, olderTaskId))
+      .run();
+    serverInstance.context.database.db
+      .update(tasks)
+      .set({ updatedAt: "2026-10-17T00:00:00.000Z" })
+      .where(eq(tasks.id, newerTaskId))
+      .run();
+
+    const beforeDelete = JSON.parse(
+      (await serverInstance.app.inject({ method: "GET", url: "/api/status" })).payload,
+    );
+    const staleSince = beforeDelete.latestUpdatedAt as string;
+    const unchanged = await serverInstance.app.inject({
+      method: "GET",
+      url: `/api/status?since=${encodeURIComponent(staleSince)}`,
+    });
+    expect(unchanged.statusCode).toBe(304);
+
+    const deletion = await serverInstance.app.inject({
+      method: "POST",
+      url: `/api/tasks/${olderTaskId}/delete`,
+    });
+    expect(deletion.statusCode).toBe(200);
+
+    const changed = await serverInstance.app.inject({
+      method: "GET",
+      url: `/api/status?since=${encodeURIComponent(staleSince)}`,
+    });
+    expect(changed.statusCode).toBe(200);
+    expect(JSON.parse(changed.payload).inbox).toEqual([
+      expect.objectContaining({ id: newerTaskId }),
+    ]);
   });
 
   it("supports batch task creation via POST /api/tasks/batch", async () => {

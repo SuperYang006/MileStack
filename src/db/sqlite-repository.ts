@@ -100,7 +100,21 @@ export class SqliteRepository implements MileStackRepository {
       .orderBy(desc(tasks.updatedAt))
       .limit(1)
       .get();
-    return task?.updatedAt ?? null;
+    if (!task) return null;
+
+    const project = this.db
+      .select({ createdAt: projects.createdAt, updatedAt: projects.updatedAt })
+      .from(projects)
+      .where(eq(projects.id, projectId))
+      .get();
+    // Project updates act as deletion cursors only after creation; an empty
+    // project still has no latest task update.
+    const projectUpdatedAt = project && project.updatedAt > project.createdAt
+      ? project.updatedAt
+      : null;
+    return projectUpdatedAt && projectUpdatedAt > task.updatedAt
+      ? projectUpdatedAt
+      : task.updatedAt;
   }
 
   listByTaskId(taskId: string): TaskEventRecord[] {
@@ -159,6 +173,14 @@ export class SqliteRepository implements MileStackRepository {
   transaction<T>(work: (transaction: TaskRepositoryTransaction) => T): T {
     return this.sqlite.transaction(() => {
       const transaction: TaskRepositoryTransaction = {
+        findProjectById: (id) => {
+          const project = this.db
+            .select()
+            .from(projects)
+            .where(eq(projects.id, id))
+            .get();
+          return project ? mapProject(project) : null;
+        },
         findTaskById: (id) => {
           const task = this.db.select().from(tasks).where(eq(tasks.id, id)).get();
           return task ? mapTask(task) : null;
@@ -213,6 +235,15 @@ export class SqliteRepository implements MileStackRepository {
             .returning()
             .get();
           return updated ? mapTask(updated) : null;
+        },
+        updateProject: (id, changes) => {
+          const updated = this.db
+            .update(projects)
+            .set(changes)
+            .where(eq(projects.id, id))
+            .returning()
+            .get();
+          return updated ? mapProject(updated) : null;
         },
         deleteTask: (id) => {
           this.db.delete(tasks).where(eq(tasks.id, id)).run();

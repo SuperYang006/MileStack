@@ -127,6 +127,7 @@ export interface TaskReviewRepository {
 }
 
 export interface TaskRepositoryTransaction {
+  findProjectById(id: string): ProjectRecord | null;
   findTaskById(id: string): TaskRecord | null;
   listByProjectId(projectId: string): TaskRecord[];
   listEventsByTaskId(taskId: string): TaskEventRecord[];
@@ -137,6 +138,10 @@ export interface TaskRepositoryTransaction {
     changes: Partial<TaskRecord>,
     expectedStatus?: TaskStatus,
   ): TaskRecord | null;
+  updateProject(
+    id: string,
+    changes: Partial<ProjectRecord>,
+  ): ProjectRecord | null;
   deleteTask(id: string): void;
   insertTask(task: TaskRecord): TaskRecord;
   insertTaskEvent(event: TaskEventRecord): TaskEventRecord;

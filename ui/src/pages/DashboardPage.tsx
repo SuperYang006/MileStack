@@ -21,6 +21,11 @@ import { CreateTaskModal } from "../components/CreateTaskModal";
 import { BriefingModal } from "../components/BriefingModal";
 import { EditInboxModal } from "../components/EditInboxModal";
 import { ServiceDisconnectedModal } from "../components/ServiceDisconnectedModal";
+import {
+  projectStatusQueryOptions,
+  projectStatusQueryKey,
+  refreshProjectStatusAfterDeletion,
+} from "./projectStatusQuery";
 import type {
   ProjectStatus,
   ProjectSummary,
@@ -98,16 +103,7 @@ export const DashboardPage: React.FC = () => {
     isRefetching,
     refetch,
   } = useQuery({
-    queryKey: ["projectStatus"],
-    queryFn: async () => {
-      const previous = queryClient.getQueryData<ProjectStatus>(["projectStatus"]);
-      const since = forceFullStatusRef.current ? undefined : previous?.latestUpdatedAt ?? undefined;
-      forceFullStatusRef.current = false;
-      const nextStatus = await apiClient.getProjectStatus(undefined, since);
-      if (nextStatus) return nextStatus;
-      if (previous) return previous;
-      throw new Error("Project status was not returned.");
-    },
+    ...projectStatusQueryOptions(queryClient, forceFullStatusRef),
     enabled: isDocumentVisible,
     retry: false,
     refetchInterval: POLL_INTERVAL_MS,
@@ -168,8 +164,14 @@ export const DashboardPage: React.FC = () => {
   }, [completedTasksQuery.data, isServiceDisconnected]);
 
   const invalidateProjectQueries = () => {
-    void queryClient.invalidateQueries({ queryKey: ["projectStatus"] });
+    void queryClient.invalidateQueries({ queryKey: projectStatusQueryKey });
     void queryClient.invalidateQueries({ queryKey: ["completedTasks"] });
+  };
+
+  const refreshProjectQueriesAfterDeletion = async () => {
+    const statusRefresh = refreshProjectStatusAfterDeletion(queryClient, forceFullStatusRef);
+    void queryClient.invalidateQueries({ queryKey: ["completedTasks"] });
+    await statusRefresh;
   };
 
   const { data: selectedDetails, isLoading: isDetailsLoading, isError: isDetailsError } = useQuery({
@@ -209,8 +211,8 @@ export const DashboardPage: React.FC = () => {
 
   const deleteInboxMutation = useMutation({
     mutationFn: (taskId: string) => apiClient.deleteInboxTask(taskId),
-    onSuccess: (_, taskId) => {
-      invalidateProjectQueries();
+    onSuccess: async (_, taskId) => {
+      await refreshProjectQueriesAfterDeletion();
       queryClient.invalidateQueries({ queryKey: ["taskDetails", taskId] });
       if (selectedTaskId === taskId) setSelectedTaskId(null);
     },
@@ -226,8 +228,8 @@ export const DashboardPage: React.FC = () => {
 
   const deleteReadyMutation = useMutation({
     mutationFn: (taskId: string) => apiClient.deleteReadyTask(taskId),
-    onSuccess: (_, taskId) => {
-      invalidateProjectQueries();
+    onSuccess: async (_, taskId) => {
+      await refreshProjectQueriesAfterDeletion();
       queryClient.invalidateQueries({ queryKey: ["taskDetails", taskId] });
       if (selectedTaskId === taskId) setSelectedTaskId(null);
     },

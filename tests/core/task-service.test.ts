@@ -364,6 +364,99 @@ describe("TaskService", () => {
     database.close();
   });
 
+  it("changes the status cursor when deleting an older inbox task", async () => {
+    const { database, service } = await createService(createTemporaryProject());
+    database.db
+      .insert(tasks)
+      .values([
+        taskRecord({
+          id: "inbox-to-delete",
+          title: "Old inbox task",
+          updatedAt: "2026-10-11T11:00:00.000Z",
+        }),
+        taskRecord({
+          id: "newer-inbox",
+          title: "Newer inbox task",
+          updatedAt: "2026-10-11T13:00:00.000Z",
+        }),
+      ])
+      .run();
+
+    const beforeDelete = service.getProjectStatus({ projectId: "project-1" });
+    service.deleteTask({ projectId: "project-1", taskId: "inbox-to-delete" });
+    const afterDelete = service.getProjectStatusIfChanged({
+      projectId: "project-1",
+      since: beforeDelete.latestUpdatedAt ?? undefined,
+    });
+
+    expect(afterDelete).toMatchObject({
+      latestUpdatedAt: expect.any(String),
+      counts: { inbox: 1, total: 1 },
+      inbox: [expect.objectContaining({ id: "newer-inbox" })],
+    });
+    expect(afterDelete?.latestUpdatedAt).not.toBe(beforeDelete.latestUpdatedAt);
+    database.close();
+  });
+
+  it("changes the status cursor when deleting the last ready task without reordering", async () => {
+    const { database, service } = await createService(createTemporaryProject());
+    database.db
+      .insert(tasks)
+      .values([
+        taskRecord({
+          id: "ready-to-delete",
+          title: "Ready task",
+          status: "ready",
+          queuePosition: 1,
+          updatedAt: "2026-10-11T11:00:00.000Z",
+        }),
+        taskRecord({
+          id: "newer-inbox",
+          title: "Newer inbox task",
+          updatedAt: "2026-10-11T13:00:00.000Z",
+        }),
+      ])
+      .run();
+
+    const beforeDelete = service.getProjectStatus({ projectId: "project-1" });
+    service.deleteTask({ projectId: "project-1", taskId: "ready-to-delete" });
+    const afterDelete = service.getProjectStatusIfChanged({
+      projectId: "project-1",
+      since: beforeDelete.latestUpdatedAt ?? undefined,
+    });
+
+    expect(afterDelete).toMatchObject({
+      latestUpdatedAt: expect.any(String),
+      counts: { ready: 0, inbox: 1, total: 1 },
+      next: [],
+      inbox: [expect.objectContaining({ id: "newer-inbox" })],
+    });
+    expect(afterDelete?.latestUpdatedAt).not.toBe(beforeDelete.latestUpdatedAt);
+    database.close();
+  });
+
+  it("keeps the status cursor null after deleting the project's last task", async () => {
+    const { database, service } = await createService(createTemporaryProject());
+    database.db
+      .insert(tasks)
+      .values(taskRecord({ id: "only-task", title: "Only task" }))
+      .run();
+
+    const beforeDelete = service.getProjectStatus({ projectId: "project-1" });
+    service.deleteTask({ projectId: "project-1", taskId: "only-task" });
+    const afterDelete = service.getProjectStatusIfChanged({
+      projectId: "project-1",
+      since: beforeDelete.latestUpdatedAt ?? undefined,
+    });
+
+    expect(afterDelete).toMatchObject({
+      latestUpdatedAt: null,
+      counts: { total: 0 },
+      inbox: [],
+    });
+    database.close();
+  });
+
   it("returns a bounded compact status and stable status cursors", async () => {
     const projectRoot = createTemporaryProject();
     const { database, service } = await createService(projectRoot);
