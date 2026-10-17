@@ -78,7 +78,7 @@ const toolDefinitions: Tool[] = [
   {
     name: "get_task",
     description:
-      "Read a known taskId's definition and the context for its current phase. The default working view returns the phase (implementation or review), dependency state, the current run's progress, the latest submission with per-criterion delivery results, previous-round findings awaiting closure, and unclosed findings from changes-requested rounds. Pass view='full' to retrieve the complete immutable event and review histories. This does not require get_project_status first.",
+      "Read a known taskId's definition and the context for its current phase. The default working view returns the phase (implementation or review), dependency state, the current run's progress, every acceptance criterion with its stable id and full text, the latest submission with per-criterion delivery results, previous-round findings awaiting closure, and unclosed findings from changes-requested rounds. Pass view='full' to retrieve the complete immutable event and review histories. This does not require get_project_status first.",
     inputSchema: toJSONSchema(taskArgumentsSchema) as Tool["inputSchema"],
   },
   {
@@ -108,7 +108,7 @@ const toolDefinitions: Tool[] = [
   {
     name: "submit_for_review",
     description:
-      "Submit a running task for review with a completion summary, an exact 40-character commit SHA, and exactly one delivery result per acceptance criterion (met, not_met, or unverifiable; met requires recorded evidence). The task changes to in_review and the runId becomes invalid after submission.",
+      "Submit a running task for review with a completion summary, an exact 40-character commit SHA, and exactly one delivery result per acceptance criterion, filed under the criterion id returned by get_task (met, not_met, or unverifiable; met requires recorded evidence). The task changes to in_review and the runId becomes invalid after submission.",
     inputSchema: toJSONSchema(submitForReviewArgumentsSchema) as Tool["inputSchema"],
   },
   {

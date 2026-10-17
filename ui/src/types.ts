@@ -44,7 +44,7 @@ export interface TaskSummary {
   projectId: string;
   title: string;
   objective?: string | null;
-  acceptanceCriteria?: string[] | null;
+  acceptanceCriteria?: AcceptanceCriterion[] | null;
   status: TaskStatus;
   queuePosition: number | null;
   dependencyIds: string[];
@@ -101,6 +101,8 @@ export interface VerificationEvidence {
 }
 
 export interface CriterionResult {
+  /** Stable criterion identity; absent on results written before it existed. */
+  criterionId?: string;
   criterion: string;
   status: CriterionResultStatus;
   evidence: VerificationEvidence[];
@@ -173,12 +175,17 @@ export interface ReviewDigest {
   integrationCheckedAt: string | null;
 }
 
+export interface AcceptanceCriterion {
+  id: string;
+  text: string;
+}
+
 export interface TaskModel {
   id: string;
   projectId: string;
   title: string;
   objective: string | null;
-  acceptanceCriteria: string[] | null;
+  acceptanceCriteria: AcceptanceCriterion[] | null;
   status: TaskStatus;
   queuePosition: number | null;
   dependencyIds: string[];
@@ -256,10 +263,15 @@ export interface CreateTaskPayload {
   riskLevel?: RiskLevel;
 }
 
+/** An edited criterion keeps its `id`; entries without one become new criteria. */
+export type AcceptanceCriteriaEditEntry =
+  | string
+  | { id?: string; text: string };
+
 export interface EditInboxTaskPayload {
   title: string;
   objective?: string | null;
-  acceptanceCriteria?: string[];
+  acceptanceCriteria?: AcceptanceCriteriaEditEntry[];
   dependencyIds?: string[];
   riskLevel?: RiskLevel;
 }

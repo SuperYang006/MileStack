@@ -16,7 +16,9 @@ describe("core query contract", () => {
       projectId: "project-1",
       title: "Implement the query contract",
       objective: "Make the status response reusable",
-      acceptanceCriteria: ["MCP and HTTP can share the output"],
+      acceptanceCriteria: [
+        { id: "criterion-1", text: "MCP and HTTP can share the output" },
+      ],
       status: "ready" as const,
       queuePosition: 1,
       dependencyIds: ["task-0"],

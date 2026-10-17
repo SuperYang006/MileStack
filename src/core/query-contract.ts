@@ -1,10 +1,12 @@
 import { z } from "zod";
 
 import {
+  acceptanceCriterionSchema,
   taskEventTypes,
   taskStatuses,
 } from "./task-model.js";
 import {
+  criterionResultInputSchema,
   criterionResultSchema,
   findingClosureSchema,
   findingClosureStatuses,
@@ -15,7 +17,12 @@ import {
   verificationEvidenceSchema,
 } from "./review-model.js";
 import type {
+  AcceptanceCriterion,
+  AcceptanceCriteriaPayload,
+} from "./task-model.js";
+import type {
   CriterionResult,
+  CriterionResultInput,
   FindingClosure,
 } from "./review-model.js";
 import { integrationStatuses } from "./integration-model.js";
@@ -40,12 +47,15 @@ export const riskLevelSchema = z.enum(riskLevels);
 export const reviewStatusSchema = z.enum(reviewStatuses);
 export const integrationStatusSchema = z.enum(integrationStatuses);
 export {
+  acceptanceCriterionSchema,
+  criterionResultInputSchema,
   criterionResultSchema,
   findingClosureSchema,
   reviewFindingInputSchema,
   reviewFindingSchema,
 };
-export type { CriterionResult, FindingClosure };
+export type { AcceptanceCriterion, AcceptanceCriteriaPayload };
+export type { CriterionResult, CriterionResultInput, FindingClosure };
 
 export const reviewSchema = z
   .object({
@@ -118,7 +128,10 @@ export const taskSummarySchema = z
     projectId: identifierSchema,
     title: z.string().min(1),
     objective: nullableTextSchema.optional(),
-    acceptanceCriteria: z.array(z.string()).nullable().optional(),
+    acceptanceCriteria: z
+      .array(acceptanceCriterionSchema)
+      .nullable()
+      .optional(),
     status: taskStatusSchema,
     queuePosition: z.number().int().nullable(),
     dependencyIds: z.array(identifierSchema),
@@ -153,7 +166,7 @@ export const taskSchema = z
     projectId: identifierSchema,
     title: z.string().min(1),
     objective: nullableTextSchema,
-    acceptanceCriteria: z.array(z.string()).nullable(),
+    acceptanceCriteria: z.array(acceptanceCriterionSchema).nullable(),
     status: taskStatusSchema,
     queuePosition: z.number().int().nullable(),
     dependencyIds: z.array(identifierSchema),
@@ -438,7 +451,7 @@ export const submitForReviewInputSchema = z
     worktree: z.string().trim().min(1).optional(),
     summary: z.string().trim().min(1),
     completedWork: z.array(z.string().trim().min(1)).default([]),
-    criteriaResults: z.array(criterionResultSchema).default([]),
+    criteriaResults: z.array(criterionResultInputSchema).default([]),
     actorLabel: z.string().trim().min(1).optional(),
   })
   .strict();
@@ -565,13 +578,32 @@ export const reopenTaskInputSchema = z
   })
   .strict();
 
+/**
+ * An edited acceptance criterion. Entries that keep an existing `id` stay the
+ * same criterion even when the text changes; entries without an id are matched
+ * by identical text or become a new criterion.
+ */
+export const acceptanceCriteriaEditEntrySchema = z.union([
+  z.string().trim().min(1),
+  z
+    .object({
+      id: identifierSchema.optional(),
+      text: z.string().trim().min(1),
+    })
+    .strict(),
+]);
+
+export type AcceptanceCriteriaEditEntry = z.infer<
+  typeof acceptanceCriteriaEditEntrySchema
+>;
+
 export const editInboxTaskInputSchema = z
   .object({
     projectId: identifierSchema,
     taskId: identifierSchema,
     title: z.string().trim().min(1),
     objective: z.string().trim().min(1).nullable().optional(),
-    acceptanceCriteria: z.array(z.string().trim().min(1)).default([]),
+    acceptanceCriteria: z.array(acceptanceCriteriaEditEntrySchema).default([]),
     dependencyIds: dependencyIdsSchema.default([]),
     riskLevel: riskLevelSchema.optional(),
     actorLabel: z.string().trim().min(1).optional(),

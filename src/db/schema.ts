@@ -12,6 +12,7 @@ import {
   taskEventTypes,
   taskStatuses,
 } from "../core/task-model.js";
+import type { AcceptanceCriteriaPayload } from "../core/task-model.js";
 import { reviewStatuses, riskLevels } from "../core/review-model.js";
 import type {
   CompletedWorkPayload,
@@ -50,7 +51,7 @@ export const tasks = sqliteTable(
     title: text("title").notNull(),
     objective: text("objective"),
     acceptanceCriteria: text("acceptance_criteria", { mode: "json" }).$type<
-      string[]
+      AcceptanceCriteriaPayload
     >(),
     status: text("status", { enum: taskStatuses }).notNull().default("inbox"),
     queuePosition: integer("queue_position"),

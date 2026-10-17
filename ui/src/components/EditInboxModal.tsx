@@ -1,8 +1,15 @@
 import React, { useLayoutEffect, useRef, useState, useEffect } from "react";
 import { X, Edit3, Terminal, CheckCircle2, Link2, AlertCircle } from "lucide-react";
-import type { TaskSummary, EditInboxTaskPayload, TaskDetails, RiskLevel } from "../types";
+import type {
+  AcceptanceCriterion,
+  TaskSummary,
+  EditInboxTaskPayload,
+  TaskDetails,
+  RiskLevel,
+} from "../types";
 import { CopyTaskIdButton } from "./CopyTaskIdButton";
 import { apiClient } from "../api/client";
+import { reconcileCriteriaLines } from "../utils/acceptanceCriteria";
 
 const MIN_TEXTAREA_ROWS = 3;
 const MAX_TEXTAREA_ROWS = 12;
@@ -47,6 +54,7 @@ export const EditInboxModal: React.FC<EditInboxModalProps> = ({
   const [title, setTitle] = useState("");
   const [objective, setObjective] = useState("");
   const [criteriaText, setCriteriaText] = useState("");
+  const [initialCriteria, setInitialCriteria] = useState<AcceptanceCriterion[]>([]);
   const [dependencyIdsText, setDependencyIdsText] = useState("");
   const [riskLevel, setRiskLevel] = useState<RiskLevel>("medium");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -63,7 +71,10 @@ export const EditInboxModal: React.FC<EditInboxModalProps> = ({
     if ("task" in task) {
       setTitle(task.task.title || "");
       setObjective(task.task.objective || "");
-      setCriteriaText(task.task.acceptanceCriteria?.join("\n") || "");
+      setInitialCriteria(task.task.acceptanceCriteria ?? []);
+      setCriteriaText(
+        task.task.acceptanceCriteria?.map((criterion) => criterion.text).join("\n") || "",
+      );
       setDependencyIdsText(task.task.dependencyIds?.join(", ") || "");
       setRiskLevel(task.task.riskLevel || "medium");
     } else {
@@ -77,7 +88,12 @@ export const EditInboxModal: React.FC<EditInboxModalProps> = ({
           if (!cancelled && details) {
             setTitle(details.task.title || "");
             setObjective(details.task.objective || "");
-            setCriteriaText(details.task.acceptanceCriteria?.join("\n") || "");
+            setInitialCriteria(details.task.acceptanceCriteria ?? []);
+            setCriteriaText(
+              details.task.acceptanceCriteria
+                ?.map((criterion) => criterion.text)
+                .join("\n") || "",
+            );
             setDependencyIdsText(details.task.dependencyIds?.join(", ") || "");
             setRiskLevel(details.task.riskLevel || "medium");
           }
@@ -104,10 +120,14 @@ export const EditInboxModal: React.FC<EditInboxModalProps> = ({
       return;
     }
 
-    const acceptanceCriteria = criteriaText
+    const criteriaLines = criteriaText
       .split("\n")
       .map((line) => line.trim())
       .filter((line) => line.length > 0);
+    const acceptanceCriteria = reconcileCriteriaLines(
+      initialCriteria,
+      criteriaLines,
+    );
 
     const dependencyIds = dependencyIdsText
       .split(/[\n,]/)

@@ -18,6 +18,7 @@ import {
   ReviewRunOwnershipError,
 } from "../../src/core/errors.js";
 import { TaskService } from "../../src/core/task-service.js";
+import type { TaskDetails } from "../../src/core/query-contract.js";
 import { createSqliteRepository } from "../../src/db/sqlite-repository.js";
 import { ensureDatabase } from "../../src/db/ensure-database.js";
 import { projects, tasks } from "../../src/db/schema.js";
@@ -301,7 +302,9 @@ describe("TaskService", () => {
       id: task.task.id,
       title: "Working view task",
       objective,
-      acceptanceCriteria: ["Keep the full acceptance text unchanged."],
+      acceptanceCriteria: [
+        { id: task.task.acceptanceCriteria?.[0]?.id, text: "Keep the full acceptance text unchanged." },
+      ],
       dependencyIds: [dependency.task.id],
       riskLevel: "medium",
       riskConfirmed: true,
@@ -887,7 +890,9 @@ describe("TaskService", () => {
 
     expect(edited.task.title).toBe("Refined Task Title");
     expect(edited.task.objective).toBe("Refined objective by developer");
-    expect(edited.task.acceptanceCriteria).toEqual(["Refined AC 1", "Refined AC 2"]);
+    expect(
+      edited.task.acceptanceCriteria?.map((criterion) => criterion.text),
+    ).toEqual(["Refined AC 1", "Refined AC 2"]);
     expect(edited.task.dependencyIds).toEqual([dep.task.id]);
     expect(edited.task.status).toBe("inbox");
     expect(edited.task.createdBy).toBe("agent"); // preserved
@@ -974,7 +979,9 @@ describe("TaskService", () => {
       queuePosition: null,
       title: "Return me",
       objective: "Keep this objective",
-      acceptanceCriteria: ["Keep this criterion"],
+      acceptanceCriteria: [
+        { id: returned.task.acceptanceCriteria?.[0]?.id, text: "Keep this criterion" },
+      ],
       dependencyIds: [dependency.task.id],
     });
     expect(result.events.at(-1)).toMatchObject({
@@ -1441,11 +1448,17 @@ describe("TaskService", () => {
       status: "ready",
       queuePosition: 1,
     });
+    const criteria = task.task.acceptanceCriteria ?? [];
+    const criterionId = (text: string) =>
+      criteria.find((criterion) => criterion.text === text)?.id ?? text;
+    const criterionTexts = (
+      listed: TaskDetails["task"]["acceptanceCriteria"],
+    ) => (listed ?? []).map((criterion) => criterion.text);
 
     // 1. Ready state has authoritative definition
     const initialDetails = service.getTask({ projectId: "project-1", taskId: task.task.id, view: "full" });
     expect(initialDetails.task.objective).toBe("Keep objective intact across review states");
-    expect(initialDetails.task.acceptanceCriteria).toEqual(["Criteria 1", "Criteria 2"]);
+    expect(criterionTexts(initialDetails.task.acceptanceCriteria)).toEqual(["Criteria 1", "Criteria 2"]);
 
     // 2. Claim and run
     const run1 = service.startTask({ projectId: "project-1", taskId: task.task.id, actorLabel: "agent-1" });
@@ -1469,7 +1482,7 @@ describe("TaskService", () => {
     const runningDetails = service.getTask({ projectId: "project-1", taskId: task.task.id, view: "full" });
     expect(runningDetails.task.status).toBe("running");
     expect(runningDetails.task.objective).toBe("Keep objective intact across review states");
-    expect(runningDetails.task.acceptanceCriteria).toEqual(["Criteria 1", "Criteria 2"]);
+    expect(criterionTexts(runningDetails.task.acceptanceCriteria)).toEqual(["Criteria 1", "Criteria 2"]);
 
     // 3. Submit for review round 1
     database.db
@@ -1500,12 +1513,12 @@ describe("TaskService", () => {
       completedWork: ["Added working response fields", "Completed round 1."],
       criteriaResults: [
         {
-          criterion: "Criteria 1",
+          criterionId: criterionId("Criteria 1"),
           status: "met",
           evidence: [{ command: "pnpm test tests/core", result: "passed" }],
         },
         {
-          criterion: "Criteria 2",
+          criterionId: criterionId("Criteria 2"),
           status: "met",
           evidence: [{ command: "pnpm test tests/core", result: "passed" }],
         },
@@ -1535,7 +1548,7 @@ describe("TaskService", () => {
     const inReviewDetails = service.getTask({ projectId: "project-1", taskId: task.task.id, view: "full" });
     expect(inReviewDetails.task.status).toBe("in_review");
     expect(inReviewDetails.task.objective).toBe("Keep objective intact across review states");
-    expect(inReviewDetails.task.acceptanceCriteria).toEqual(["Criteria 1", "Criteria 2"]);
+    expect(criterionTexts(inReviewDetails.task.acceptanceCriteria)).toEqual(["Criteria 1", "Criteria 2"]);
 
     // 4. Start review and request changes
     const review1 = service.startReview({ projectId: "project-1", taskId: task.task.id });
@@ -1558,13 +1571,13 @@ describe("TaskService", () => {
     });
     expect(returned.task.status).toBe("ready");
     expect(returned.task.objective).toBe("Keep objective intact across review states");
-    expect(returned.task.acceptanceCriteria).toEqual(["Criteria 1", "Criteria 2"]);
+    expect(criterionTexts(returned.task.acceptanceCriteria)).toEqual(["Criteria 1", "Criteria 2"]);
 
     // 5. Querying task after returning to ready retains authoritative definition
     const returnedDetails = service.getTask({ projectId: "project-1", taskId: task.task.id, view: "full" });
     expect(returnedDetails.task.status).toBe("ready");
     expect(returnedDetails.task.objective).toBe("Keep objective intact across review states");
-    expect(returnedDetails.task.acceptanceCriteria).toEqual(["Criteria 1", "Criteria 2"]);
+    expect(criterionTexts(returnedDetails.task.acceptanceCriteria)).toEqual(["Criteria 1", "Criteria 2"]);
     expect(returnedDetails.reviews).toHaveLength(1);
     expect(returnedDetails.reviews[0]?.status).toBe("changes_requested");
     const returnedWorking = service.getTask({ projectId: "project-1", taskId: task.task.id });
@@ -1601,7 +1614,7 @@ describe("TaskService", () => {
     const reClaimedDetails = service.getTask({ projectId: "project-1", taskId: task.task.id, view: "full" });
     expect(reClaimedDetails.task.status).toBe("running");
     expect(reClaimedDetails.task.objective).toBe("Keep objective intact across review states");
-    expect(reClaimedDetails.task.acceptanceCriteria).toEqual(["Criteria 1", "Criteria 2"]);
+    expect(criterionTexts(reClaimedDetails.task.acceptanceCriteria)).toEqual(["Criteria 1", "Criteria 2"]);
 
     // 7. Re-submit for review round 2
     service.updateTask({
@@ -1633,12 +1646,12 @@ describe("TaskService", () => {
       completedWork: ["Fixed defect in round 2"],
       criteriaResults: [
         {
-          criterion: "Criteria 1",
+          criterionId: criterionId("Criteria 1"),
           status: "met",
           evidence: [{ command: "pnpm test tests/core", result: "passed" }],
         },
         {
-          criterion: "Criteria 2",
+          criterionId: criterionId("Criteria 2"),
           status: "met",
           evidence: [{ command: "pnpm test tests/core", result: "passed" }],
         },
@@ -1670,7 +1683,7 @@ describe("TaskService", () => {
     expect(workingSize).toBeLessThan(fullSize);
     expect(reSubmittedDetails.task.status).toBe("in_review");
     expect(reSubmittedDetails.task.objective).toBe("Keep objective intact across review states");
-    expect(reSubmittedDetails.task.acceptanceCriteria).toEqual(["Criteria 1", "Criteria 2"]);
+    expect(criterionTexts(reSubmittedDetails.task.acceptanceCriteria)).toEqual(["Criteria 1", "Criteria 2"]);
     expect(reSubmittedDetails.reviews).toHaveLength(2);
     expect(reSubmittedDetails.reviews[1]?.reviewRound).toBe(2);
     expect(reSubmittedDetails.reviews[1]?.status).toBe("pending");

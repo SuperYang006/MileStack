@@ -80,7 +80,9 @@ export function formatTaskBriefing(input: {
   const risk = formatRisk(record);
   const criteria =
     record.acceptanceCriteria && record.acceptanceCriteria.length > 0
-      ? record.acceptanceCriteria.map((criterion, index) => `  ${index + 1}. ${criterion}`).join("\n")
+      ? record.acceptanceCriteria
+          .map((criterion, index) => `  ${index + 1}. ${criterion.text}`)
+          .join("\n")
       : "  （未指定具体验收条件）";
   const runnable = input.task.runnable
     ? "依赖已完成，可以调用 start_task 领取"

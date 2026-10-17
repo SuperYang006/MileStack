@@ -11,6 +11,7 @@ import {
   SubmissionCriteriaIncompleteError,
 } from "../../src/core/errors.js";
 import { TaskService } from "../../src/core/task-service.js";
+import type { TaskDetails } from "../../src/core/query-contract.js";
 import { createSqliteRepository } from "../../src/db/sqlite-repository.js";
 import { ensureDatabase } from "../../src/db/ensure-database.js";
 import { projects, taskEvents, taskReviews } from "../../src/db/schema.js";
@@ -74,18 +75,24 @@ function createReadyTask(
   });
 }
 
-function criterionResult(
-  criterion: string,
-  status: "met" | "not_met" | "unverifiable",
-) {
-  return {
-    criterion,
+function criterionResolver(task: TaskDetails) {
+  const idsByText = new Map(
+    (task.task.acceptanceCriteria ?? []).map((criterion) => [
+      criterion.text,
+      criterion.id,
+    ]),
+  );
+  return (
+    criterion: string,
+    status: "met" | "not_met" | "unverifiable",
+  ) => ({
+    criterionId: idsByText.get(criterion) ?? criterion,
     status,
     evidence:
       status === "met"
         ? [{ command: `check ${criterion}`, result: "passed" }]
         : [],
-  };
+  });
 }
 
 function finding(issue: string) {
@@ -109,12 +116,13 @@ describe("structured delivery and review records", () => {
   it("returns only the context of the current phase and drops closed findings", async () => {
     const { database, service } = await createService(createTemporaryProject());
     const task = createReadyTask(service);
+    const criterionResult = criterionResolver(task);
     const taskId = task.task.id;
 
     const initial = service.getTask({ projectId: "project-1", taskId });
     expect(initial.phase).toBe("implementation");
     expect(initial.task.objective).toBe("Return phase context and structured records");
-    expect(initial.task.acceptanceCriteria).toEqual([
+    expect(initial.task.acceptanceCriteria?.map((criterion) => criterion.text)).toEqual([
       "First criterion",
       "Second criterion",
     ]);
@@ -199,7 +207,9 @@ describe("structured delivery and review records", () => {
 
     const rework = service.getTask({ projectId: "project-1", taskId });
     expect(rework.phase).toBe("implementation");
-    expect(rework.task.acceptanceCriteria).toEqual([
+    expect(
+      rework.task.acceptanceCriteria?.map((criterion) => criterion.text),
+    ).toEqual([
       "First criterion",
       "Second criterion",
     ]);
@@ -283,6 +293,7 @@ describe("structured delivery and review records", () => {
   it("rejects submissions without exactly one evidenced result per criterion", async () => {
     const { database, service } = await createService(createTemporaryProject());
     const task = createReadyTask(service);
+    const criterionResult = criterionResolver(task);
     const taskId = task.task.id;
     const run = service.startTask({ projectId: "project-1", taskId });
     const submit = (criteriaResults: unknown) =>
@@ -312,7 +323,7 @@ describe("structured delivery and review records", () => {
     ).toThrow(SubmissionCriteriaIncompleteError);
     expect(() =>
       submit([
-        { criterion: "First criterion", status: "met", evidence: [] },
+        { criterionId: criterionResult("First criterion", "met").criterionId, status: "met", evidence: [] },
         criterionResult("Second criterion", "met"),
       ]),
     ).toThrow(/met criterion/);
@@ -361,6 +372,7 @@ describe("structured delivery and review records", () => {
   it("requires structured findings and closure of every previous finding before passing", async () => {
     const { database, service } = await createService(createTemporaryProject());
     const task = createReadyTask(service);
+    const criterionResult = criterionResolver(task);
     const taskId = task.task.id;
     const run1 = service.startTask({ projectId: "project-1", taskId });
     service.submitForReview({
@@ -508,6 +520,7 @@ describe("structured delivery and review records", () => {
   it("requires developer returns to close every previous finding and drops closed ones from rework", async () => {
     const { database, service } = await createService(createTemporaryProject());
     const task = createReadyTask(service);
+    const criterionResult = criterionResolver(task);
     const taskId = task.task.id;
     const run1 = service.startTask({ projectId: "project-1", taskId });
     service.submitForReview({
@@ -654,6 +667,7 @@ describe("structured delivery and review records", () => {
   it("keeps first-round developer returns closure-free and rejects unstructured findings", async () => {
     const { database, service } = await createService(createTemporaryProject());
     const task = createReadyTask(service);
+    const criterionResult = criterionResolver(task);
     const taskId = task.task.id;
     const run = service.startTask({ projectId: "project-1", taskId });
     service.submitForReview({
@@ -705,6 +719,7 @@ describe("structured delivery and review records", () => {
   it("keeps pre-change submission and review JSON readable without migration", async () => {
     const { database, service } = await createService(createTemporaryProject());
     const task = createReadyTask(service);
+    const criterionResult = criterionResolver(task);
     const taskId = task.task.id;
     const run = service.startTask({ projectId: "project-1", taskId });
     service.submitForReview({

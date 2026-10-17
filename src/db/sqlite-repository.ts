@@ -16,6 +16,7 @@ import {
   normalizeReviewFindingsPayload,
   reviewFindingsPayloadFor,
 } from "../core/review-model.js";
+import { normalizeAcceptanceCriteriaPayload } from "../core/task-model.js";
 import {
   taskDependencies,
   taskEvents,
@@ -30,7 +31,12 @@ function mapProject(project: typeof projects.$inferSelect): ProjectRecord {
 }
 
 function mapTask(task: typeof tasks.$inferSelect): TaskRecord {
-  return task;
+  return {
+    ...task,
+    acceptanceCriteria: normalizeAcceptanceCriteriaPayload(
+      task.acceptanceCriteria,
+    ),
+  };
 }
 
 function mapTaskEvent(event: typeof taskEvents.$inferSelect): TaskEventRecord {

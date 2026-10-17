@@ -10,7 +10,10 @@ function taskRecord(overrides: Partial<TaskModel> = {}): TaskModel {
     projectId: "project-1",
     title: "修复简报",
     objective: "让简报步骤连续",
-    acceptanceCriteria: ["步骤不重复", "不编造目标"],
+    acceptanceCriteria: [
+      { id: "criterion-1", text: "步骤不重复" },
+      { id: "criterion-2", text: "不编造目标" },
+    ],
     status: "ready",
     queuePosition: null,
     dependencyIds: [],

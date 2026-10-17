@@ -459,10 +459,10 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                 </h3>
                 {details.task.acceptanceCriteria && details.task.acceptanceCriteria.length > 0 ? (
                   <div className="space-y-1 bg-zinc-900/40 p-2.5 rounded border border-zinc-850">
-                    {details.task.acceptanceCriteria.map((item, idx) => (
-                      <div key={idx} className="flex items-start space-x-2 text-zinc-300">
+                    {details.task.acceptanceCriteria.map((item) => (
+                      <div key={item.id} className="flex items-start space-x-2 text-zinc-300">
                         <span className="text-cyan-400 select-none">[x]</span>
-                        <span>{item}</span>
+                        <span>{item.text}</span>
                       </div>
                     ))}
                   </div>

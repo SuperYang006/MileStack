@@ -206,10 +206,12 @@ describe("review workflow integration", () => {
 
     const submitAndPass = async (
       client: Client,
-      taskId: string,
+      task: TaskDetails,
       commitSha: string,
       branch: string,
     ): Promise<TaskDetails> => {
+      const taskId = task.task.id;
+      const criterionId = task.task.acceptanceCriteria?.[0]?.id ?? "";
       const started = await callMcp<StartedTask>(client, "start_task", { taskId });
       const submitted = await callMcp<TaskDetails>(client, "submit_for_review", {
         taskId,
@@ -221,7 +223,7 @@ describe("review workflow integration", () => {
         completedWork: ["Created the review commit in the temporary repository."],
         criteriaResults: [
           {
-            criterion: "Only the current approved artifact completes",
+            criterionId,
             status: "met",
             evidence: [{ command: "pnpm typecheck", result: "passed" }],
           },
@@ -248,7 +250,7 @@ describe("review workflow integration", () => {
 
     git(projectRoot, "checkout", "-b", "feature/prerequisite");
     const firstCommit = commitFile(projectRoot, "prerequisite.txt", "first delivery\n", "first delivery");
-    const firstPassed = await submitAndPass(client, prerequisite.task.id, firstCommit, "feature/prerequisite");
+    const firstPassed = await submitAndPass(client, prerequisite, firstCommit, "feature/prerequisite");
     const firstReview = firstPassed.reviews!.at(-1)!;
     expect(firstPassed.task.status).toBe("in_review");
     expect(firstReview).toMatchObject({ status: "passed", integrationStatus: "not_integrated", approvedAt: null });
@@ -288,7 +290,7 @@ describe("review workflow integration", () => {
     git(projectRoot, "checkout", "main");
     git(projectRoot, "merge", "--ff-only", "feature/unapproved");
     git(projectRoot, "branch", "-d", "feature/unapproved");
-    const unapprovedPassed = await submitAndPass(client, integratedButUnapproved.task.id, unapprovedCommit, "feature/unapproved");
+    const unapprovedPassed = await submitAndPass(client, integratedButUnapproved, unapprovedCommit, "feature/unapproved");
     const unapprovedReview = unapprovedPassed.reviews!.at(-1)!;
 
     const prematureArchive = await harness.app.inject({
@@ -318,7 +320,7 @@ describe("review workflow integration", () => {
     expect(reopened.statusCode).toBe(200);
     git(projectRoot, "checkout", "-b", "feature/prerequisite-round-two");
     const secondCommit = commitFile(projectRoot, "prerequisite.txt", "second delivery\n", "second delivery");
-    const secondPassed = await submitAndPass(client, prerequisite.task.id, secondCommit, "feature/prerequisite-round-two");
+    const secondPassed = await submitAndPass(client, prerequisite, secondCommit, "feature/prerequisite-round-two");
     const secondReview = secondPassed.reviews!.at(-1)!;
     expect(secondReview).toMatchObject({ status: "passed", approvedAt: null, integrationStatus: "not_integrated" });
     expect(secondReview.id).not.toBe(firstReview.id);
@@ -380,7 +382,7 @@ describe("review workflow integration", () => {
       completedWork: ["Exercised the stdio submission boundary"],
       criteriaResults: [
         {
-          criterion: "HTTP and MCP expose the same review record",
+          criterionId: created.task.acceptanceCriteria?.[0]?.id ?? "",
           status: "met",
           evidence: [
             {
@@ -487,7 +489,7 @@ describe("review workflow integration", () => {
         summary: `${risk.riskLevel} implementation submitted.`,
         criteriaResults: [
           {
-            criterion: "Risk behavior remains deterministic",
+            criterionId: created.task.acceptanceCriteria?.[0]?.id ?? "",
             status: "met",
             evidence: [{ command: "pnpm test", result: "passed" }],
           },
@@ -580,7 +582,7 @@ describe("review workflow integration", () => {
       summary: "First implementation submitted.",
       criteriaResults: [
         {
-          criterion: "Only one reviewer can claim a pending review",
+          criterionId: created.task.acceptanceCriteria?.[0]?.id ?? "",
           status: "met",
           evidence: [{ command: "pnpm test", result: "passed" }],
         },
@@ -669,7 +671,7 @@ describe("review workflow integration", () => {
       summary: "Reworked implementation submitted.",
       criteriaResults: [
         {
-          criterion: "Only one reviewer can claim a pending review",
+          criterionId: created.task.acceptanceCriteria?.[0]?.id ?? "",
           status: "met",
           evidence: [{ command: "pnpm test", result: "passed" }],
         },

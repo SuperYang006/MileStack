@@ -61,6 +61,7 @@ import {
   type TaskSummary,
   type UpdateTaskInput,
   type EditInboxTaskInput,
+  type AcceptanceCriteriaEditEntry,
   type SetTaskIntegrationPolicyInput,
   type CheckTaskIntegrationInput,
 } from "./query-contract.js";
@@ -89,9 +90,11 @@ import type {
 import type { IntegrationStatus } from "./integration-model.js";
 import type {
   CriterionResult,
+  CriterionResultInput,
   FindingClosure,
   ReviewFinding,
 } from "./review-model.js";
+import type { AcceptanceCriterion } from "./task-model.js";
 import type {
   MileStackRepository,
   ProjectRecord,
@@ -353,34 +356,84 @@ function collectOpenFindings(reviews: ReviewRecord[]): TaskWorkingOpenFinding[] 
 }
 
 function validateSubmissionCriteria(
-  task: TaskRecord,
-  results: CriterionResult[],
+  taskId: string,
+  criteria: AcceptanceCriterion[],
+  results: CriterionResultInput[],
 ): void {
-  const criteria = task.acceptanceCriteria ?? [];
+  const criterionIds = new Set(criteria.map((criterion) => criterion.id));
   const seen = new Set<string>();
   for (const result of results) {
-    if (!criteria.includes(result.criterion)) {
+    if (!criterionIds.has(result.criterionId)) {
       throw new SubmissionCriteriaIncompleteError(
-        task.id,
-        `criterion '${result.criterion}' is not part of the current task definition.`,
+        taskId,
+        `criterion id '${result.criterionId}' is not part of the current task definition.`,
       );
     }
-    if (seen.has(result.criterion)) {
+    if (seen.has(result.criterionId)) {
       throw new SubmissionCriteriaIncompleteError(
-        task.id,
-        `criterion '${result.criterion}' has more than one result.`,
+        taskId,
+        `criterion id '${result.criterionId}' has more than one result.`,
       );
     }
-    seen.add(result.criterion);
+    seen.add(result.criterionId);
   }
 
-  const missing = criteria.filter((criterion) => !seen.has(criterion));
+  const missing = criteria.filter((criterion) => !seen.has(criterion.id));
   if (missing.length > 0) {
     throw new SubmissionCriteriaIncompleteError(
-      task.id,
-      `missing results for: ${missing.join("; ")}.`,
+      taskId,
+      `missing results for criteria: ${missing
+        .map((criterion) => `${criterion.id} ('${criterion.text}')`)
+        .join("; ")}.`,
     );
   }
+}
+
+function resolveCriterionResults(
+  criteria: AcceptanceCriterion[],
+  results: CriterionResultInput[],
+): CriterionResult[] {
+  const byId = new Map(criteria.map((criterion) => [criterion.id, criterion]));
+  return results.map((result) => ({
+    criterionId: result.criterionId,
+    criterion: byId.get(result.criterionId)?.text ?? result.criterionId,
+    status: result.status,
+    evidence: result.evidence,
+  }));
+}
+
+/**
+ * Applies an inbox edit to the current criteria. An entry that carries an
+ * existing id keeps that criterion identity across text edits; entries without
+ * an id are matched to an identical remaining text or become a new criterion.
+ * Deleted criteria simply drop out and their ids are never reused.
+ */
+function reconcileAcceptanceCriteria(
+  existing: AcceptanceCriterion[],
+  entries: AcceptanceCriteriaEditEntry[],
+  generateId: () => string,
+): AcceptanceCriterion[] {
+  const byId = new Map(existing.map((criterion) => [criterion.id, criterion]));
+  const used = new Set<string>();
+  return entries.map((entry) => {
+    const id = typeof entry === "string" ? undefined : entry.id;
+    const text = typeof entry === "string" ? entry : entry.text;
+    if (id !== undefined) {
+      const current = byId.get(id);
+      if (current && !used.has(current.id)) {
+        used.add(current.id);
+        return { id: current.id, text };
+      }
+    }
+    const identical = existing.find(
+      (criterion) => !used.has(criterion.id) && criterion.text === text,
+    );
+    if (identical) {
+      used.add(identical.id);
+      return { id: identical.id, text };
+    }
+    return { id: generateId(), text };
+  });
 }
 
 function validateFindingClosures(
@@ -865,7 +918,11 @@ export class TaskService {
       transaction.updateTask(task.id, {
         title: parsed.title,
         objective,
-        acceptanceCriteria: parsed.acceptanceCriteria,
+        acceptanceCriteria: reconcileAcceptanceCriteria(
+          task.acceptanceCriteria ?? [],
+          parsed.acceptanceCriteria,
+          () => this.generateId(),
+        ),
         riskLevel: parsed.riskLevel ?? task.riskLevel,
         updatedAt: now,
       });
@@ -1203,7 +1260,12 @@ export class TaskService {
       if (task.status !== "running") {
         throw new InvalidTaskStateError(task.id, "running", task.status);
       }
-      validateSubmissionCriteria(task, parsed.criteriaResults);
+      const criteria = task.acceptanceCriteria ?? [];
+      validateSubmissionCriteria(task.id, criteria, parsed.criteriaResults);
+      const criteriaResults = resolveCriterionResults(
+        criteria,
+        parsed.criteriaResults,
+      );
       const now = this.now().toISOString();
       const actorLabel =
         parsed.actorLabel ??
@@ -1259,7 +1321,7 @@ export class TaskService {
         type: "submitted_for_review",
         summary: parsed.summary,
         completedWork: parsed.completedWork,
-        criteriaResults: parsed.criteriaResults,
+        criteriaResults,
         currentStep: null,
         nextStep: null,
         blocker: null,
@@ -2184,7 +2246,10 @@ export class TaskService {
       projectId: project.id,
       title: input.title,
       objective: input.objective ?? null,
-      acceptanceCriteria: input.acceptanceCriteria ?? [],
+      acceptanceCriteria: (input.acceptanceCriteria ?? []).map((text) => ({
+        id: this.generateId(),
+        text,
+      })),
       status,
       queuePosition: input.queuePosition ?? null,
       ...emptyTaskFields,

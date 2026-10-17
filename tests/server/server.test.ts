@@ -447,7 +447,11 @@ describe("HTTP API Server", () => {
     const edited = JSON.parse(editRes.payload);
     expect(edited.task.title).toBe("Updated Title By Developer");
     expect(edited.task.objective).toBe("Updated Objective");
-    expect(edited.task.acceptanceCriteria).toEqual(["AC 1", "AC 2"]);
+    expect(
+      edited.task.acceptanceCriteria.map(
+        (criterion: { id: string; text: string }) => criterion.text,
+      ),
+    ).toEqual(["AC 1", "AC 2"]);
     expect(edited.task.dependencyIds).toEqual([readyTask.id]);
     expect(edited.task.status).toBe("inbox");
     expect(edited.events.at(-1).summary).toBe("Inbox task definition updated by developer.");
@@ -757,7 +761,7 @@ describe("HTTP API Server", () => {
     });
     const criteriaResults = [
       {
-        criterion: "The rework covers the previous finding",
+        criterionId: created.acceptanceCriteria[0].id as string,
         status: "met" as const,
         evidence: [{ command: "pnpm test", result: "passed" }],
       },

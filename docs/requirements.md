@@ -363,7 +363,11 @@ type Task = {
 
   title: string
   objective?: string
-  acceptanceCriteria?: string[]
+  // 每条验收标准带稳定标识；id 不等于标准全文
+  acceptanceCriteria?: Array<{
+    id: string
+    text: string
+  }>
 
   status: "inbox" | "ready" | "running" | "blocked" | "in_review" | "completed"
   queuePosition?: number
@@ -402,7 +406,11 @@ type Task = {
 - 任务不能依赖自身，也不能形成循环依赖；
 - `running` 和 `blocked` 任务可以拥有 `activeRunId`；
 - `in_review` 和 `completed` 任务必须清除 `activeRunId`；只有 `completed` 任务记录 `completedAt`；
-- AI 创建的后续任务默认进入 `inbox`。
+- AI 创建的后续任务默认进入 `inbox`；
+- 每条验收标准有稳定的 `id`：创建时生成，`id` 不等于标准全文，文字相同的两条标准仍是两条；
+- 开发者修改某条标准的文字或标点时保留其 `id`；删除标准后其 `id` 不再匹配任何当前标准，也不会被复用到新标准；
+- 编辑输入可以携带 `{ id, text }` 显式保留标识，也可以用纯字符串（未变化的文字按原文匹配保留标识）；
+- 本次改动前只有字符串标准的任务无需回填：读取时按位置派生稳定的旧标识（如 `legacy-0`），标准全文完整保留。
 
 ### 8.3 TaskEvent
 
@@ -432,7 +440,9 @@ type TaskEvent = {
   summary: string
   completedWork?: string[]
   // 仅 submitted_for_review 事件携带；存储在 completed_work JSON 中
+  // criterionId 指向提交时的验收标准标识；更早按原文保存的结果没有该字段
   criteriaResults?: Array<{
+    criterionId?: string
     criterion: string
     status: "met" | "not_met" | "unverifiable"
     evidence: Array<{
@@ -453,7 +463,7 @@ type TaskEvent = {
 
 `TaskEvent` 只追加、不覆盖。修改 `Task` 当前状态和追加对应事件必须在同一个数据库事务中完成。
 
-`submitted_for_review` 事件必须在 JSON 中记录交付结果：当前每条验收标准有且只有一个结果，取值为 `met`、`not_met` 或 `unverifiable`；`met` 必须附带至少一条实际执行过的命令与结果。缺少结果、重复结果、未知验收标准或把未执行的检查标成 `met` 时，提交被拒绝。更早写入的纯 `completedWork` 字符串数组仍按旧形状读取。
+`submitted_for_review` 事件必须在 JSON 中记录交付结果：提交按验收标准的稳定 `id` 对应，当前每条验收标准有且只有一个结果，取值为 `met`、`not_met` 或 `unverifiable`；`met` 必须附带至少一条实际执行过的命令与结果。缺少结果、重复使用同一标识、未知或已删除标准的标识，或把未执行的检查标成 `met` 时，提交被拒绝。更早写入的纯 `completedWork` 字符串数组和按原文保存的交付结果仍按旧形状读取。
 
 ### 8.4 TaskReview
 
@@ -560,7 +570,7 @@ V0 暂不实现请求幂等键和通用乐观锁；出现实际重复写入或�
 ### 10.1 查询
 
 - `get_project_status`：一次获取当前工作、下一任务、阻塞、收件箱和最近完成情况；
-- `get_task`：默认返回 `working` 视图，逐字保留完整任务定义与当前状态，并按阶段返回当轮上下文：实施轮提供依赖状态和当前执行轮次进度；审核轮提供固定提交、本轮逐条验收标准结果和上一轮待关闭的发现；返工轮提供未关闭的发现。传入 `view: "full"` 时返回完整不可变事件与审核历史。HTTP 任务详情接口始终返回 `full`，供 WebUI 显示完整时间线。
+- `get_task`：默认返回 `working` 视图，逐字保留完整任务定义与当前状态，并按阶段返回当轮上下文：实施轮提供依赖状态和当前执行轮次进度；审核轮提供固定提交、本轮逐条验收标准结果和上一轮待关闭的发现；返工轮提供未关闭的发现。验收标准始终带稳定标识和完整原文，供提交按标识对应。传入 `view: "full"` 时返回完整不可变事件与审核历史。HTTP 任务详情接口始终返回 `full`，供 WebUI 显示完整时间线。
 
 ### 10.2 任务记录与确认
 
@@ -575,7 +585,7 @@ V0 暂不实现请求幂等键和通用乐观锁；出现实际重复写入或�
 - `block_task`：报告阻塞原因和所需行动；
 - `resume_task`：阻塞解除后，使用当前 `runId` 恢复执行；
 - `release_task`：释放任务、写入交接说明并返回 `ready`；
-- `submit_for_review`：MCP 提交完成摘要、固定 commit 制品和逐条验收标准交付结果并将任务设为 `in_review`；提交本身不完成任务。缺少结果、重复结果或 `met` 缺少证据的提交被拒绝。后续审核按风险策略处理，任务需要 Git 集成时还须通过本地目标分支检查。
+- `submit_for_review`：MCP 提交完成摘要、固定 commit 制品和逐条验收标准交付结果并将任务设为 `in_review`；每条结果按 `get_task` 返回的标准标识对应，提交本身不完成任务。缺少结果、重复标识或 `met` 缺少证据的提交被拒绝。后续审核按风险策略处理，任务需要 Git 集成时还须通过本地目标分支检查。
 - `start_review`：原子领取最新审核记录并返回独立 `reviewRunId`；
 - `complete_review`：提交审核摘要、结构化 findings、复审关闭记录和验证证据；新发现必须包含触发条件、可观察影响和证据，上一轮退回的发现必须有且只有一个关闭状态。存在未满足或无法验证的交付结果、未修复或部分修复的发现时不能判为通过。低风险任务在本地集成条件满足后可自动完成，中高风险任务等待开发者批准。
 - `check_task_integration`：使用最新审核 ID 重试已验收任务的本地只读集成检查，不替换审核 SHA，也不执行合并、fetch 或 push。
@@ -603,7 +613,7 @@ MileStack 应提供一段可加入项目 `AGENTS.md` 或其他 AI 指令文件�
 - 阻塞解除且继续原任务时调用 resume_task。
 - 执行中发现的新工作通过 create_task 记录到 inbox，不要写入新的任务文档。
 - 无法继续或需要其他 AI 接手时调用 release_task，并写明交接信息。
-- 只有在验收条件满足且验证完成后调用 `submit_for_review`，并为每条验收标准记录满足、不满足或无法验证及实际证据；低风险审核通过也只有在本地集成检查通过后才自动完成，中高风险还需开发者批准。若已验收但集成待确认，使用最新审核 ID 调用 `check_task_integration` 重试。
+- 只有在验收条件满足且验证完成后调用 `submit_for_review`，并为每条验收标准按 `get_task` 返回的标准标识记录满足、不满足或无法验证及实际证据；低风险审核通过也只有在本地集成检查通过后才自动完成，中高风险还需开发者批准。若已验收但集成待确认，使用最新审核 ID 调用 `check_task_integration` 重试。
 - 只有开发者明确提供待审核任务的 `taskId` 后，审核 Agent 才调用 `start_review` 保存 `reviewRunId`；不得自行选择待审核任务。提交 `complete_review` 时必须携带该凭证和验证命令结果；新发现必须写明触发条件、可观察影响和证据，复审上一轮退回的提交时必须关闭上一轮每条发现。
 - 不得自行修改或降低任务风险等级；发现问题时使用结构化 finding 记录问题和修改建议。
 ```

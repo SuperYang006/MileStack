@@ -1,4 +1,4 @@
-import type { TaskEventType, TaskStatus } from "./task-model.js";
+import type { AcceptanceCriterion, TaskEventType, TaskStatus } from "./task-model.js";
 import type {
   CriterionResult,
   FindingClosure,
@@ -25,7 +25,7 @@ export type TaskRecord = {
   projectId: string;
   title: string;
   objective: string | null;
-  acceptanceCriteria: string[] | null;
+  acceptanceCriteria: AcceptanceCriterion[] | null;
   status: TaskStatus;
   queuePosition: number | null;
   currentStep: string | null;

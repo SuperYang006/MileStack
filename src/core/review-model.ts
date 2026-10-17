@@ -74,8 +74,14 @@ export const reviewFindingInputSchema = z
 
 export type ReviewFindingInput = z.infer<typeof reviewFindingInputSchema>;
 
+/**
+ * A delivery result as stored and read. `criterionId` is absent on results
+ * written before criterion identities existed; those legacy results stay
+ * readable through their criterion text.
+ */
 export const criterionResultSchema = z
   .object({
+    criterionId: z.string().trim().min(1).optional(),
     criterion: z.string().trim().min(1),
     status: z.enum(criterionResultStatuses),
     evidence: z.array(verificationEvidenceSchema).default([]),
@@ -93,6 +99,30 @@ export const criterionResultSchema = z
   });
 
 export type CriterionResult = z.infer<typeof criterionResultSchema>;
+
+/**
+ * The input contract for a newly recorded delivery result: it targets the
+ * stable criterion id, so a text edit never breaks the match.
+ */
+export const criterionResultInputSchema = z
+  .object({
+    criterionId: z.string().trim().min(1),
+    status: z.enum(criterionResultStatuses),
+    evidence: z.array(verificationEvidenceSchema).default([]),
+  })
+  .strict()
+  .superRefine((result, context) => {
+    if (result.status === "met" && result.evidence.length === 0) {
+      context.addIssue({
+        code: "custom",
+        path: ["evidence"],
+        message:
+          "A met criterion must include at least one recorded command and result.",
+      });
+    }
+  });
+
+export type CriterionResultInput = z.infer<typeof criterionResultInputSchema>;
 
 export const findingClosureSchema = z
   .object({
