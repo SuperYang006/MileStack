@@ -204,6 +204,8 @@ milestack mcp --discover
 
 Agent-created tasks enter the inbox. A developer must confirm their risk and queue position before they become claimable.
 
+`get_task` defaults to the `working` view, which keeps the full task definition and current work context. Pass `view: "full"` to inspect every immutable task event and review record. The HTTP task-detail endpoint used by the Web UI always returns the full timeline.
+
 ## Local data and upgrades
 
 Project data is stored in `.milestack/` and must not be committed. SQLite connections use WAL mode, foreign keys, and a busy timeout so the local web server and MCP processes can share the database safely.

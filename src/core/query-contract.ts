@@ -236,6 +236,31 @@ export const taskDetailsSchema = z
   })
   .strict();
 
+export const taskWorkingDependencySchema = z
+  .object({
+    id: identifierSchema,
+    title: z.string().min(1),
+    status: taskStatusSchema,
+  })
+  .strict();
+
+export const taskWorkingSubmissionSchema = z
+  .object({
+    review: reviewSchema,
+    summary: nullableTextSchema,
+    completedWork: z.array(z.string()).nullable(),
+  })
+  .strict();
+
+export const taskWorkingDetailsSchema = z
+  .object({
+    task: taskSchema,
+    dependencies: z.array(taskWorkingDependencySchema),
+    currentRunEvents: z.array(taskEventSchema),
+    latestSubmission: taskWorkingSubmissionSchema.nullable(),
+  })
+  .strict();
+
 export const projectStatusViewSchema = z.enum(["compact", "full"]);
 
 export const getProjectStatusInputSchema = z
@@ -279,6 +304,7 @@ export const getTaskInputSchema = z
   .object({
     projectId: identifierSchema,
     taskId: identifierSchema,
+    view: z.enum(["working", "full"]).default("working"),
   })
   .strict();
 
@@ -476,6 +502,7 @@ export const releaseTaskInputSchema = z
 export type ProjectSummary = z.infer<typeof projectSummarySchema>;
 export type TaskSummary = z.infer<typeof taskSummarySchema>;
 export type TaskDetails = z.infer<typeof taskDetailsSchema>;
+export type TaskWorkingDetails = z.infer<typeof taskWorkingDetailsSchema>;
 export type Review = z.infer<typeof reviewSchema>;
 export type ReviewDigest = z.infer<typeof reviewDigestSchema>;
 export type ProjectStatus = z.infer<typeof projectStatusSchema>;
@@ -487,7 +514,7 @@ export type GetProjectStatusInput = z.infer<
 export type ListTasksInput = z.input<typeof listTasksInputSchema>;
 export type TaskCursor = z.infer<typeof taskCursorSchema>;
 export type TaskPage = z.infer<typeof taskPageSchema>;
-export type GetTaskInput = z.infer<typeof getTaskInputSchema>;
+export type GetTaskInput = z.input<typeof getTaskInputSchema>;
 export type CreateTaskInput = z.input<typeof createTaskInputSchema>;
 export type CreateTasksInput = z.input<typeof createTasksInputSchema>;
 export type SetTaskDependenciesInput = z.input<

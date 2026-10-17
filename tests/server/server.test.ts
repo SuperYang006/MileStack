@@ -183,6 +183,7 @@ describe("HTTP API Server", () => {
     const confirmed = serverInstance.context.service.getTask({
       projectId: serverInstance.context.project.id,
       taskId: created.task.id,
+      view: "full",
     });
     expect(confirmed.events.at(-1)).toMatchObject({
       type: "confirmed",
@@ -351,6 +352,7 @@ describe("HTTP API Server", () => {
     const released = serverInstance.context.service.getTask({
       projectId: serverInstance.context.project.id,
       taskId: readyTask.task.id,
+      view: "full",
     });
     expect(released.task.status).toBe("ready");
     expect(released.events.at(-1)).toMatchObject({
@@ -465,6 +467,7 @@ describe("HTTP API Server", () => {
     const returnedDetails = serverInstance.context.service.getTask({
       projectId: serverInstance.context.project.id,
       taskId: second.id,
+      view: "full",
     });
     expect(returnedDetails.task).toMatchObject({
       objective: "Preserve this content",
@@ -561,6 +564,20 @@ describe("HTTP API Server", () => {
     );
     expect(statusInReview.recentlyCompleted).toEqual([]);
 
+    const fullDetailsResponse = await serverInstance.app.inject({
+      method: "GET",
+      url: `/api/tasks/${created.id}`,
+    });
+    expect(fullDetailsResponse.statusCode).toBe(200);
+    expect(JSON.parse(fullDetailsResponse.payload)).toMatchObject({
+      reviews: [expect.objectContaining({ status: "pending" })],
+    });
+    expect(
+      JSON.parse(fullDetailsResponse.payload).events.map(
+        (event: { type: string }) => event.type,
+      ),
+    ).toEqual(["created", "started", "submitted_for_review"]);
+
     const missingFeedback = await serverInstance.app.inject({
       method: "POST",
       url: `/api/tasks/${created.id}/request-changes`,
@@ -577,6 +594,7 @@ describe("HTTP API Server", () => {
     expect(serverInstance.context.service.getTask({
       projectId: serverInstance.context.project.id,
       taskId: created.id,
+      view: "full",
     }).task).toMatchObject({ status: "ready", queuePosition: 1, completedAt: null });
 
     const secondRun = serverInstance.context.service.startTask({
@@ -628,6 +646,7 @@ describe("HTTP API Server", () => {
     expect(serverInstance.context.service.getTask({
       projectId: serverInstance.context.project.id,
       taskId: created.id,
+      view: "full",
     }).task).toMatchObject({ status: "completed" });
 
     const missingReason = await serverInstance.app.inject({
@@ -646,6 +665,7 @@ describe("HTTP API Server", () => {
     const reopened = serverInstance.context.service.getTask({
       projectId: serverInstance.context.project.id,
       taskId: created.id,
+      view: "full",
     });
     expect(reopened.task).toMatchObject({
       status: "ready",
@@ -698,6 +718,7 @@ describe("HTTP API Server", () => {
     const confirmed = serverInstance.context.service.getTask({
       projectId: serverInstance.context.project.id,
       taskId: created.id,
+      view: "full",
     });
     expect(confirmed.task.riskLevel).toBe("low");
     expect(confirmed.task.riskConfirmed).toBe(true);
@@ -738,6 +759,7 @@ describe("HTTP API Server", () => {
     const autoCompleted = serverInstance.context.service.getTask({
       projectId: serverInstance.context.project.id,
       taskId: created.id,
+      view: "full",
     });
     expect(autoCompleted.task.status).toBe("completed");
     expect(autoCompleted.events.some((e: any) => e.summary.includes("automatically completed"))).toBe(true);
@@ -781,6 +803,7 @@ describe("HTTP API Server", () => {
     const details = serverInstance.context.service.getTask({
       projectId: serverInstance.context.project.id,
       taskId: created.id,
+      view: "full",
     });
     expect(details.task.status).toBe("completed");
     expect(details.task.activeReviewRunId).toBeNull();

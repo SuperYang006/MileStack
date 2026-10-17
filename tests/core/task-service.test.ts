@@ -253,6 +253,7 @@ describe("TaskService", () => {
     const task = service.getTask({
       projectId: "project-1",
       taskId: "ready-first",
+      view: "full",
     });
     expect(task.task.title).toBe("First");
     expect(task.events).toEqual([]);
@@ -262,6 +263,62 @@ describe("TaskService", () => {
     expect(() =>
       service.getTask({ projectId: "project-1", taskId: "missing-task" }),
     ).toThrow(TaskNotFoundError);
+    database.close();
+  });
+
+  it("defaults getTask to the complete working snapshot with dependency state", async () => {
+    const { database, service } = await createService(createTemporaryProject());
+    const dependency = service.createTask({
+      projectId: "project-1",
+      title: "Unconfirmed prerequisite",
+      createdBy: "agent",
+    });
+    const objective = "Preserve every developer-confirmed constraint.\nKeep ordering, examples, and responsive behavior verbatim.";
+    const task = service.createTask({
+      projectId: "project-1",
+      title: "Working view task",
+      objective,
+      acceptanceCriteria: ["Keep the full acceptance text unchanged."],
+      dependencyIds: [dependency.task.id],
+      createdBy: "developer",
+      status: "ready",
+    });
+
+    const working = service.getTask({
+      projectId: "project-1",
+      taskId: task.task.id,
+    });
+    const full = service.getTask({
+      projectId: "project-1",
+      taskId: task.task.id,
+      view: "full",
+    });
+
+    expect(working.task).toMatchObject({
+      id: task.task.id,
+      title: "Working view task",
+      objective,
+      acceptanceCriteria: ["Keep the full acceptance text unchanged."],
+      dependencyIds: [dependency.task.id],
+      riskLevel: "medium",
+      riskConfirmed: true,
+      status: "ready",
+    });
+    expect(working.dependencies).toEqual([
+      {
+        id: dependency.task.id,
+        title: "Unconfirmed prerequisite",
+        status: "inbox",
+      },
+    ]);
+    expect(working.currentRunEvents).toEqual([]);
+    expect(working.latestSubmission).toBeNull();
+    expect(full.task).toEqual(working.task);
+    expect(full.events).toHaveLength(1);
+    expect(JSON.stringify(working).length).toBeLessThan(
+      JSON.stringify(full).length,
+    );
+
     database.close();
   });
 
@@ -1269,7 +1326,7 @@ describe("TaskService", () => {
     ]);
     database.close();
   });
-  it("preserves authoritative objective and acceptanceCriteria through ready -> review -> changes_requested -> ready -> re-claim -> re-submit lifecycle", async () => {
+  it("keeps the working view scoped to the current round while full preserves review history", async () => {
     const projectRoot = createTemporaryProject();
     const { database, service } = await createService(projectRoot);
     const task = service.createTask({
@@ -1277,24 +1334,60 @@ describe("TaskService", () => {
       title: "Roundtrip lifecycle task",
       objective: "Keep objective intact across review states",
       acceptanceCriteria: ["Criteria 1", "Criteria 2"],
+      riskLevel: "low",
       createdBy: "developer",
       status: "ready",
       queuePosition: 1,
     });
 
     // 1. Ready state has authoritative definition
-    const initialDetails = service.getTask({ projectId: "project-1", taskId: task.task.id });
+    const initialDetails = service.getTask({ projectId: "project-1", taskId: task.task.id, view: "full" });
     expect(initialDetails.task.objective).toBe("Keep objective intact across review states");
     expect(initialDetails.task.acceptanceCriteria).toEqual(["Criteria 1", "Criteria 2"]);
 
     // 2. Claim and run
     const run1 = service.startTask({ projectId: "project-1", taskId: task.task.id, actorLabel: "agent-1" });
-    const runningDetails = service.getTask({ projectId: "project-1", taskId: task.task.id });
+    service.updateTask({
+      projectId: "project-1",
+      taskId: task.task.id,
+      runId: run1.runId,
+      summary: "Built the first implementation round.",
+      currentStep: "Implement the projection",
+      nextStep: "Run focused tests",
+      completedWork: ["Added working response fields"],
+    });
+    const runningWorking = service.getTask({ projectId: "project-1", taskId: task.task.id });
+    expect(runningWorking.currentRunEvents.map((event) => event.type)).toEqual([
+      "started",
+      "progress",
+    ]);
+    expect(runningWorking.currentRunEvents.at(-1)?.completedWork).toEqual([
+      "Added working response fields",
+    ]);
+    const runningDetails = service.getTask({ projectId: "project-1", taskId: task.task.id, view: "full" });
     expect(runningDetails.task.status).toBe("running");
     expect(runningDetails.task.objective).toBe("Keep objective intact across review states");
     expect(runningDetails.task.acceptanceCriteria).toEqual(["Criteria 1", "Criteria 2"]);
 
     // 3. Submit for review round 1
+    database.db
+      .update(tasks)
+      .set({ status: "blocked", blocker: "Waiting for a fixture review." })
+      .where(eq(tasks.id, task.task.id))
+      .run();
+    const blockedWorking = service.getTask({ projectId: "project-1", taskId: task.task.id });
+    expect(blockedWorking.task.status).toBe("blocked");
+    expect(blockedWorking.task.blocker).toBe("Waiting for a fixture review.");
+    expect(blockedWorking.currentRunEvents.map((event) => event.type)).toEqual([
+      "started",
+      "progress",
+    ]);
+    database.db
+      .update(tasks)
+      .set({ status: "running", blocker: null })
+      .where(eq(tasks.id, task.task.id))
+      .run();
+
     service.submitForReview({
       projectId: "project-1",
       taskId: task.task.id,
@@ -1302,8 +1395,23 @@ describe("TaskService", () => {
       commitSha: "1111111111111111111111111111111111111111",
       branch: "main",
       summary: "First implementation ready for review.",
+      completedWork: ["Added working response fields", "Completed round 1."],
     });
-    const inReviewDetails = service.getTask({ projectId: "project-1", taskId: task.task.id });
+    const inReviewWorking = service.getTask({ projectId: "project-1", taskId: task.task.id });
+    expect(inReviewWorking.latestSubmission).toMatchObject({
+      summary: "First implementation ready for review.",
+      completedWork: ["Added working response fields", "Completed round 1."],
+      review: {
+        reviewRound: 1,
+        commitSha: "1111111111111111111111111111111111111111",
+        status: "pending",
+      },
+    });
+    expect(inReviewWorking.currentRunEvents.map((event) => event.type)).toEqual([
+      "started",
+      "progress",
+    ]);
+    const inReviewDetails = service.getTask({ projectId: "project-1", taskId: task.task.id, view: "full" });
     expect(inReviewDetails.task.status).toBe("in_review");
     expect(inReviewDetails.task.objective).toBe("Keep objective intact across review states");
     expect(inReviewDetails.task.acceptanceCriteria).toEqual(["Criteria 1", "Criteria 2"]);
@@ -1323,22 +1431,53 @@ describe("TaskService", () => {
     expect(returned.task.acceptanceCriteria).toEqual(["Criteria 1", "Criteria 2"]);
 
     // 5. Querying task after returning to ready retains authoritative definition
-    const returnedDetails = service.getTask({ projectId: "project-1", taskId: task.task.id });
+    const returnedDetails = service.getTask({ projectId: "project-1", taskId: task.task.id, view: "full" });
     expect(returnedDetails.task.status).toBe("ready");
     expect(returnedDetails.task.objective).toBe("Keep objective intact across review states");
     expect(returnedDetails.task.acceptanceCriteria).toEqual(["Criteria 1", "Criteria 2"]);
     expect(returnedDetails.reviews).toHaveLength(1);
     expect(returnedDetails.reviews[0]?.status).toBe("changes_requested");
+    const returnedWorking = service.getTask({ projectId: "project-1", taskId: task.task.id });
+    expect(returnedWorking.currentRunEvents).toEqual([]);
+    expect(returnedWorking.task.handoffNote).toContain("Defect found");
+    expect(returnedWorking.latestSubmission).toMatchObject({
+      summary: null,
+      completedWork: null,
+    });
+    expect(returnedWorking.latestSubmission?.review).toMatchObject({
+      reviewRound: 1,
+      status: "changes_requested",
+      findings: [{ issue: "Defect found", suggestion: "Fix defect", severity: "high" }],
+    });
 
     // 6. Re-claim task (run 2)
     const run2 = service.startTask({ projectId: "project-1", taskId: task.task.id, actorLabel: "agent-2" });
     expect(run2.runId).not.toBe(run1.runId);
-    const reClaimedDetails = service.getTask({ projectId: "project-1", taskId: task.task.id });
+    const reClaimedDetails = service.getTask({ projectId: "project-1", taskId: task.task.id, view: "full" });
     expect(reClaimedDetails.task.status).toBe("running");
     expect(reClaimedDetails.task.objective).toBe("Keep objective intact across review states");
     expect(reClaimedDetails.task.acceptanceCriteria).toEqual(["Criteria 1", "Criteria 2"]);
 
     // 7. Re-submit for review round 2
+    service.updateTask({
+      projectId: "project-1",
+      taskId: task.task.id,
+      runId: run2.runId,
+      summary: "Applied the requested fix.",
+      currentStep: "Verify the fix",
+      completedWork: ["Fixed defect in round 2"],
+    });
+    const secondRunWorking = service.getTask({ projectId: "project-1", taskId: task.task.id });
+    expect(secondRunWorking.currentRunEvents.map((event) => event.runId)).toEqual([
+      run2.runId,
+      run2.runId,
+    ]);
+    expect(secondRunWorking.latestSubmission).toMatchObject({
+      summary: null,
+      completedWork: null,
+    });
+    expect(secondRunWorking.latestSubmission?.review.status).toBe("changes_requested");
+
     service.submitForReview({
       projectId: "project-1",
       taskId: task.task.id,
@@ -1346,14 +1485,71 @@ describe("TaskService", () => {
       commitSha: "2222222222222222222222222222222222222222",
       branch: "main",
       summary: "Fixed defect in round 2.",
+      completedWork: ["Fixed defect in round 2"],
     });
-    const reSubmittedDetails = service.getTask({ projectId: "project-1", taskId: task.task.id });
+    const reSubmittedWorking = service.getTask({ projectId: "project-1", taskId: task.task.id });
+    expect(reSubmittedWorking.latestSubmission).toMatchObject({
+      summary: "Fixed defect in round 2.",
+      completedWork: ["Fixed defect in round 2"],
+      review: {
+        reviewRound: 2,
+        commitSha: "2222222222222222222222222222222222222222",
+        status: "pending",
+      },
+    });
+    const reSubmittedDetails = service.getTask({ projectId: "project-1", taskId: task.task.id, view: "full" });
+    const workingSize = JSON.stringify(reSubmittedWorking).length;
+    const fullSize = JSON.stringify(reSubmittedDetails).length;
+    expect(workingSize).toBeLessThan(fullSize);
     expect(reSubmittedDetails.task.status).toBe("in_review");
     expect(reSubmittedDetails.task.objective).toBe("Keep objective intact across review states");
     expect(reSubmittedDetails.task.acceptanceCriteria).toEqual(["Criteria 1", "Criteria 2"]);
     expect(reSubmittedDetails.reviews).toHaveLength(2);
     expect(reSubmittedDetails.reviews[1]?.reviewRound).toBe(2);
     expect(reSubmittedDetails.reviews[1]?.status).toBe("pending");
+
+    const review2 = service.startReview({ projectId: "project-1", taskId: task.task.id });
+    service.completeReview({
+      projectId: "project-1",
+      taskId: task.task.id,
+      reviewRunId: review2.reviewRunId,
+      decision: "passed",
+      summary: "The second implementation round passed.",
+      verificationEvidence: [{ command: "pnpm test", result: "passed" }],
+    });
+    const completedWorking = service.getTask({ projectId: "project-1", taskId: task.task.id });
+    expect(completedWorking.task.status).toBe("completed");
+    expect(completedWorking.currentRunEvents).toEqual([]);
+    expect(completedWorking.latestSubmission?.review).toMatchObject({
+      reviewRound: 2,
+      status: "passed",
+      summary: "The second implementation round passed.",
+      verificationEvidence: [{ command: "pnpm test", result: "passed" }],
+    });
+    const fullHistory = service.getTask({
+      projectId: "project-1",
+      taskId: task.task.id,
+      view: "full",
+    });
+    expect(fullHistory.events.filter((event) => event.type === "submitted_for_review")).toHaveLength(2);
+    expect(fullHistory.events.map((event) => event.type)).toEqual([
+      "created",
+      "started",
+      "progress",
+      "submitted_for_review",
+      "review_started",
+      "changes_requested",
+      "started",
+      "progress",
+      "submitted_for_review",
+      "review_started",
+      "review_passed",
+      "completed",
+    ]);
+    expect(fullHistory.reviews.map((review) => review.status)).toEqual([
+      "changes_requested",
+      "passed",
+    ]);
 
     database.close();
   });
@@ -1398,7 +1594,11 @@ describe("TaskService", () => {
       }),
     ).not.toThrow();
 
-    const waived = service.getTask({ projectId: "project-1", taskId: task.task.id });
+    const waived = service.getTask({
+      projectId: "project-1",
+      taskId: task.task.id,
+      view: "full",
+    });
     expect(waived.task.status).toBe("completed");
     expect(waived.task.completedAt).toBeTruthy();
     expect(waived.task.activeReviewRunId).toBeNull();
@@ -1447,7 +1647,11 @@ describe("TaskService", () => {
       actorLabel: "developer",
     });
 
-    const claimed = service.getTask({ projectId: "project-1", taskId: task.task.id });
+    const claimed = service.getTask({
+      projectId: "project-1",
+      taskId: task.task.id,
+      view: "full",
+    });
     expect(claimed.reviews[0]?.status).toBe("waived");
 
     expect(() =>

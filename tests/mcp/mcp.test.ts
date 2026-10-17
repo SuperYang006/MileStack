@@ -87,6 +87,7 @@ describe("MCP task tools", () => {
     expect(toolNames).not.toContain("finish_task");
     const approveReviewTool = listed.tools.find((tool) => tool.name === "approve_review");
     const requestChangesTool = listed.tools.find((tool) => tool.name === "request_changes");
+    const getTaskTool = listed.tools.find((tool) => tool.name === "get_task");
     expect(approveReviewTool?.inputSchema).toMatchObject({
       required: expect.arrayContaining(["taskId", "reviewRunId", "summary"]),
     });
@@ -98,6 +99,10 @@ describe("MCP task tools", () => {
     expect(requestChangesTool?.inputSchema.properties).not.toHaveProperty(
       "verificationEvidence",
     );
+    expect(getTaskTool?.inputSchema.properties?.view).toMatchObject({
+      enum: ["working", "full"],
+      default: "working",
+    });
 
     const initialStatus = await client.callTool({
       name: "get_project_status",
@@ -150,9 +155,22 @@ describe("MCP task tools", () => {
       name: "get_task",
       arguments: { taskId: createdTask.task.id },
     });
-    expect(JSON.parse(textContent(details))).toMatchObject({
+    const workingDetails = JSON.parse(textContent(details));
+    expect(workingDetails).toMatchObject({
       task: { id: createdTask.task.id, title: "Record discovered work" },
+      dependencies: [],
+      currentRunEvents: [],
+      latestSubmission: null,
+    });
+    expect(workingDetails).not.toHaveProperty("events");
+    expect(workingDetails).not.toHaveProperty("reviews");
+    const fullDetails = await client.callTool({
+      name: "get_task",
+      arguments: { taskId: createdTask.task.id, view: "full" },
+    });
+    expect(JSON.parse(textContent(fullDetails))).toMatchObject({
       events: [{ type: "created" }],
+      reviews: [],
     });
 
     const invalid = await client.callTool({
@@ -262,20 +280,36 @@ describe("MCP task tools", () => {
       name: "get_task",
       arguments: { taskId: ready.task.id },
     });
-    expect(JSON.parse(textContent(submittedDetails))).toMatchObject({
+    const submittedWorkingDetails = JSON.parse(textContent(submittedDetails));
+    expect(submittedWorkingDetails).toMatchObject({
       task: {
         id: ready.task.id,
         riskLevel: "medium",
         status: "in_review",
       },
-      reviews: [
-        {
+      latestSubmission: {
+        summary: "Done",
+        review: {
           reviewRound: 1,
           commitSha: "7777777777777777777777777777777777777777",
           status: "pending",
         },
+      },
+      currentRunEvents: [
+        expect.objectContaining({ type: "started" }),
+        expect.objectContaining({ type: "progress" }),
       ],
     });
+    expect(submittedWorkingDetails).not.toHaveProperty("events");
+    expect(submittedWorkingDetails).not.toHaveProperty("reviews");
+    const fullSubmittedDetails = await client.callTool({
+      name: "get_task",
+      arguments: { taskId: ready.task.id, view: "full" },
+    });
+    expect(JSON.parse(textContent(fullSubmittedDetails)).reviews).toHaveLength(1);
+    expect(JSON.parse(textContent(fullSubmittedDetails)).events.at(-1).type).toBe(
+      "submitted_for_review",
+    );
 
     const reviewStarted = await client.callTool({
       name: "start_review",

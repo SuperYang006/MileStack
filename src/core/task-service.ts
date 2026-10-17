@@ -25,6 +25,7 @@ import {
   setTaskDependenciesInputSchema,
   startTaskInputSchema,
   taskDetailsSchema,
+  taskWorkingDetailsSchema,
   updateTaskInputSchema,
   editInboxTaskInputSchema,
   type CreateTaskInput,
@@ -51,6 +52,7 @@ import {
   type SetTaskDependenciesInput,
   type StartTaskInput,
   type TaskDetails,
+  type TaskWorkingDetails,
   type TaskCursor,
   type TaskPage,
   type TaskSummary,
@@ -201,6 +203,48 @@ function taskToDetails(
     task: { ...task, dependencyIds },
     events,
     reviews,
+  });
+}
+
+function taskToWorkingDetails(
+  task: TaskRecord,
+  events: TaskEventRecord[],
+  dependencyIds: string[],
+  dependencies: TaskWorkingDetails["dependencies"],
+  reviews: ReviewRecord[],
+): TaskWorkingDetails {
+  const latestReview = reviews.at(-1) ?? null;
+  const latestSubmissionEvent = events
+    .filter((event) => event.type === "submitted_for_review")
+    .at(-1);
+  const latestSubmission =
+    latestReview && latestSubmissionEvent
+      ? {
+          review: latestReview,
+          summary:
+            task.status === "in_review" ? latestSubmissionEvent.summary : null,
+          completedWork:
+            task.status === "in_review"
+              ? latestSubmissionEvent.completedWork
+              : null,
+        }
+      : null;
+  const currentRunId =
+    task.activeRunId ??
+    (task.status === "in_review" ? latestSubmissionEvent?.runId ?? null : null);
+  const currentRunEvents = currentRunId
+    ? events.filter(
+        (event) =>
+          event.runId === currentRunId &&
+          event.type !== "submitted_for_review",
+      )
+    : [];
+
+  return taskWorkingDetailsSchema.parse({
+    task: { ...task, dependencyIds },
+    dependencies,
+    currentRunEvents,
+    latestSubmission,
   });
 }
 
@@ -436,7 +480,10 @@ export class TaskService {
     );
   }
 
-  getTask(input: GetTaskInput): TaskDetails {
+  getTask(input: GetTaskInput & { view: "full" }): TaskDetails;
+  getTask(input: GetTaskInput & { view?: "working" }): TaskWorkingDetails;
+  getTask(input: GetTaskInput): TaskDetails | TaskWorkingDetails;
+  getTask(input: GetTaskInput): TaskDetails | TaskWorkingDetails {
     const parsed = getTaskInputSchema.parse(input);
     this.requireProject(parsed.projectId);
     const task = this.repository.findTaskById(parsed.taskId);
@@ -444,13 +491,34 @@ export class TaskService {
       throw new TaskNotFoundError(parsed.taskId);
     }
 
-    return taskToDetails(
+    const events = this.repository.listByTaskId(task.id);
+    const dependencyIds = this.repository
+      .listDependenciesByTaskId(task.id)
+      .map((dependency) => dependency.dependsOnTaskId);
+    const reviews = this.repository.listReviewsByTaskId(task.id);
+
+    if (parsed.view === "full") {
+      return taskToDetails(task, events, dependencyIds, reviews);
+    }
+
+    const dependencies = dependencyIds.map((dependencyId) => {
+      const dependency = this.repository.findTaskById(dependencyId);
+      if (!dependency || dependency.projectId !== task.projectId) {
+        throw new TaskNotFoundError(dependencyId);
+      }
+      return {
+        id: dependency.id,
+        title: dependency.title,
+        status: dependency.status,
+      };
+    });
+
+    return taskToWorkingDetails(
       task,
-      this.repository.listByTaskId(task.id),
-      this.repository
-        .listDependenciesByTaskId(task.id)
-        .map((dependency) => dependency.dependsOnTaskId),
-      this.repository.listReviewsByTaskId(task.id),
+      events,
+      dependencyIds,
+      dependencies,
+      reviews,
     );
   }
 
@@ -498,7 +566,7 @@ export class TaskService {
       });
     });
 
-    return this.getTask({ projectId: project.id, taskId: parsed.taskId });
+    return this.getTask({ projectId: project.id, taskId: parsed.taskId, view: "full" });
   }
   editInboxTask(input: EditInboxTaskInput): TaskDetails {
     const parsed = editInboxTaskInputSchema.parse(input);
@@ -557,7 +625,7 @@ export class TaskService {
       });
     });
 
-    return this.getTask({ projectId: project.id, taskId: parsed.taskId });
+    return this.getTask({ projectId: project.id, taskId: parsed.taskId, view: "full" });
   }
 
   confirmTask(input: ConfirmTaskInput): TaskDetails {
@@ -601,7 +669,7 @@ export class TaskService {
         createdAt: now,
       });
     });
-    return this.getTask({ projectId: project.id, taskId: parsed.taskId });
+    return this.getTask({ projectId: project.id, taskId: parsed.taskId, view: "full" });
   }
 
   returnTaskToInbox(input: ReturnTaskToInboxInput): TaskDetails {
@@ -649,7 +717,7 @@ export class TaskService {
         createdAt: now,
       });
     });
-    return this.getTask({ projectId: project.id, taskId: parsed.taskId });
+    return this.getTask({ projectId: project.id, taskId: parsed.taskId, view: "full" });
   }
 
   deleteTask(input: DeleteTaskInput): void {
@@ -719,7 +787,7 @@ export class TaskService {
         });
       });
     });
-    return this.getTask({ projectId: project.id, taskId: parsed.taskId });
+    return this.getTask({ projectId: project.id, taskId: parsed.taskId, view: "full" });
   }
 
   startTask(input: StartTaskInput): StartedTask {
@@ -783,7 +851,7 @@ export class TaskService {
     });
     return {
       runId,
-      task: this.getTask({ projectId: project.id, taskId: parsed.taskId }),
+      task: this.getTask({ projectId: project.id, taskId: parsed.taskId, view: "full" }),
     };
   }
 
@@ -833,7 +901,7 @@ export class TaskService {
         createdAt: now,
       });
     });
-    return this.getTask({ projectId: project.id, taskId: parsed.taskId });
+    return this.getTask({ projectId: project.id, taskId: parsed.taskId, view: "full" });
   }
 
   submitForReview(input: SubmitForReviewInput): TaskDetails {
@@ -902,7 +970,7 @@ export class TaskService {
         createdAt: now,
       });
     });
-    return this.getTask({ projectId: project.id, taskId: parsed.taskId });
+    return this.getTask({ projectId: project.id, taskId: parsed.taskId, view: "full" });
   }
 
   startReview(input: StartReviewInput): StartedReview {
@@ -961,7 +1029,7 @@ export class TaskService {
 
     return {
       reviewRunId,
-      task: this.getTask({ projectId: project.id, taskId: parsed.taskId }),
+      task: this.getTask({ projectId: project.id, taskId: parsed.taskId, view: "full" }),
     };
   }
 
@@ -1089,7 +1157,7 @@ export class TaskService {
         });
       }
     });
-    return this.getTask({ projectId: project.id, taskId: parsed.taskId });
+    return this.getTask({ projectId: project.id, taskId: parsed.taskId, view: "full" });
   }
 
   approveTask(input: ApproveTaskInput): TaskDetails {
@@ -1141,7 +1209,7 @@ export class TaskService {
         createdAt: now,
       });
     });
-    return this.getTask({ projectId: project.id, taskId: parsed.taskId });
+    return this.getTask({ projectId: project.id, taskId: parsed.taskId, view: "full" });
   }
 
   /**
@@ -1207,7 +1275,7 @@ export class TaskService {
         createdAt: now,
       });
     });
-    return this.getTask({ projectId: project.id, taskId: parsed.taskId });
+    return this.getTask({ projectId: project.id, taskId: parsed.taskId, view: "full" });
   }
 
   requestTaskChanges(input: RequestTaskChangesInput): TaskDetails {
@@ -1280,7 +1348,7 @@ export class TaskService {
         createdAt: now,
       });
     });
-    return this.getTask({ projectId: project.id, taskId: parsed.taskId });
+    return this.getTask({ projectId: project.id, taskId: parsed.taskId, view: "full" });
   }
 
   reopenTask(input: ReopenTaskInput): TaskDetails {
@@ -1334,7 +1402,7 @@ export class TaskService {
         createdAt: now,
       });
     });
-    return this.getTask({ projectId: project.id, taskId: parsed.taskId });
+    return this.getTask({ projectId: project.id, taskId: parsed.taskId, view: "full" });
   }
 
   releaseTask(input: ReleaseTaskInput): TaskDetails {
@@ -1390,7 +1458,7 @@ export class TaskService {
         createdAt: now,
       });
     });
-    return this.getTask({ projectId: project.id, taskId: parsed.taskId });
+    return this.getTask({ projectId: project.id, taskId: parsed.taskId, view: "full" });
   }
 
   private requireRunOwner(task: TaskRecord, runId: string): void {

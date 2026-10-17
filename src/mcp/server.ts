@@ -76,7 +76,7 @@ const toolDefinitions: Tool[] = [
   {
     name: "get_task",
     description:
-      "Read a known taskId's objective, acceptance criteria, dependency state, current snapshot, and immutable event history before claiming it. This does not require get_project_status first.",
+      "Read a known taskId's full task definition, dependency state, and current work context before claiming it. The default working view includes current-run progress and the latest submission and review; pass view='full' to retrieve the complete immutable event and review histories. This does not require get_project_status first.",
     inputSchema: toJSONSchema(taskArgumentsSchema) as Tool["inputSchema"],
   },
   {

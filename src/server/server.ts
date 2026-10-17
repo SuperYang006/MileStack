@@ -169,7 +169,7 @@ export async function createHttpServer(
     const projectId = query.projectId || context.project.id;
 
     try {
-      const task = context.service.getTask({ taskId: id, projectId });
+      const task = context.service.getTask({ taskId: id, projectId, view: "full" });
       return task;
     } catch (err) {
       if (err instanceof TaskNotFoundError) {
@@ -594,7 +594,7 @@ export async function createHttpServer(
     const projectId = body.projectId || context.project.id;
 
     try {
-      const current = context.service.getTask({ projectId, taskId: id });
+      const current = context.service.getTask({ projectId, taskId: id, view: "full" });
       context.service.releaseTask({
         projectId,
         taskId: id,

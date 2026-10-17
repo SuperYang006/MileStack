@@ -204,6 +204,8 @@ milestack mcp --discover
 
 Agent 创建的任务会进入草稿箱。开发者确认风险和队列位置后，任务才可以被领取。
 
+`get_task` 默认返回 `working` 视图，完整保留任务定义并提供当前工作上下文。传入 `view: "full"` 可查看全部不可变任务事件和审核记录。WebUI 使用的 HTTP 任务详情接口始终返回完整时间线。
+
 ## 本地数据与升级
 
 项目数据保存在 `.milestack/` 中，不应提交到 Git。SQLite 连接启用 WAL 模式、外键约束和 busy timeout，使本地 Web 服务和 MCP 进程能够安全共享数据库。

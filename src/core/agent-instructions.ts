@@ -1,5 +1,5 @@
 const taskDiscoveryRule =
-  "When no taskId is known, call get_project_status, select the first task in next with runnable=true, and then call get_task for its full details.";
+  "When no taskId is known, call get_project_status, select the first task in next with runnable=true, and then call get_task for its working context. Request view=full only when the complete audit history is needed.";
 const knownTaskRule =
   "When a developer or task brief provides a taskId, call get_task directly; do not call get_project_status first.";
 const taskClaimRule =
