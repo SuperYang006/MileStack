@@ -200,6 +200,78 @@ describe("TaskService local integration completion gate", () => {
     }
   });
 
+  it("rechecks the target branch if integrated evidence becomes stale before developer approval", async () => {
+    const { projectRoot, database, service } = await createGitProject();
+    try {
+      const task = service.createTask({
+        projectId: "project-1",
+        title: "Recheck stale integration evidence",
+        riskLevel: "high",
+        createdBy: "developer",
+      });
+      const dependent = service.createTask({
+        projectId: "project-1",
+        title: "Wait for current integration proof",
+        dependencyIds: [task.task.id],
+        createdBy: "developer",
+      });
+      const baselineCommit = git(projectRoot, "rev-parse", "main");
+      git(projectRoot, "checkout", "-b", "feature/stale-integration-evidence");
+      const reviewedCommit = commitFile(
+        projectRoot,
+        "reviewed.txt",
+        "reviewed work\n",
+        "reviewed work",
+      );
+      git(projectRoot, "checkout", "main");
+      git(projectRoot, "merge", "--ff-only", "feature/stale-integration-evidence");
+
+      const passed = await submitForReview(
+        service,
+        task.task.id,
+        reviewedCommit,
+        "feature/stale-integration-evidence",
+      );
+      const review = passed.reviews!.at(-1)!;
+      expect(passed.task.status).toBe("in_review");
+      expect(review).toMatchObject({
+        status: "passed",
+        approvedAt: null,
+        integrationStatus: "integrated",
+        integrationTargetCommitSha: reviewedCommit,
+      });
+
+      git(projectRoot, "reset", "--hard", baselineCommit);
+      const approved = service.approveTask({ projectId: "project-1", taskId: task.task.id });
+      expect(approved.task.status).toBe("in_review");
+      expect(approved.reviews!.at(-1)).toMatchObject({
+        approvedBy: "developer",
+        integrationStatus: "not_integrated",
+        integrationTargetCommitSha: baselineCommit,
+      });
+      expect(service.getProjectStatus({ projectId: "project-1", view: "full" }).next
+        .find((candidate) => candidate.id === dependent.task.id))
+        .toMatchObject({
+          runnable: false,
+          waitingFor: [{ id: task.task.id, status: "in_review" }],
+        });
+
+      git(projectRoot, "merge", "--ff-only", "feature/stale-integration-evidence");
+      git(projectRoot, "branch", "-d", "feature/stale-integration-evidence");
+      const integrated = service.checkTaskIntegration({
+        projectId: "project-1",
+        taskId: task.task.id,
+        expectedReviewId: review.id,
+      });
+      expect(integrated.task.status).toBe("completed");
+      expect(service.getProjectStatus({ projectId: "project-1", view: "full" }).next
+        .find((candidate) => candidate.id === dependent.task.id))
+        .toMatchObject({ runnable: true, waitingFor: [] });
+    } finally {
+      database.close();
+    }
+  });
+
   it("keeps direct acceptance and revokes the active reviewer until integration is retried", async () => {
     const { projectRoot, database, service } = await createGitProject();
     try {

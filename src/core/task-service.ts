@@ -1364,15 +1364,6 @@ export class TaskService {
           "Developer recorded that local Git integration is not required.",
       };
       checkedAt = this.now().toISOString();
-    } else if (
-      !requireAcceptedReview &&
-      snapshot.review.integrationStatus === "integrated" &&
-      snapshot.review.integrationTargetCommitSha
-    ) {
-      result = {
-        status: "integrated",
-        targetCommitSha: snapshot.review.integrationTargetCommitSha,
-      };
     } else {
       checkedAt = this.now().toISOString();
       try {
