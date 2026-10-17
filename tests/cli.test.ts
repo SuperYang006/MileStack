@@ -258,6 +258,12 @@ describe("CLI entry point", () => {
     expect(generatedInstructions).toContain("high");
     expect(generatedInstructions).toContain("git cat-file -e");
     expect(generatedInstructions).toContain("full 40-character commit SHA");
+    expect(generatedInstructions).toContain(
+      "For tasks whose confirmed delivery condition requires local Git integration, review or approval alone is not delivery. Completion requires the fixed reviewed commit to be verifiably present on the developer-confirmed local target branch, or the developer to explicitly record that Git integration is not required. This proves local integration only, not push, release, or deployment.",
+    );
+    expect(generatedInstructions).toContain(
+      "If the current task workflow cannot record or verify a required integration check, state the missing evidence and next action instead of claiming integration or completion. Do not merge, fetch, push, or deploy without explicit developer authorization.",
+    );
     expect(generatedInstructions).toContain("commands actually run and their results");
     expect(generatedInstructions).toContain("a concrete issue, an actionable suggestion");
     expect(generatedInstructions).toContain("Use agent when no model label is available");

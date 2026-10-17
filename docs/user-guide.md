@@ -175,6 +175,10 @@ An implementation agent prioritizes a developer-provided task. If no task ID is 
 | Medium | Waits for developer approval. |
 | High | Waits for developer approval. |
 
+### Local integration and completion
+
+The table above describes the current release. The local integration gate is planned but is not implemented yet. Under the planned behavior, a task that requires Git integration becomes complete only after its risk-specific review and approval requirements are met and the fixed reviewed commit is verified on the developer-confirmed local target branch (default `main`), or the developer explicitly records that Git integration is not required. If Git cannot verify the target or commit, the approval remains recorded while the task stays visible and its dependents remain blocked. This check does not merge, fetch, or push, and it does not mean the work was published or deployed. See the [integration and archival plan](./task-integration-and-archival.md).
+
 ## CLI reference
 
 ```text

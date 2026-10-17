@@ -86,6 +86,8 @@ export function formatProjectAgentInstructions(): string {
     "- Submit only after the task-specific acceptance criteria and required verification pass. Use submit_for_review with an existing full 40-character commit SHA and record the actual branch and worktree when available.",
     "- Before submission, verify git cat-file -e <commitSha>^{commit}. Uncommitted working-tree changes are not part of the review artifact.",
     "- Submission invalidates the execution runId. Further implementation after requested changes requires a new start_task claim and a new review round.",
+    "- For tasks whose confirmed delivery condition requires local Git integration, review or approval alone is not delivery. Completion requires the fixed reviewed commit to be verifiably present on the developer-confirmed local target branch, or the developer to explicitly record that Git integration is not required. This proves local integration only, not push, release, or deployment.",
+    "- If the current task workflow cannot record or verify a required integration check, state the missing evidence and next action instead of claiming integration or completion. Do not merge, fetch, push, or deploy without explicit developer authorization.",
     "",
     "## Perform an independent review",
     "",
