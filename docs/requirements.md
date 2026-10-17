@@ -1,6 +1,6 @@
 # MileStack V0 产品需求
 
-后续的审批、集成交付与归档调整见 [任务集成交付与归档检查方案](./task-integration-and-archival.md)。该方案包含本地 Git 完成检查；本文现有状态流转与风险策略在对应实现完成后同步修订。
+后续的审批、集成交付与归档调整见 [任务集成交付与归档检查方案](./task-integration-and-archival.md)。该方案定义待实现的本地 Git 完成检查；本文标为“当前实现”的状态流转、风险策略和接口行为仍描述现有运行语义，只有相关功能实现后才按目标语义更新。
 
 相关技术方案见 [V0 技术方案](./technical-design.md)。
 
@@ -333,7 +333,7 @@ AI 根据已确认方案记录任务：inbox
 
 `blocked` 默认保留当前执行权。AI 可以在阻塞解除后继续，也可以通过 `release_task` 释放给其他执行者。
 
-开发者可以直接验收尚未出具 AI 结论的审核：任务处于 `in_review` 且本轮审核带有提交时的 commit 时，开发者填写验收原因后任务进入 `completed`，该轮审核记为 `waived` 而不是 `passed`，也不补写验证证据。正在进行的审核会在同一事务中失去执行权，原 `reviewRunId` 不能再提交结论。该操作只走开发者侧 HTTP 与页面，不进入 MCP；AI 审核通过后的风险策略不变。
+当前实现允许开发者直接验收尚未出具 AI 结论的审核：任务处于 `in_review` 且本轮审核带有提交时的 commit 时，开发者填写验收原因后任务进入 `completed`，该轮审核记为 `waived` 而不是 `passed`，也不补写验证证据。正在进行的审核会在同一事务中失去执行权，原 `reviewRunId` 不能再提交结论。该操作只走开发者侧 HTTP 与页面，不进入 MCP。按待实现目标，直接验收只替代 AI 结论；需要 Git 集成的任务仍须通过本地目标分支检查后才能完成。
 
 ## 8. 核心数据模型
 
@@ -477,11 +477,15 @@ V0 不建立稳定的 Agent 身份系统。
 
 `start_task` 成功时生成一个 `runId`，代表某一次任务领取和执行。后续执行类写操作必须携带该 `runId`。
 
+以下流程图描述当前实现的审核与完成行为；待实现的本地交付门槛见[集成交付方案](./task-integration-and-archival.md)：
+
 ```text
 start_task -> 生成 runId -> update/block/release/submit_for_review 携带 runId -> in_review
   -> start_review -> 生成独立 reviewRunId -> complete_review
   -> low 自动完成 / medium、high 等待 developer approve
 ```
+
+当前实现中低风险 AI 审核通过会自动完成，中高风险通过后等待开发者批准。目标行为要求所有需要 Git 集成的任务（无论风险等级或验收来源）在满足对应审核/批准要求后，还必须由后端确认固定审核提交已进入开发者确认的本地目标分支；检查失败时保留验收事实但不完成任务。开发者可明确确认任务无需 Git 集成，目标检查不执行合并、fetch 或 push。
 
 服务端必须保证：
 
@@ -496,13 +500,13 @@ start_task -> 生成 runId -> update/block/release/submit_for_review 携带 runI
 - 如果前向迁移发现旧数据库中的 `in_review` 任务没有 `TaskReview`，不得伪造 commit SHA；任务应带着恢复说明返回 `ready`，由 AI 使用新 `runId` 重新提交真实制品；
 - 旧执行者的迟到更新不能修改任务。
 
-风险策略：
+风险策略（下表为当前审核行为；本地集成交付门槛待实现，见[集成交付方案](./task-integration-and-archival.md)）：
 
-| 风险 | 默认行为 | AI 审核通过后 |
-| --- | --- | --- |
-| `low` | 必须由开发者确认风险，且审核必须提供验证命令与结果 | 自动进入 `completed` |
-| `medium` | 默认等级，必须由开发者确认 | 标记 `review_passed`，保持 `in_review`，等待开发者批准 |
-| `high` | 必须由开发者明确确认 | 标记 `review_passed`，保持 `in_review`，等待开发者批准 |
+| 风险 | 默认行为 | 当前 AI 审核行为 | 待实现目标的额外交付要求 |
+| --- | --- | --- | --- |
+| `low` | 必须由开发者确认风险，且审核必须提供验证命令与结果 | 审核通过后自动进入 `completed` | 任务需要 Git 集成时，还须确认固定审核提交已进入开发者确认的本地目标分支；检查失败时保留验收事实但不完成 |
+| `medium` | 默认等级，必须由开发者确认 | 标记 `review_passed`，保持 `in_review`，等待开发者批准 | 开发者批准后仍须满足上文所述的本地集成要求才可完成 |
+| `high` | 必须由开发者明确确认 | 标记 `review_passed`，保持 `in_review`，等待开发者批准 | 开发者批准后仍须满足上文所述的本地集成要求才可完成 |
 
 Agent 名称、提供方或会话信息不是必需身份，只能作为可选的 `actorLabel` 用于页面展示。
 
@@ -528,9 +532,9 @@ V0 暂不实现请求幂等键和通用乐观锁；出现实际重复写入或�
 - `block_task`：报告阻塞原因和所需行动；
 - `resume_task`：阻塞解除后，使用当前 `runId` 恢复执行；
 - `release_task`：释放任务、写入交接说明并返回 `ready`；
-- `submit_for_review`：提交完成摘要和固定 commit 制品并将任务设为 `in_review`；低风险任务在 AI 审核通过且验证证据完整时自动完成，中高风险任务仍等待开发者批准。
+- `submit_for_review`：MCP 提交完成摘要和固定 commit 制品并将任务设为 `in_review`；提交本身不完成任务。当前实现按上表的风险策略处理后续审核结论。待实现目标要求需要 Git 集成的任务在完成前通过本地目标分支检查，详情见[集成交付方案](./task-integration-and-archival.md)。
 - `start_review`：原子领取最新审核记录并返回独立 `reviewRunId`；
-- `complete_review`：提交审核摘要、结构化 findings 和验证证据，按风险策略自动完成或等待开发者批准。
+- `complete_review`：提交审核摘要、结构化 findings 和验证证据；当前实现按风险策略自动完成低风险任务或让中高风险任务等待开发者批准，待实现目标还要求需要 Git 集成的任务满足本地目标分支检查。
 
 所有更新优先表达：
 
@@ -555,7 +559,7 @@ MileStack 应提供一段可加入项目 `AGENTS.md` 或其他 AI 指令文件�
 - 阻塞解除且继续原任务时调用 resume_task。
 - 执行中发现的新工作通过 create_task 记录到 inbox，不要写入新的任务文档。
 - 无法继续或需要其他 AI 接手时调用 release_task，并写明交接信息。
-- 只有在验收条件满足且验证完成后调用 `submit_for_review`；提交后按风险策略等待 AI 审核或开发者最终批准。
+- 只有在验收条件满足且验证完成后调用 `submit_for_review`；提交后按当前风险策略等待 AI 审核或开发者最终批准。对需要 Git 集成的任务，目标完成语义还要求本地集成检查通过；该门槛待实现，见[集成交付方案](./task-integration-and-archival.md)。
 - 只有开发者明确提供待审核任务的 `taskId` 后，审核 Agent 才调用 `start_review` 保存 `reviewRunId`；不得自行选择待审核任务。提交 `complete_review` 时必须携带该凭证和验证命令结果。
 - 不得自行修改或降低任务风险等级；发现问题时使用结构化 finding 记录问题和修改建议。
 ```
