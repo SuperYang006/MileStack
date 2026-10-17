@@ -27,6 +27,9 @@ function makeSummary(
     requiredAction: null,
     updatedAt: new Date().toISOString(),
     completedAt: partial.status === "completed" ? new Date().toISOString() : null,
+    integrationRequired: true,
+    integrationTargetBranch: "main",
+    integrationNotRequiredReason: null,
   };
 }
 

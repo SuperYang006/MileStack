@@ -171,13 +171,13 @@ An implementation agent prioritizes a developer-provided task. If no task ID is 
 
 | Risk | After an independent AI review passes |
 | --- | --- |
-| Low | Completes automatically when the developer confirmed the risk and verification evidence is present. |
-| Medium | Waits for developer approval. |
-| High | Waits for developer approval. |
+| Low | The review records automatic acceptance; completion follows only after the local integration requirement is satisfied. |
+| Medium | Waits for developer approval, then for the local integration requirement if required. |
+| High | Waits for developer approval, then for the local integration requirement if required. |
 
 ### Local integration and completion
 
-The table above describes the current release. The local integration gate is planned but is not implemented yet. Under the planned behavior, a task that requires Git integration becomes complete only after its risk-specific review and approval requirements are met and the fixed reviewed commit is verified on the developer-confirmed local target branch (default `main`), or the developer explicitly records that Git integration is not required. If Git cannot verify the target or commit, the approval remains recorded while the task stays visible and its dependents remain blocked. This check does not merge, fetch, or push, and it does not mean the work was published or deployed. See the [integration and archival plan](./task-integration-and-archival.md).
+Every new task defaults to requiring its fixed reviewed commit on the local `main` branch. Before work starts, a developer can choose another local target branch or record that Git integration is not required, with a reason. The review round freezes that choice. After the risk-specific review and approval requirements are met, MileStack checks whether the exact reviewed commit is reachable from the selected local branch. If Git cannot prove that, the approval remains recorded, the task stays visible, and dependents remain blocked. Use **Check and archive** to retry after an authorized local merge or a Git repair. The check is read-only; it does not merge, fetch, or push, and it does not mean the work was published or deployed. A squash or rebase that changes the reviewed commit SHA cannot be proven by this check.
 
 ## CLI reference
 
@@ -204,7 +204,7 @@ milestack mcp --discover
 | Query | `get_project_status`, `list_tasks`, `get_task` |
 | Task creation | `create_task`, `create_tasks` |
 | Execution | `start_task`, `update_task`, `submit_for_review` |
-| Review | `start_review`, `approve_review`, `request_changes`, `complete_review` |
+| Review | `start_review`, `approve_review`, `request_changes`, `complete_review`, `check_task_integration` |
 
 Agent-created tasks enter the inbox. A developer must confirm their risk and queue position before they become claimable.
 

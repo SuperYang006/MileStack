@@ -14,6 +14,8 @@ import {
 } from "../core/task-model.js";
 import { reviewStatuses, riskLevels } from "../core/review-model.js";
 import type { ReviewFinding, VerificationEvidence } from "../core/review-model.js";
+import { integrationStatuses } from "../core/integration-model.js";
+import type { IntegrationStatus } from "../core/integration-model.js";
 
 export { taskEventTypes, taskStatuses } from "../core/task-model.js";
 export type { TaskEventType, TaskStatus } from "../core/task-model.js";
@@ -69,6 +71,13 @@ export const tasks = sqliteTable(
       .default(true),
     riskConfirmedBy: text("risk_confirmed_by"),
     riskConfirmedAt: text("risk_confirmed_at"),
+    integrationRequired: integer("integration_required", { mode: "boolean" })
+      .notNull()
+      .default(true),
+    integrationTargetBranch: text("integration_target_branch")
+      .notNull()
+      .default("main"),
+    integrationNotRequiredReason: text("integration_not_required_reason"),
     createdBy: text("created_by", { enum: ["developer", "agent"] }).notNull(),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
@@ -152,6 +161,20 @@ export const taskReviews = sqliteTable(
     verificationEvidence: text("verification_evidence", { mode: "json" }).$type<
       VerificationEvidence[]
     >(),
+    integrationRequired: integer("integration_required", { mode: "boolean" })
+      .notNull()
+      .default(true),
+    integrationTargetBranch: text("integration_target_branch")
+      .notNull()
+      .default("main"),
+    integrationNotRequiredReason: text("integration_not_required_reason"),
+    approvedAt: text("approved_at"),
+    approvedBy: text("approved_by"),
+    integrationStatus: text("integration_status", { enum: integrationStatuses })
+      .$type<IntegrationStatus | null>(),
+    integrationMessage: text("integration_message"),
+    integrationTargetCommitSha: text("integration_target_commit_sha"),
+    integrationCheckedAt: text("integration_checked_at"),
     createdAt: text("created_at").notNull(),
     startedAt: text("started_at"),
     concludedAt: text("concluded_at"),

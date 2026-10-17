@@ -8,6 +8,7 @@ import {
   reviewStatuses,
   riskLevels,
 } from "./review-model.js";
+import { integrationStatuses } from "./integration-model.js";
 
 const identifierSchema = z.string().min(1);
 const nullableTextSchema = z.string().nullable();
@@ -27,6 +28,7 @@ export const taskStatusSchema = z.enum(taskStatuses);
 export const taskEventTypeSchema = z.enum(taskEventTypes);
 export const riskLevelSchema = z.enum(riskLevels);
 export const reviewStatusSchema = z.enum(reviewStatuses);
+export const integrationStatusSchema = z.enum(integrationStatuses);
 
 export const reviewFindingSchema = z
   .object({
@@ -58,6 +60,15 @@ export const reviewSchema = z
     summary: nullableTextSchema,
     findings: z.array(reviewFindingSchema),
     verificationEvidence: z.array(verificationEvidenceSchema),
+    integrationRequired: z.boolean(),
+    integrationTargetBranch: z.string().min(1),
+    integrationNotRequiredReason: nullableTextSchema,
+    approvedAt: nullableTextSchema,
+    approvedBy: nullableTextSchema,
+    integrationStatus: integrationStatusSchema.nullable(),
+    integrationMessage: nullableTextSchema,
+    integrationTargetCommitSha: nullableTextSchema,
+    integrationCheckedAt: nullableTextSchema,
     createdAt: z.string().min(1),
     startedAt: nullableTextSchema,
     concludedAt: nullableTextSchema,
@@ -67,6 +78,7 @@ export const reviewSchema = z
 
 export const reviewDigestSchema = z
   .object({
+    id: identifierSchema,
     status: reviewStatusSchema,
     reviewRound: z.number().int().positive(),
     commitSha: z.string().regex(/^[0-9a-f]{40}$/i),
@@ -78,6 +90,14 @@ export const reviewDigestSchema = z
     acceptanceCriteriaCount: z.number().int().nonnegative(),
     verificationEvidenceCount: z.number().int().nonnegative(),
     findingsCount: z.number().int().nonnegative(),
+    integrationRequired: z.boolean(),
+    integrationTargetBranch: z.string().min(1),
+    integrationNotRequiredReason: nullableTextSchema,
+    approvedAt: nullableTextSchema,
+    integrationStatus: integrationStatusSchema.nullable(),
+    integrationMessage: nullableTextSchema,
+    integrationTargetCommitSha: nullableTextSchema,
+    integrationCheckedAt: nullableTextSchema,
   })
   .strict();
 
@@ -117,6 +137,9 @@ export const taskSummarySchema = z
     completedAt: nullableTextSchema,
     riskLevel: riskLevelSchema,
     riskConfirmed: z.boolean(),
+    integrationRequired: z.boolean(),
+    integrationTargetBranch: z.string().min(1),
+    integrationNotRequiredReason: nullableTextSchema,
     latestReview: reviewDigestSchema.nullable().optional(),
   })
   .strict();
@@ -143,6 +166,9 @@ export const taskSchema = z
     riskConfirmed: z.boolean(),
     riskConfirmedBy: nullableTextSchema,
     riskConfirmedAt: nullableTextSchema,
+    integrationRequired: z.boolean(),
+    integrationTargetBranch: z.string().min(1),
+    integrationNotRequiredReason: nullableTextSchema,
     createdBy: z.enum(["developer", "agent"]),
     createdAt: z.string().min(1),
     updatedAt: z.string().min(1),
@@ -405,6 +431,42 @@ export const approveTaskInputSchema = z
   })
   .strict();
 
+export const setTaskIntegrationPolicyInputSchema = z
+  .object({
+    projectId: identifierSchema,
+    taskId: identifierSchema,
+    integrationRequired: z.boolean(),
+    integrationTargetBranch: z.string().trim().min(1).max(255).default("main"),
+    integrationNotRequiredReason: z.string().trim().min(1).max(2_000).nullable().optional(),
+    actorLabel: z.string().trim().min(1).optional(),
+  })
+  .strict()
+  .superRefine((input, context) => {
+    if (!input.integrationRequired && !input.integrationNotRequiredReason) {
+      context.addIssue({
+        code: "custom",
+        path: ["integrationNotRequiredReason"],
+        message: "A developer reason is required when Git integration is not required.",
+      });
+    }
+    if (input.integrationRequired && input.integrationNotRequiredReason) {
+      context.addIssue({
+        code: "custom",
+        path: ["integrationNotRequiredReason"],
+        message: "A no-integration reason is only valid when integration is not required.",
+      });
+    }
+  });
+
+export const checkTaskIntegrationInputSchema = z
+  .object({
+    projectId: identifierSchema,
+    taskId: identifierSchema,
+    expectedReviewId: identifierSchema,
+    actorLabel: z.string().trim().min(1).optional(),
+  })
+  .strict();
+
 export const waiveTaskApprovalInputSchema = z
   .object({
     projectId: identifierSchema,
@@ -530,6 +592,10 @@ export type ReturnTaskToInboxInput = z.input<
   typeof returnTaskToInboxInputSchema
 >;
 export type ApproveTaskInput = z.input<typeof approveTaskInputSchema>;
+export type SetTaskIntegrationPolicyInput = z.input<
+  typeof setTaskIntegrationPolicyInputSchema
+>;
+export type CheckTaskIntegrationInput = z.input<typeof checkTaskIntegrationInputSchema>;
 export type WaiveTaskApprovalInput = z.input<typeof waiveTaskApprovalInputSchema>;
 export type RequestTaskChangesInput = z.input<
   typeof requestTaskChangesInputSchema

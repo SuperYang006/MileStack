@@ -28,6 +28,8 @@ import {
   taskWorkingDetailsSchema,
   updateTaskInputSchema,
   editInboxTaskInputSchema,
+  setTaskIntegrationPolicyInputSchema,
+  checkTaskIntegrationInputSchema,
   type CreateTaskInput,
   type CreateTasksInput,
   type ConfirmTaskInput,
@@ -58,6 +60,8 @@ import {
   type TaskSummary,
   type UpdateTaskInput,
   type EditInboxTaskInput,
+  type SetTaskIntegrationPolicyInput,
+  type CheckTaskIntegrationInput,
 } from "./query-contract.js";
 import {
   InvalidTaskStateError,
@@ -72,7 +76,13 @@ import {
   TaskRiskNotConfirmedError,
   ReviewRunOwnershipError,
   ReviewEvidenceIncompleteError,
+  IntegrationCheckStaleError,
 } from "./errors.js";
+import type {
+  IntegrationChecker,
+  IntegrationCheckResult,
+} from "./integration-checker.js";
+import type { IntegrationStatus } from "./integration-model.js";
 import type {
   ReviewFinding,
 } from "./review-model.js";
@@ -90,6 +100,7 @@ export type TaskServiceOptions = {
   now?: () => Date;
   generateId?: () => string;
   recentlyCompletedLimit?: number;
+  integrationChecker?: IntegrationChecker;
 };
 
 const compactProjectStatusLimits = {
@@ -109,6 +120,11 @@ export type StartedTask = {
 export type StartedReview = {
   reviewRunId: string;
   task: TaskDetails;
+};
+
+type CompletionIntegrationResult = IntegrationCheckResult | {
+  status: "not_required";
+  message: string;
 };
 
 const emptyTaskFields = {
@@ -135,6 +151,7 @@ function reviewToDigest(
   acceptanceCriteriaCount: number,
 ): ReviewDigest {
   return {
+    id: review.id,
     status: review.status,
     reviewRound: review.reviewRound,
     commitSha: review.commitSha,
@@ -146,6 +163,14 @@ function reviewToDigest(
     acceptanceCriteriaCount,
     verificationEvidenceCount: review.verificationEvidence.length,
     findingsCount: review.findings.length,
+    integrationRequired: review.integrationRequired,
+    integrationTargetBranch: review.integrationTargetBranch,
+    integrationNotRequiredReason: review.integrationNotRequiredReason,
+    approvedAt: review.approvedAt,
+    integrationStatus: review.integrationStatus,
+    integrationMessage: review.integrationMessage,
+    integrationTargetCommitSha: review.integrationTargetCommitSha,
+    integrationCheckedAt: review.integrationCheckedAt,
   };
 }
 
@@ -175,6 +200,9 @@ function taskToSummary(
     completedAt: task.completedAt,
     riskLevel: task.riskLevel,
     riskConfirmed: task.riskConfirmed,
+    integrationRequired: task.integrationRequired,
+    integrationTargetBranch: task.integrationTargetBranch,
+    integrationNotRequiredReason: task.integrationNotRequiredReason,
     latestReview:
       latestReview === null
         ? null
@@ -367,6 +395,7 @@ export class TaskService {
   private readonly now: () => Date;
   private readonly generateId: () => string;
   private readonly recentlyCompletedLimit: number;
+  private readonly integrationChecker: IntegrationChecker | undefined;
 
   constructor(
     private readonly repository: MileStackRepository,
@@ -375,6 +404,7 @@ export class TaskService {
     this.now = options.now ?? (() => new Date());
     this.generateId = options.generateId ?? randomUUID;
     this.recentlyCompletedLimit = options.recentlyCompletedLimit ?? 10;
+    this.integrationChecker = options.integrationChecker;
 
     if (
       !Number.isInteger(this.recentlyCompletedLimit) ||
@@ -566,6 +596,51 @@ export class TaskService {
       });
     });
 
+    return this.getTask({ projectId: project.id, taskId: parsed.taskId, view: "full" });
+  }
+
+  setTaskIntegrationPolicy(input: SetTaskIntegrationPolicyInput): TaskDetails {
+    const parsed = setTaskIntegrationPolicyInputSchema.parse(input);
+    const project = this.requireProject(parsed.projectId);
+    this.repository.transaction((transaction) => {
+      const task = transaction.findTaskById(parsed.taskId);
+      if (!task || task.projectId !== project.id) {
+        throw new TaskNotFoundError(parsed.taskId);
+      }
+      if (task.status !== "inbox" && task.status !== "ready") {
+        throw new InvalidTaskStateError(task.id, "inbox or ready", task.status);
+      }
+
+      const now = this.now().toISOString();
+      const integrationNotRequiredReason = parsed.integrationRequired
+        ? null
+        : parsed.integrationNotRequiredReason ?? null;
+      const integrationTargetBranch = parsed.integrationTargetBranch;
+      transaction.updateTask(task.id, {
+        integrationRequired: parsed.integrationRequired,
+        integrationTargetBranch,
+        integrationNotRequiredReason,
+        updatedAt: now,
+      });
+      transaction.insertTaskEvent({
+        id: this.generateId(),
+        projectId: task.projectId,
+        taskId: task.id,
+        runId: null,
+        type: "progress",
+        summary: parsed.integrationRequired
+          ? `Developer requires local Git integration on '${integrationTargetBranch}'.`
+          : `Developer waived Git integration: ${integrationNotRequiredReason}`,
+        completedWork: null,
+        currentStep: task.currentStep,
+        nextStep: task.nextStep,
+        blocker: task.blocker,
+        requiredAction: task.requiredAction,
+        handoffNote: task.handoffNote,
+        actorLabel: parsed.actorLabel ?? "developer",
+        createdAt: now,
+      });
+    });
     return this.getTask({ projectId: project.id, taskId: parsed.taskId, view: "full" });
   }
   editInboxTask(input: EditInboxTaskInput): TaskDetails {
@@ -948,6 +1023,15 @@ export class TaskService {
         summary: null,
         findings: [],
         verificationEvidence: [],
+        integrationRequired: task.integrationRequired,
+        integrationTargetBranch: task.integrationTargetBranch,
+        integrationNotRequiredReason: task.integrationNotRequiredReason,
+        approvedAt: null,
+        approvedBy: null,
+        integrationStatus: null,
+        integrationMessage: null,
+        integrationTargetCommitSha: null,
+        integrationCheckedAt: null,
         createdAt: now,
         startedAt: null,
         concludedAt: null,
@@ -1036,6 +1120,7 @@ export class TaskService {
   completeReview(input: CompleteReviewInput): TaskDetails {
     const parsed = completeReviewInputSchema.parse(input);
     const project = this.requireProject(parsed.projectId);
+    let reviewId = "";
     this.repository.transaction((transaction) => {
       const task = transaction.findTaskById(parsed.taskId);
       if (!task || task.projectId !== project.id) {
@@ -1061,6 +1146,7 @@ export class TaskService {
       }
 
       const now = this.now().toISOString();
+      reviewId = review.id;
       const actorLabel =
         parsed.actorLabel ?? review.reviewerActorLabel ?? "agent";
       transaction.updateReview(review.id, {
@@ -1117,9 +1203,10 @@ export class TaskService {
 
       transaction.updateTask(task.id, {
         activeReviewRunId: null,
-        ...(task.riskLevel === "low" && task.riskConfirmed
-          ? { status: "completed" as const, completedAt: now }
-          : {}),
+        requiredAction:
+          task.riskLevel === "low" && task.riskConfirmed
+            ? "AI review passed. Checking local Git integration."
+            : "AI review passed. Developer approval is required before completion.",
         updatedAt: now,
       });
       transaction.insertTaskEvent({
@@ -1138,31 +1225,23 @@ export class TaskService {
         actorLabel,
         createdAt: now,
       });
-      if (task.riskLevel === "low" && task.riskConfirmed) {
-        transaction.insertTaskEvent({
-          id: this.generateId(),
-          projectId: task.projectId,
-          taskId: task.id,
-          runId: parsed.reviewRunId,
-          type: "completed",
-          summary: "Task automatically completed after low-risk AI review passed.",
-          completedWork: null,
-          currentStep: null,
-          nextStep: null,
-          blocker: null,
-          requiredAction: null,
-          handoffNote: task.handoffNote,
-          actorLabel,
-          createdAt: now,
-        });
-      }
     });
+    if (parsed.decision === "passed") {
+      return this.checkAndCompleteIntegration(
+        project.id,
+        parsed.taskId,
+        reviewId,
+        parsed.actorLabel ?? "agent",
+        false,
+      );
+    }
     return this.getTask({ projectId: project.id, taskId: parsed.taskId, view: "full" });
   }
 
   approveTask(input: ApproveTaskInput): TaskDetails {
     const parsed = approveTaskInputSchema.parse(input);
     const project = this.requireProject(parsed.projectId);
+    let reviewId = "";
     this.repository.transaction((transaction) => {
       const task = transaction.findTaskById(parsed.taskId);
       if (!task || task.projectId !== project.id) {
@@ -1180,36 +1259,246 @@ export class TaskService {
         );
       }
       const now = this.now().toISOString();
-      transaction.updateTask(task.id, {
-        status: "completed",
-        queuePosition: null,
-        activeRunId: null,
-        activeReviewRunId: null,
-        currentStep: null,
-        nextStep: null,
-        blocker: null,
-        requiredAction: null,
-        completedAt: now,
+      reviewId = review.id;
+      const actorLabel = parsed.actorLabel ?? "developer";
+      const firstApproval = review.approvedAt === null;
+      transaction.updateReview(review.id, {
+        approvedAt: review.approvedAt ?? now,
+        approvedBy: review.approvedBy ?? actorLabel,
         updatedAt: now,
       });
-      transaction.insertTaskEvent({
-        id: this.generateId(),
-        projectId: task.projectId,
-        taskId: task.id,
-        runId: null,
-        type: "approved",
-        summary: "Task approved by developer.",
-        completedWork: null,
-        currentStep: null,
-        nextStep: null,
-        blocker: null,
-        requiredAction: null,
-        handoffNote: task.handoffNote,
-        actorLabel: parsed.actorLabel ?? "developer",
-        createdAt: now,
+      transaction.updateTask(task.id, {
+        activeReviewRunId: null,
+        requiredAction: "Developer approval recorded. Checking local Git integration.",
+        updatedAt: now,
       });
+      if (firstApproval) {
+        transaction.insertTaskEvent({
+          id: this.generateId(),
+          projectId: task.projectId,
+          taskId: task.id,
+          runId: null,
+          type: "approved",
+          summary: "Task approved by developer.",
+          completedWork: null,
+          currentStep: null,
+          nextStep: null,
+          blocker: null,
+          requiredAction: null,
+          handoffNote: task.handoffNote,
+          actorLabel,
+          createdAt: now,
+        });
+      }
     });
-    return this.getTask({ projectId: project.id, taskId: parsed.taskId, view: "full" });
+    return this.checkAndCompleteIntegration(
+      project.id,
+      parsed.taskId,
+      reviewId,
+      parsed.actorLabel ?? "developer",
+      false,
+    );
+  }
+
+  checkTaskIntegration(input: CheckTaskIntegrationInput): TaskDetails {
+    const parsed = checkTaskIntegrationInputSchema.parse(input);
+    const project = this.requireProject(parsed.projectId);
+    return this.checkAndCompleteIntegration(
+      project.id,
+      parsed.taskId,
+      parsed.expectedReviewId,
+      parsed.actorLabel ?? "developer",
+      true,
+    );
+  }
+
+  private checkAndCompleteIntegration(
+    projectId: string,
+    taskId: string,
+    expectedReviewId: string,
+    actorLabel: string,
+    requireAcceptedReview: boolean,
+  ): TaskDetails {
+    const snapshot = this.repository.transaction((transaction) => {
+      const task = transaction.findTaskById(taskId);
+      if (!task || task.projectId !== projectId) {
+        throw new TaskNotFoundError(taskId);
+      }
+      const review = transaction.listReviewsByTaskId(taskId).at(-1);
+      if (!review || review.id !== expectedReviewId) {
+        throw new IntegrationCheckStaleError(taskId);
+      }
+      if (task.status === "completed") {
+        return { task, review, alreadyCompleted: true };
+      }
+      if (task.status !== "in_review") {
+        throw new InvalidTaskStateError(taskId, "in_review", task.status);
+      }
+      if (review.status !== "passed" && review.status !== "waived") {
+        throw new InvalidTaskStateError(
+          taskId,
+          "a passed or directly accepted latest review",
+          review.status,
+        );
+      }
+      if (requireAcceptedReview && !this.reviewAcceptanceSatisfied(task, review)) {
+        throw new InvalidTaskStateError(
+          taskId,
+          "the latest review to satisfy the task risk approval policy",
+          review.status === "passed" ? "developer approval required" : "not accepted",
+        );
+      }
+      return { task, review, alreadyCompleted: false };
+    });
+
+    if (snapshot.alreadyCompleted) {
+      return this.getTask({ projectId, taskId, view: "full" });
+    }
+
+    let result: CompletionIntegrationResult;
+    let checkedAt = snapshot.review.integrationCheckedAt;
+    if (!snapshot.review.integrationRequired) {
+      result = {
+        status: "not_required",
+        message: snapshot.review.integrationNotRequiredReason ??
+          "Developer recorded that local Git integration is not required.",
+      };
+      checkedAt = this.now().toISOString();
+    } else if (
+      !requireAcceptedReview &&
+      snapshot.review.integrationStatus === "integrated" &&
+      snapshot.review.integrationTargetCommitSha
+    ) {
+      result = {
+        status: "integrated",
+        targetCommitSha: snapshot.review.integrationTargetCommitSha,
+      };
+    } else {
+      checkedAt = this.now().toISOString();
+      try {
+        result = this.integrationChecker
+          ? this.integrationChecker.check({
+              commitSha: snapshot.review.commitSha,
+              targetBranch: snapshot.review.integrationTargetBranch,
+            })
+          : {
+              status: "unavailable",
+              message: "本地 Git 集成检查器未装配，无法验证审核提交。",
+            };
+      } catch (error) {
+        result = {
+          status: "unavailable",
+          message: `本地 Git 集成检查失败：${error instanceof Error ? error.message : String(error)}`,
+        };
+      }
+    }
+
+    this.repository.transaction((transaction) => {
+      const task = transaction.findTaskById(taskId);
+      const latestReview = transaction.listReviewsByTaskId(taskId).at(-1);
+      if (!task || task.projectId !== projectId || !latestReview) {
+        throw new IntegrationCheckStaleError(taskId);
+      }
+      if (
+        task.status === "completed" &&
+        latestReview.id === expectedReviewId &&
+        (latestReview.integrationStatus === "integrated" ||
+          latestReview.integrationStatus === "not_required")
+      ) {
+        return;
+      }
+      if (
+        task.status !== "in_review" ||
+        latestReview.id !== expectedReviewId ||
+        latestReview.commitSha !== snapshot.review.commitSha ||
+        latestReview.integrationRequired !== snapshot.review.integrationRequired ||
+        latestReview.integrationTargetBranch !== snapshot.review.integrationTargetBranch ||
+        latestReview.integrationNotRequiredReason !== snapshot.review.integrationNotRequiredReason ||
+        latestReview.status !== snapshot.review.status ||
+        task.riskLevel !== snapshot.task.riskLevel ||
+        task.riskConfirmed !== snapshot.task.riskConfirmed
+      ) {
+        throw new IntegrationCheckStaleError(taskId);
+      }
+
+      const now = checkedAt ?? this.now().toISOString();
+      const acceptanceSatisfied = this.reviewAcceptanceSatisfied(task, latestReview);
+      const complete = acceptanceSatisfied &&
+        (result.status === "integrated" || result.status === "not_required");
+      transaction.updateReview(latestReview.id, {
+        integrationStatus: result.status,
+        integrationMessage: result.status === "integrated" ? null : result.message,
+        integrationTargetCommitSha:
+          result.status === "integrated"
+            ? result.targetCommitSha
+            : ("targetCommitSha" in result ? result.targetCommitSha ?? null : null),
+        integrationCheckedAt: now,
+        updatedAt: now,
+      });
+      transaction.updateTask(taskId, {
+        ...(complete
+          ? {
+              status: "completed" as const,
+              queuePosition: null,
+              activeRunId: null,
+              activeReviewRunId: null,
+              currentStep: null,
+              nextStep: null,
+              blocker: null,
+              requiredAction: null,
+              completedAt: now,
+            }
+          : {
+              activeReviewRunId: null,
+              requiredAction: acceptanceSatisfied
+                ? result.status === "not_integrated" || result.status === "unavailable"
+                  ? `${result.message} After an authorized local merge or Git repair, retry the integration check.`
+                  : "Developer approval is required before completion."
+                : result.status === "integrated" || result.status === "not_required"
+                  ? "Local integration requirements are satisfied. Developer approval is still required."
+                  : "AI review passed. Developer approval is required before completion.",
+            }),
+        updatedAt: now,
+      });
+      if (complete) {
+        transaction.insertTaskEvent({
+          id: this.generateId(),
+          projectId,
+          taskId,
+          runId: null,
+          type: "completed",
+          summary:
+            result.status === "not_required"
+              ? "Task completed after developer-confirmed no-integration policy and required review approval."
+              : `Task completed after local '${latestReview.integrationTargetBranch}' was verified to contain review commit ${latestReview.commitSha}.`,
+          completedWork: null,
+          currentStep: null,
+          nextStep: null,
+          blocker: null,
+          requiredAction: null,
+          handoffNote: task.handoffNote,
+          actorLabel,
+          createdAt: now,
+        });
+      }
+    });
+
+    return this.getTask({ projectId, taskId, view: "full" });
+  }
+
+  private reviewAcceptanceSatisfied(task: TaskRecord, review: ReviewRecord): boolean {
+    if (!task.riskConfirmed) {
+      return false;
+    }
+    if (review.status === "waived") {
+      return review.approvedAt !== null && review.approvedBy !== null;
+    }
+    if (review.status !== "passed" || review.verificationEvidence.length === 0) {
+      return false;
+    }
+    return task.riskLevel === "low" && task.riskConfirmed
+      ? true
+      : review.approvedAt !== null && review.approvedBy !== null;
   }
 
   /**
@@ -1220,6 +1509,7 @@ export class TaskService {
   waiveTaskApproval(input: WaiveTaskApprovalInput): TaskDetails {
     const parsed = waiveTaskApprovalInputSchema.parse(input);
     const project = this.requireProject(parsed.projectId);
+    let reviewId = "";
     this.repository.transaction((transaction) => {
       const task = transaction.findTaskById(parsed.taskId);
       if (!task || task.projectId !== project.id) {
@@ -1240,22 +1530,19 @@ export class TaskService {
         );
       }
       const now = this.now().toISOString();
+      reviewId = review.id;
       transaction.updateReview(review.id, {
         status: "waived",
         reviewerActorLabel: parsed.actorLabel ?? "developer",
+        summary: `Developer directly accepted this task: ${parsed.reason}`,
+        approvedAt: now,
+        approvedBy: parsed.actorLabel ?? "developer",
         concludedAt: now,
         updatedAt: now,
       });
       transaction.updateTask(task.id, {
-        status: "completed",
-        queuePosition: null,
-        activeRunId: null,
         activeReviewRunId: null,
-        currentStep: null,
-        nextStep: null,
-        blocker: null,
-        requiredAction: null,
-        completedAt: now,
+        requiredAction: "Developer direct acceptance recorded. Checking local Git integration.",
         updatedAt: now,
       });
       transaction.insertTaskEvent({
@@ -1275,7 +1562,13 @@ export class TaskService {
         createdAt: now,
       });
     });
-    return this.getTask({ projectId: project.id, taskId: parsed.taskId, view: "full" });
+    return this.checkAndCompleteIntegration(
+      project.id,
+      parsed.taskId,
+      reviewId,
+      parsed.actorLabel ?? "developer",
+      false,
+    );
   }
 
   requestTaskChanges(input: RequestTaskChangesInput): TaskDetails {
@@ -1672,6 +1965,9 @@ export class TaskService {
       riskConfirmed,
       riskConfirmedBy: riskConfirmed ? input.actorLabel ?? "developer" : null,
       riskConfirmedAt: riskConfirmed ? timestamp : null,
+      integrationRequired: true,
+      integrationTargetBranch: "main",
+      integrationNotRequiredReason: null,
       sourceTaskId: input.sourceTaskId ?? null,
       createdBy: input.createdBy,
       createdAt: timestamp,

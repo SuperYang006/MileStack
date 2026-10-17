@@ -6,6 +6,7 @@ import { resolveDatabasePath } from "../db/paths.js";
 
 import { ProjectNotFoundError } from "../core/errors.js";
 import { TaskService } from "../core/task-service.js";
+import { GitIntegrationChecker } from "../git/integration-checker.js";
 import { ensureDatabase } from "../db/ensure-database.js";
 import type { OpenDatabase } from "../db/open-database.js";
 import { createSqliteRepository } from "../db/sqlite-repository.js";
@@ -241,6 +242,8 @@ export async function openProjectContext(
     database,
     repository,
     project,
-    service: new TaskService(repository),
+    service: new TaskService(repository, {
+      integrationChecker: new GitIntegrationChecker(projectRoot),
+    }),
   };
 }

@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -26,6 +27,17 @@ type InMemoryMcpConnection = {
   context: Awaited<ReturnType<typeof openProjectContext>>;
   server: ReturnType<typeof createMcpServer>;
 };
+
+function git(projectRoot: string, ...args: string[]): string {
+  return execFileSync("git", args, { cwd: projectRoot, encoding: "utf8" }).trim();
+}
+
+function commitFile(projectRoot: string, filename: string, content: string, message: string): string {
+  writeFileSync(path.join(projectRoot, filename), content);
+  git(projectRoot, "add", filename);
+  git(projectRoot, "commit", "-m", message);
+  return git(projectRoot, "rev-parse", "HEAD");
+}
 
 const httpHarnesses: HttpHarness[] = [];
 const inMemoryConnections: InMemoryMcpConnection[] = [];
@@ -135,6 +147,16 @@ async function getHttpTask(harness: HttpHarness, taskId: string): Promise<TaskDe
   return JSON.parse(response.payload) as TaskDetails;
 }
 
+function disableIntegrationForReviewLifecycleTest(harness: HttpHarness, taskId: string): void {
+  harness.context.service.setTaskIntegrationPolicy({
+    projectId: harness.context.project.id,
+    taskId,
+    integrationRequired: false,
+    integrationTargetBranch: "main",
+    integrationNotRequiredReason: "This test isolates review ownership and risk policy.",
+  });
+}
+
 afterEach(async () => {
   for (const client of stdioClients.splice(0)) {
     await client.close();
@@ -152,6 +174,173 @@ afterEach(async () => {
 });
 
 describe("review workflow integration", () => {
+  it("runs the local delivery gate through a real MCP process, SQLite project, HTTP API, and temporary Git repository", async () => {
+    const harness = await createHttpHarness();
+    const projectRoot = harness.projectRoot;
+    git(projectRoot, "init", "-b", "main");
+    git(projectRoot, "config", "user.name", "MileStack Test");
+    git(projectRoot, "config", "user.email", "milestack-test@example.invalid");
+    git(projectRoot, "config", "core.hooksPath", "/dev/null");
+    git(projectRoot, "add", "dist/ui/index.html");
+    git(projectRoot, "commit", "-m", "temporary project baseline");
+
+    const createTask = async (input: {
+      title: string;
+      dependencyIds?: string[];
+    }): Promise<TaskDetails> => {
+      const response = await harness.app.inject({
+        method: "POST",
+        url: "/api/tasks",
+        payload: {
+          title: input.title,
+          objective: "Verify local integration gates the current review round",
+          acceptanceCriteria: ["Only the current approved artifact completes"],
+          dependencyIds: input.dependencyIds ?? [],
+          riskLevel: "medium",
+          status: "ready",
+        },
+      });
+      expect(response.statusCode).toBe(201);
+      return JSON.parse(response.payload) as TaskDetails;
+    };
+
+    const submitAndPass = async (
+      client: Client,
+      taskId: string,
+      commitSha: string,
+      branch: string,
+    ): Promise<TaskDetails> => {
+      const started = await callMcp<StartedTask>(client, "start_task", { taskId });
+      const submitted = await callMcp<TaskDetails>(client, "submit_for_review", {
+        taskId,
+        runId: started.runId,
+        commitSha,
+        branch,
+        worktree: projectRoot,
+        summary: "The fixed local commit is ready for review.",
+        completedWork: ["Created the review commit in the temporary repository."],
+      });
+      const latest = submitted.reviews?.at(-1);
+      if (!latest) throw new Error("Submitted task did not return its review.");
+      const review = await callMcp<StartedReview>(client, "start_review", { taskId });
+      return callMcp<TaskDetails>(client, "complete_review", {
+        taskId,
+        reviewRunId: review.reviewRunId,
+        decision: "passed",
+        summary: "The fixed artifact passed review.",
+        verificationEvidence: [{ command: "pnpm typecheck", result: "passed" }],
+      });
+    };
+
+    const prerequisite = await createTask({ title: "Integrated prerequisite" });
+    const dependent = await createTask({
+      title: "Dependent work",
+      dependencyIds: [prerequisite.task.id],
+    });
+    const client = await connectStdioMcp(projectRoot);
+
+    git(projectRoot, "checkout", "-b", "feature/prerequisite");
+    const firstCommit = commitFile(projectRoot, "prerequisite.txt", "first delivery\n", "first delivery");
+    const firstPassed = await submitAndPass(client, prerequisite.task.id, firstCommit, "feature/prerequisite");
+    const firstReview = firstPassed.reviews!.at(-1)!;
+    expect(firstPassed.task.status).toBe("in_review");
+    expect(firstReview).toMatchObject({ status: "passed", integrationStatus: "not_integrated", approvedAt: null });
+
+    const firstApproval = await harness.app.inject({
+      method: "POST",
+      url: `/api/tasks/${prerequisite.task.id}/approve`,
+    });
+    expect(firstApproval.statusCode).toBe(200);
+    const approvedButUnmerged = await getHttpTask(harness, prerequisite.task.id);
+    expect(approvedButUnmerged.task.status).toBe("in_review");
+    expect(approvedButUnmerged.reviews?.at(-1)).toMatchObject({
+      approvedBy: "developer",
+      integrationStatus: "not_integrated",
+    });
+
+    git(projectRoot, "checkout", "main");
+    git(projectRoot, "merge", "--ff-only", "feature/prerequisite");
+    git(projectRoot, "branch", "-d", "feature/prerequisite");
+    const firstIntegration = await harness.app.inject({
+      method: "POST",
+      url: `/api/tasks/${prerequisite.task.id}/check-integration`,
+      payload: { expectedReviewId: firstReview.id },
+    });
+    expect(firstIntegration.statusCode).toBe(200);
+    expect(JSON.parse(firstIntegration.payload).task.status).toBe("completed");
+
+    const completedStatus = await harness.app.inject({ method: "GET", url: "/api/status?view=full" });
+    const next = (JSON.parse(completedStatus.payload) as {
+      next: Array<{ id: string; runnable: boolean; waitingFor: unknown[] }>;
+    }).next.find((task) => task.id === dependent.task.id);
+    expect(next).toMatchObject({ runnable: true, waitingFor: [] });
+
+    const integratedButUnapproved = await createTask({ title: "Integrated but unapproved" });
+    git(projectRoot, "checkout", "-b", "feature/unapproved");
+    const unapprovedCommit = commitFile(projectRoot, "unapproved.txt", "reviewed\n", "reviewed unapproved change");
+    git(projectRoot, "checkout", "main");
+    git(projectRoot, "merge", "--ff-only", "feature/unapproved");
+    git(projectRoot, "branch", "-d", "feature/unapproved");
+    const unapprovedPassed = await submitAndPass(client, integratedButUnapproved.task.id, unapprovedCommit, "feature/unapproved");
+    const unapprovedReview = unapprovedPassed.reviews!.at(-1)!;
+
+    const prematureArchive = await harness.app.inject({
+      method: "POST",
+      url: `/api/tasks/${integratedButUnapproved.task.id}/check-integration`,
+      payload: { expectedReviewId: unapprovedReview.id },
+    });
+    expect(prematureArchive.statusCode).toBe(400);
+    expect((await getHttpTask(harness, integratedButUnapproved.task.id)).task.status).toBe("in_review");
+    expect((await getHttpTask(harness, integratedButUnapproved.task.id)).reviews?.at(-1)).toMatchObject({
+      approvedAt: null,
+      integrationStatus: "integrated",
+    });
+
+    const secondApproval = await harness.app.inject({
+      method: "POST",
+      url: `/api/tasks/${integratedButUnapproved.task.id}/approve`,
+    });
+    expect(secondApproval.statusCode).toBe(200);
+    expect((await getHttpTask(harness, integratedButUnapproved.task.id)).task.status).toBe("completed");
+
+    const reopened = await harness.app.inject({
+      method: "POST",
+      url: `/api/tasks/${prerequisite.task.id}/reopen`,
+      payload: { reason: "A new delivery round is required." },
+    });
+    expect(reopened.statusCode).toBe(200);
+    git(projectRoot, "checkout", "-b", "feature/prerequisite-round-two");
+    const secondCommit = commitFile(projectRoot, "prerequisite.txt", "second delivery\n", "second delivery");
+    const secondPassed = await submitAndPass(client, prerequisite.task.id, secondCommit, "feature/prerequisite-round-two");
+    const secondReview = secondPassed.reviews!.at(-1)!;
+    expect(secondReview).toMatchObject({ status: "passed", approvedAt: null, integrationStatus: "not_integrated" });
+    expect(secondReview.id).not.toBe(firstReview.id);
+
+    const staleReviewCheck = await harness.app.inject({
+      method: "POST",
+      url: `/api/tasks/${prerequisite.task.id}/check-integration`,
+      payload: { expectedReviewId: firstReview.id },
+    });
+    expect(staleReviewCheck.statusCode).toBe(409);
+    const secondRoundApproval = await harness.app.inject({
+      method: "POST",
+      url: `/api/tasks/${prerequisite.task.id}/approve`,
+    });
+    expect(secondRoundApproval.statusCode).toBe(200);
+    expect((await getHttpTask(harness, prerequisite.task.id)).task.status).toBe("in_review");
+
+    git(projectRoot, "checkout", "main");
+    git(projectRoot, "merge", "--ff-only", "feature/prerequisite-round-two");
+    git(projectRoot, "branch", "-d", "feature/prerequisite-round-two");
+    const secondIntegration = await harness.app.inject({
+      method: "POST",
+      url: `/api/tasks/${prerequisite.task.id}/check-integration`,
+      payload: { expectedReviewId: secondReview.id },
+    });
+    expect(secondIntegration.statusCode).toBe(200);
+    expect(JSON.parse(secondIntegration.payload).task.status).toBe("completed");
+  });
+
   it("bridges a real stdio MCP process to HTTP over the same SQLite project", async () => {
     const harness = await createHttpHarness();
     const createdResponse = await harness.app.inject({
@@ -167,6 +356,7 @@ describe("review workflow integration", () => {
     });
     expect(createdResponse.statusCode).toBe(201);
     const created = JSON.parse(createdResponse.payload) as TaskDetails;
+    disableIntegrationForReviewLifecycleTest(harness, created.task.id);
     const client = await connectStdioMcp(harness.projectRoot);
 
     const started = await callMcp<StartedTask>(client, "start_task", {
@@ -220,6 +410,7 @@ describe("review workflow integration", () => {
     expect(httpDetails).toEqual(passed);
     expect(httpDetails.events.map((event) => event.type)).toEqual([
       "created",
+      "progress",
       "started",
       "submitted_for_review",
       "review_started",
@@ -264,6 +455,7 @@ describe("review workflow integration", () => {
       });
       expect(createdResponse.statusCode).toBe(201);
       const created = JSON.parse(createdResponse.payload) as TaskDetails;
+      disableIntegrationForReviewLifecycleTest(harness, created.task.id);
       taskIds.push(created.task.id);
 
       const started = await callMcp<StartedTask>(client, "start_task", {
@@ -350,6 +542,7 @@ describe("review workflow integration", () => {
     });
     expect(createdResponse.statusCode).toBe(201);
     const created = JSON.parse(createdResponse.payload) as TaskDetails;
+    disableIntegrationForReviewLifecycleTest(harness, created.task.id);
     const started = await callMcp<StartedTask>(implementer, "start_task", {
       taskId: created.task.id,
       actorLabel: "implementer",

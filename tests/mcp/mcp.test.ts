@@ -82,6 +82,7 @@ describe("MCP task tools", () => {
       "approve_review",
       "request_changes",
       "complete_review",
+      "check_task_integration",
     ]);
     expect(toolNames).toContain("submit_for_review");
     expect(toolNames).not.toContain("finish_task");

@@ -23,6 +23,7 @@ import {
   reviewFindingSchema,
   startReviewInputSchema,
   startTaskInputSchema,
+  checkTaskIntegrationInputSchema,
   updateTaskInputSchema,
 } from "../core/query-contract.js";
 import {
@@ -53,6 +54,7 @@ const updateTaskArgumentsSchema = updateTaskInputSchema.omit({ projectId: true }
 const submitForReviewArgumentsSchema = submitForReviewInputSchema.omit({ projectId: true });
 const startReviewArgumentsSchema = startReviewInputSchema.omit({ projectId: true });
 const completeReviewArgumentsSchema = completeReviewInputSchema.omit({ projectId: true });
+const checkIntegrationArgumentsSchema = checkTaskIntegrationInputSchema.omit({ projectId: true });
 const reviewDecisionArgumentsSchema = completeReviewArgumentsSchema.omit({
   decision: true,
 });
@@ -130,8 +132,14 @@ const toolDefinitions: Tool[] = [
   {
     name: "complete_review",
     description:
-      "Record a passed or changes-requested AI review with structured findings and verification evidence. Low-risk passes may complete automatically; medium- and high-risk tasks remain for developer approval.",
+      "Record a passed or changes-requested AI review with structured findings and verification evidence. Completion also requires the fixed review commit to be present on the developer-confirmed local target branch; low-risk tasks may complete automatically only after that check, while medium- and high-risk tasks wait for developer approval.",
     inputSchema: toJSONSchema(completeReviewArgumentsSchema) as Tool["inputSchema"],
+  },
+  {
+    name: "check_task_integration",
+    description:
+      "Retry the local read-only Git integration check for an already accepted latest review. Supply the expected review id from get_task. This never merges, fetches, pushes, or substitutes another commit SHA.",
+    inputSchema: toJSONSchema(checkIntegrationArgumentsSchema) as Tool["inputSchema"],
   },
 ];
 
@@ -302,6 +310,15 @@ export function createMcpServer(
           const parsed = completeReviewArgumentsSchema.parse(args);
           return jsonResult(
             context.service.completeReview({
+              ...parsed,
+              projectId: context.project.id,
+            }),
+          );
+        }
+        case "check_task_integration": {
+          const parsed = checkIntegrationArgumentsSchema.parse(args);
+          return jsonResult(
+            context.service.checkTaskIntegration({
               ...parsed,
               projectId: context.project.id,
             }),

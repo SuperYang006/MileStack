@@ -520,18 +520,19 @@ describe("SQLite database foundation", () => {
         updatedAt: "2026-10-12T01:00:00.000Z",
       })
       .run();
-    databaseAt0003.db
-      .insert(tasks)
-      .values({
-        id: "task-legacy-0003",
-        projectId: "project-1",
-        title: "Recover already migrated review",
-        status: "in_review",
-        createdBy: "developer",
-        createdAt: "2026-10-12T01:01:00.000Z",
-        updatedAt: "2026-10-12T01:01:00.000Z",
-      })
-      .run();
+    databaseAt0003.sqlite
+      .prepare(
+        "INSERT INTO tasks (id, project_id, title, status, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      )
+      .run(
+        "task-legacy-0003",
+        "project-1",
+        "Recover already migrated review",
+        "in_review",
+        "developer",
+        "2026-10-12T01:01:00.000Z",
+        "2026-10-12T01:01:00.000Z",
+      );
     databaseAt0003.db
       .insert(taskEvents)
       .values({
@@ -595,40 +596,35 @@ describe("SQLite database foundation", () => {
         updatedAt: "2026-10-12T02:00:00.000Z",
       })
       .run();
-    databaseAt0004.db
-      .insert(tasks)
-      .values({
-        id: "task-waived-review",
-        projectId: "project-1",
-        title: "Review before waiver status existed",
-        status: "in_review",
-        createdBy: "developer",
-        createdAt: "2026-10-12T02:01:00.000Z",
-        updatedAt: "2026-10-12T02:01:00.000Z",
-      })
-      .run();
-    databaseAt0004.db
-      .insert(taskReviews)
-      .values({
-        id: "review-before-0005",
-        projectId: "project-1",
-        taskId: "task-waived-review",
-        reviewRound: 1,
-        commitSha: "6666666666666666666666666666666666666666",
-        branch: "main",
-        worktree: null,
-        reviewRunId: null,
-        status: "pending",
-        reviewerActorLabel: null,
-        summary: null,
-        findings: [],
-        verificationEvidence: [],
-        createdAt: "2026-10-12T02:02:00.000Z",
-        startedAt: null,
-        concludedAt: null,
-        updatedAt: "2026-10-12T02:02:00.000Z",
-      })
-      .run();
+    databaseAt0004.sqlite
+      .prepare(
+        "INSERT INTO tasks (id, project_id, title, status, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      )
+      .run(
+        "task-waived-review",
+        "project-1",
+        "Review before waiver status existed",
+        "in_review",
+        "developer",
+        "2026-10-12T02:01:00.000Z",
+        "2026-10-12T02:01:00.000Z",
+      );
+    databaseAt0004.sqlite
+      .prepare(
+        "INSERT INTO task_reviews (id, project_id, task_id, review_round, commit_sha, status, findings, verification_evidence, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      )
+      .run(
+        "review-before-0005",
+        "project-1",
+        "task-waived-review",
+        1,
+        "6666666666666666666666666666666666666666",
+        "pending",
+        "[]",
+        "[]",
+        "2026-10-12T02:02:00.000Z",
+        "2026-10-12T02:02:00.000Z",
+      );
     expect(() =>
       databaseAt0004.sqlite
         .prepare("UPDATE task_reviews SET status = 'waived' WHERE id = ?")
@@ -670,5 +666,89 @@ describe("SQLite database foundation", () => {
         .run("review-before-0005"),
     ).toThrow();
     migrated.close();
+  });
+
+  it("backs up and preserves legacy reviews and live review ownership when adding the local integration gate", async () => {
+    const projectRoot = createTemporaryProject();
+    const migrationsAt0005 = path.join(projectRoot, "migrations-at-0005");
+    cpSync(migrationsFolder, migrationsAt0005, { recursive: true });
+    rmSync(path.join(migrationsAt0005, "0006_sticky_nocturne.sql"));
+    rmSync(path.join(migrationsAt0005, "meta", "0006_snapshot.json"));
+    const journalPath = path.join(migrationsAt0005, "meta", "_journal.json");
+    const journal = JSON.parse(readFileSync(journalPath, "utf8")) as {
+      entries: Array<Record<string, boolean | number | string>>;
+    };
+    journal.entries = journal.entries.slice(0, 6);
+    writeFileSync(journalPath, `${JSON.stringify(journal, null, 2)}\n`);
+
+    const oldDatabase = await ensureDatabase(projectRoot, { migrationsFolder: migrationsAt0005 });
+    oldDatabase.db.insert(projects).values({
+      id: "project-1",
+      name: "MileStack legacy",
+      rootPath: projectRoot,
+      goal: null,
+      createdAt: "2026-10-16T00:00:00.000Z",
+      updatedAt: "2026-10-16T00:00:00.000Z",
+    }).run();
+    oldDatabase.sqlite.prepare(
+      "INSERT INTO tasks (id, project_id, title, status, active_review_run_id, risk_level, risk_confirmed, created_by, created_at, updated_at, completed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    ).run(
+      "task-completed-history", "project-1", "Historical completion", "completed", null,
+      "low", 1, "developer", "2026-10-16T01:00:00.000Z", "2026-10-16T02:00:00.000Z", "2026-10-16T02:00:00.000Z",
+    );
+    oldDatabase.sqlite.prepare(
+      "INSERT INTO tasks (id, project_id, title, status, active_review_run_id, risk_level, risk_confirmed, risk_confirmed_by, risk_confirmed_at, created_by, created_at, updated_at, completed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    ).run(
+      "task-active-review", "project-1", "In-progress historical review", "in_review", "review-run-live",
+      "high", 1, "developer", "2026-10-16T00:30:00.000Z", "developer", "2026-10-16T03:00:00.000Z", "2026-10-16T03:00:00.000Z", null,
+    );
+    oldDatabase.sqlite.prepare(
+      "INSERT INTO task_reviews (id, project_id, task_id, review_round, commit_sha, branch, review_run_id, status, reviewer_actor_label, summary, findings, verification_evidence, created_at, started_at, concluded_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    ).run(
+      "review-run-record", "project-1", "task-active-review", 1, "7777777777777777777777777777777777777777",
+      "feature/review", "review-run-live", "in_progress", "review-agent", null, "[]", "[]",
+      "2026-10-16T03:00:00.000Z", "2026-10-16T03:01:00.000Z", null, "2026-10-16T03:01:00.000Z",
+    );
+    oldDatabase.sqlite.prepare(
+      "INSERT INTO task_events (id, project_id, task_id, type, summary, actor_label, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    ).run(
+      "legacy-completed-event", "project-1", "task-completed-history", "completed", "Historical task completion", "developer", "2026-10-16T02:00:00.000Z",
+    );
+    oldDatabase.close();
+
+    const migrated = await ensureDatabase(projectRoot, {
+      now: () => new Date("2026-10-17T02:00:00.000Z"),
+    });
+    expect(migrated.db.select().from(tasks).where(eq(tasks.id, "task-completed-history")).get()).toMatchObject({
+      status: "completed",
+      completedAt: "2026-10-16T02:00:00.000Z",
+      integrationRequired: true,
+      integrationTargetBranch: "main",
+    });
+    expect(migrated.db.select().from(tasks).where(eq(tasks.id, "task-active-review")).get())
+      .toMatchObject({ status: "in_review", activeReviewRunId: "review-run-live" });
+    expect(migrated.db.select().from(taskReviews).where(eq(taskReviews.id, "review-run-record")).get())
+      .toMatchObject({
+        status: "in_progress",
+        reviewRunId: "review-run-live",
+        commitSha: "7777777777777777777777777777777777777777",
+        integrationRequired: true,
+        integrationTargetBranch: "main",
+        approvedAt: null,
+        integrationStatus: null,
+        integrationTargetCommitSha: null,
+      });
+    expect(migrated.db.select().from(taskEvents).where(eq(taskEvents.id, "legacy-completed-event")).get())
+      .toMatchObject({ type: "completed", summary: "Historical task completion" });
+    migrated.close();
+
+    const backups = readdirSync(resolveBackupDirectory(projectRoot)).filter((name) => name.endsWith(".db"));
+    expect(backups).toHaveLength(1);
+    const backup = new BetterSqlite3(path.join(resolveBackupDirectory(projectRoot), backups[0]!));
+    expect(backup.prepare("SELECT id FROM tasks WHERE id = ?").get("task-active-review"))
+      .toEqual({ id: "task-active-review" });
+    expect(backup.prepare("SELECT id FROM task_reviews WHERE id = ?").get("review-run-record"))
+      .toEqual({ id: "review-run-record" });
+    backup.close();
   });
 });

@@ -436,10 +436,10 @@ describe("CLI entry point", () => {
     expect(knownTaskInstructions).toContain("If the claim fails, do not modify the project");
     expect(knownTaskInstructions).toContain("full 40-character commit SHA");
     expect(knownTaskInstructions).toContain(
-      "A verified low-risk task may complete automatically after review",
+      "A verified low-risk review may complete automatically only after the fixed review commit",
     );
     expect(knownTaskInstructions).toContain(
-      "medium- and high-risk tasks stay in in_review until a developer approves",
+      "medium- and high-risk tasks also require developer approval",
     );
     for (const step of [1, 2, 3, 4, 5, 6, 7]) {
       expect(knownTaskInstructions.split(`\n${step}. `).length - 1).toBe(1);

@@ -7,7 +7,7 @@ const taskClaimRule =
 const taskClaimValidationRule =
   "start_task is the final atomic claim boundary: the server validates task status, developer-confirmed risk, completed dependencies, and concurrent claims. Do not expect get_task to expose runnable.";
 const taskCompletionRule =
-  "After the acceptance criteria and required verification pass, call submit_for_review with an exact 40-character commit SHA. Submission moves the task to in_review and invalidates the execution runId. A reviewer must then call start_review and conclude the review with approve_review, request_changes, or complete_review using the returned reviewRunId. A verified low-risk task may complete automatically; medium- and high-risk tasks still require developer approval.";
+  "After the acceptance criteria and required verification pass, call submit_for_review with an exact 40-character commit SHA. Submission moves the task to in_review and invalidates the execution runId. A reviewer must then call start_review and conclude the review with approve_review, request_changes, or complete_review using the returned reviewRunId. Required local Git integration is checked against the fixed review commit and the developer-confirmed local target branch. A low-risk task may complete automatically only after that check; medium- and high-risk tasks require developer approval and the same integration gate.";
 
 export const projectAgentInstructionsPath = ".milestack/agent-instructions.md";
 
@@ -100,10 +100,11 @@ export function formatProjectAgentInstructions(): string {
     "",
     "## Apply the risk policy",
     "",
-    "- low: risk must already be developer-confirmed. An independent AI pass with at least one verification command and result may complete the task automatically.",
+    "- low: risk must already be developer-confirmed. An independent AI pass with at least one verification command and result may complete the task automatically after the required local integration check passes.",
     "- medium: an AI pass records review_passed but leaves the task in in_review until a developer approves the latest passed review round.",
     "- high: explicit developer risk confirmation is required. An AI pass still leaves the task in in_review until a developer approves the latest passed review round.",
     "- Agents must not confirm, lower, or bypass a task's risk level on behalf of a developer.",
+    "- If a review is accepted but local integration is pending or unavailable, retain its approval facts and use check_task_integration with the latest review id to retry after the developer has completed any authorized local merge. Do not claim completion until the task status is completed.",
     "",
     "## Git and delivery authority",
     "",
@@ -131,6 +132,7 @@ export function formatMcpInstructions(): string {
     `Known task: ${knownTaskRule}`,
     `Claiming: ${taskClaimRule} ${taskClaimValidationRule}`,
     `Submission and review: ${taskCompletionRule}`,
+    "If an accepted task is still waiting for local integration, call check_task_integration with its latest review id after the developer has completed any authorized local merge.",
     "Record newly discovered independent work with create_task or create_tasks; agent-created work enters inbox.",
   ].join(" ");
 }
@@ -144,6 +146,6 @@ export function formatKnownTaskBriefInstructions(taskId: string): string {
     "4. If the claim fails, do not modify the project; report the returned error and required action.",
     "5. Record meaningful progress with update_task and the current runId. Include a summary and, when they change, currentStep and nextStep.",
     "6. If you are blocked or cannot continue, call update_task with the current runId, blocker, requiredAction, and handoffNote, then stop. Do not invent a separate release or block tool.",
-    "7. After the acceptance criteria and required verification pass, call submit_for_review with the current runId, an existing full 40-character commit SHA, and the actual branch and worktree. Submission moves the task to in_review and invalidates the runId. A verified low-risk task may complete automatically after review; medium- and high-risk tasks stay in in_review until a developer approves.",
+    "7. After the acceptance criteria and required verification pass, call submit_for_review with the current runId, an existing full 40-character commit SHA, and the actual branch and worktree. Submission moves the task to in_review and invalidates the runId. A verified low-risk review may complete automatically only after the fixed review commit is verified on the developer-confirmed local target branch; medium- and high-risk tasks also require developer approval. If accepted but waiting for integration, retry with check_task_integration and the latest review id after an authorized local merge.",
   ].join("\n");
 }

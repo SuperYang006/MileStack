@@ -86,6 +86,15 @@ export class ReviewEvidenceIncompleteError extends DomainError {
   }
 }
 
+export class IntegrationCheckStaleError extends DomainError {
+  constructor(taskId: string) {
+    super(
+      "INTEGRATION_CHECK_STALE",
+      `The review or task state for '${taskId}' changed during the local integration check. Refresh the task and retry against the latest review.`,
+    );
+  }
+}
+
 export class TaskDependenciesIncompleteError extends DomainError {
   readonly dependencyIds: string[];
 

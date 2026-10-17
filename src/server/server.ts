@@ -22,10 +22,13 @@ import {
   TaskRunOwnershipError,
   ReviewRunOwnershipError,
   ReviewEvidenceIncompleteError,
+  IntegrationCheckStaleError,
 } from "../core/errors.js";
 import {
   getProjectStatusInputSchema,
   listTasksInputSchema,
+  setTaskIntegrationPolicyInputSchema,
+  checkTaskIntegrationInputSchema,
 } from "../core/query-contract.js";
 import type { ReviewFinding, VerificationEvidence } from "../core/review-model.js";
 import { runtimeVersion } from "./runtime-version.js";
@@ -309,7 +312,7 @@ export async function createHttpServer(
     }
   });
 
-  // Approve In-review Task -> Completed
+  // Approve the latest passed review; local integration still gates completion.
   app.post("/api/tasks/:id/approve", async (request, reply) => {
     const { id } = request.params as { id: string };
     const body = (request.body || {}) as { projectId?: string };
@@ -328,17 +331,69 @@ export async function createHttpServer(
       }
       if (
         err instanceof InvalidTaskStateError ||
+        err instanceof IntegrationCheckStaleError ||
         err instanceof z.ZodError
       ) {
         return reply
-          .status(400)
+          .status(err instanceof IntegrationCheckStaleError ? 409 : 400)
           .send({ error: err instanceof z.ZodError ? err.issues : err.message });
       }
       throw err;
     }
   });
 
-  // Developer waiver: complete an in-review task without an AI passed conclusion.
+  app.post("/api/tasks/:id/integration-policy", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const body = (request.body || {}) as Record<string, unknown>;
+    try {
+      return context.service.setTaskIntegrationPolicy(
+        setTaskIntegrationPolicyInputSchema.parse({
+          ...body,
+          taskId: id,
+          projectId: typeof body.projectId === "string" ? body.projectId : context.project.id,
+          actorLabel: "developer",
+        }),
+      );
+    } catch (err) {
+      if (err instanceof TaskNotFoundError || err instanceof ProjectNotFoundError) {
+        return reply.status(404).send({ error: err.message });
+      }
+      if (err instanceof InvalidTaskStateError || err instanceof z.ZodError) {
+        return reply.status(400).send({ error: err instanceof z.ZodError ? err.issues : err.message });
+      }
+      throw err;
+    }
+  });
+
+  app.post("/api/tasks/:id/check-integration", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const body = (request.body || {}) as Record<string, unknown>;
+    try {
+      return context.service.checkTaskIntegration(
+        checkTaskIntegrationInputSchema.parse({
+          ...body,
+          taskId: id,
+          projectId: typeof body.projectId === "string" ? body.projectId : context.project.id,
+          actorLabel: "developer",
+        }),
+      );
+    } catch (err) {
+      if (err instanceof TaskNotFoundError || err instanceof ProjectNotFoundError) {
+        return reply.status(404).send({ error: err.message });
+      }
+      if (
+        err instanceof InvalidTaskStateError ||
+        err instanceof IntegrationCheckStaleError ||
+        err instanceof z.ZodError
+      ) {
+        return reply.status(err instanceof IntegrationCheckStaleError ? 409 : 400)
+          .send({ error: err instanceof z.ZodError ? err.issues : err.message });
+      }
+      throw err;
+    }
+  });
+
+  // Developer acceptance of an in-progress review; local integration still gates completion.
   app.post("/api/tasks/:id/waive-approval", async (request, reply) => {
     const { id } = request.params as { id: string };
     const body = (request.body || {}) as {
@@ -361,10 +416,11 @@ export async function createHttpServer(
       }
       if (
         err instanceof InvalidTaskStateError ||
+        err instanceof IntegrationCheckStaleError ||
         err instanceof z.ZodError
       ) {
         return reply
-          .status(400)
+          .status(err instanceof IntegrationCheckStaleError ? 409 : 400)
           .send({ error: err instanceof z.ZodError ? err.issues : err.message });
       }
       throw err;
@@ -471,10 +527,11 @@ export async function createHttpServer(
         err instanceof InvalidTaskStateError ||
         err instanceof ReviewRunOwnershipError ||
         err instanceof ReviewEvidenceIncompleteError ||
+        err instanceof IntegrationCheckStaleError ||
         err instanceof z.ZodError
       ) {
         return reply
-          .status(400)
+          .status(err instanceof IntegrationCheckStaleError ? 409 : 400)
           .send({ error: err instanceof z.ZodError ? err.issues : err.message });
       }
       throw err;

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { X, GitCommit, CheckCircle2, Clock, Timer, Edit3, GitFork, ArrowRight, Zap, ShieldAlert, ShieldCheck, Terminal, Bot, Check, MessageSquare } from "lucide-react";
+import { X, GitCommit, CheckCircle2, Clock, Timer, Edit3, GitFork, ArrowRight, Zap, ShieldAlert, ShieldCheck, Terminal, Bot, Check, MessageSquare, GitBranch, RefreshCw } from "lucide-react";
 import { EmptyState } from "./EmptyState";
 import type { TaskDetails, TaskEvent, TaskSummary } from "../types";
 import { TaskIdBadge } from "./CopyTaskIdButton";
@@ -23,6 +23,13 @@ interface TaskDetailModalProps {
   onApprove?: (taskId: string) => void;
   onWaiveApproval?: (taskId: string, reason: string) => void;
   onRequestChanges?: (taskId: string, feedback: string) => void;
+  onCheckIntegration?: (taskId: string, reviewId: string) => void;
+  onSetIntegrationPolicy?: (
+    taskId: string,
+    policy: { integrationRequired: boolean; integrationTargetBranch: string; integrationNotRequiredReason?: string | null },
+  ) => void;
+  isCheckingIntegration?: boolean;
+  isSavingIntegrationPolicy?: boolean;
 }
 
 export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
@@ -37,9 +44,23 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
   onApprove,
   onWaiveApproval,
   onRequestChanges,
+  onCheckIntegration,
+  onSetIntegrationPolicy,
+  isCheckingIntegration = false,
+  isSavingIntegrationPolicy = false,
 }) => {
   const [now, setNow] = useState(() => Date.now());
+  const [integrationRequired, setIntegrationRequired] = useState(true);
+  const [integrationTargetBranch, setIntegrationTargetBranch] = useState("main");
+  const [integrationNotRequiredReason, setIntegrationNotRequiredReason] = useState("");
   const { openFeedbackDialog, feedbackDialogProps } = useFeedbackDialog();
+
+  useEffect(() => {
+    if (!details) return;
+    setIntegrationRequired(details.task.integrationRequired);
+    setIntegrationTargetBranch(details.task.integrationTargetBranch);
+    setIntegrationNotRequiredReason(details.task.integrationNotRequiredReason ?? "");
+  }, [details?.task.id, details?.task.updatedAt]);
 
   const handleOpenWaive = () => {
     if (!details) return;
@@ -215,24 +236,99 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
               </div>
 
               {/* Low-risk auto-completion Callout */}
-              {details.task.status === "completed" && details.task.riskLevel === "low" && (
+              {details.task.status === "completed" && details.task.riskLevel === "low" && (() => {
+                const finalReview = details.reviews?.at(-1);
+                return finalReview?.status === "passed" &&
+                  (finalReview.integrationStatus === "integrated" || finalReview.integrationStatus === "not_required");
+              })() && (
                 <div className="p-3 rounded bg-emerald-950/40 border border-emerald-800/80 text-emerald-200 text-xs flex items-start space-x-2.5">
                   <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
                   <div className="space-y-1">
                     <div className="font-bold text-emerald-300">
-                      低风险自动完成（系统免检签发）
+                      低风险审核与交付门槛已满足
                     </div>
                     <div className="text-[11px] text-emerald-400/90 leading-relaxed">
-                      依据系统风险策略，该任务经确认为低风险，且提交后由 AI 审核代理完整执行验证并通过，系统已自动批准完成并归档。
+                      {details.reviews?.at(-1)?.integrationStatus === "integrated"
+                        ? `低风险审核通过，固定提交已进入本地 ${details.reviews?.at(-1)?.integrationTargetBranch}，任务已归档。`
+                        : "低风险审核通过，且开发者已确认无需 Git 集成，任务已归档。"}
                     </div>
                   </div>
                 </div>
               )}
 
+              <section className="p-3 rounded bg-zinc-950/60 border border-zinc-800 space-y-2">
+                <div className="flex items-center gap-1.5 text-zinc-200 font-semibold">
+                  <GitBranch className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>本地交付要求</span>
+                </div>
+                {details.task.integrationRequired ? (
+                  <div className="text-[11px] text-zinc-400">
+                    目标分支：<span className="text-cyan-300">本地 {details.task.integrationTargetBranch}</span>
+                  </div>
+                ) : (
+                  <div className="text-[11px] text-zinc-400">
+                    无需 Git 集成：<span className="text-zinc-200">{details.task.integrationNotRequiredReason}</span>
+                  </div>
+                )}
+                {(details.task.status === "inbox" || details.task.status === "ready") && onSetIntegrationPolicy && (
+                  <form
+                    className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2 pt-1"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      onSetIntegrationPolicy(details.task.id, {
+                        integrationRequired,
+                        integrationTargetBranch: integrationTargetBranch.trim() || "main",
+                        integrationNotRequiredReason: integrationRequired ? null : integrationNotRequiredReason.trim(),
+                      });
+                    }}
+                  >
+                    <div className="space-y-2">
+                      <label className="flex items-center gap-2 text-[11px] text-zinc-300">
+                        <input
+                          type="checkbox"
+                          checked={integrationRequired}
+                          onChange={(event) => setIntegrationRequired(event.target.checked)}
+                        />
+                        要求审核提交进入本地目标分支
+                      </label>
+                      <input
+                        value={integrationTargetBranch}
+                        onChange={(event) => setIntegrationTargetBranch(event.target.value)}
+                        aria-label="本地目标分支"
+                        placeholder="main"
+                        className="w-full rounded border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-[11px] text-zinc-200"
+                      />
+                      {!integrationRequired && (
+                        <textarea
+                          value={integrationNotRequiredReason}
+                          onChange={(event) => setIntegrationNotRequiredReason(event.target.value)}
+                          aria-label="无需 Git 集成的原因"
+                          placeholder="说明此任务无需 Git 集成的原因"
+                          className="w-full min-h-14 rounded border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-[11px] text-zinc-200"
+                        />
+                      )}
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={isSavingIntegrationPolicy || (!integrationRequired && !integrationNotRequiredReason.trim())}
+                      className="self-start rounded border border-cyan-800 bg-cyan-950/50 px-2.5 py-1.5 text-[11px] text-cyan-200 disabled:opacity-50"
+                    >
+                      {isSavingIntegrationPolicy ? "保存中" : "保存交付要求"}
+                    </button>
+                  </form>
+                )}
+              </section>
+
               {/* In-Review Decision Controls */}
               {details.task.status === "in_review" && (() => {
                 const latestRev = details.reviews?.at(-1);
                 const isPassed = latestRev?.status === "passed";
+                const autoAccepted = details.task.riskLevel === "low" && details.task.riskConfirmed === true;
+                const alreadyAccepted = latestRev?.status === "waived" || (isPassed && (autoAccepted || Boolean(latestRev?.approvedAt)));
+                const needsApproval = isPassed && !alreadyAccepted;
+                const canCheck = Boolean(
+                  latestRev && alreadyAccepted && latestRev.integrationRequired && latestRev.integrationStatus !== "integrated",
+                );
                 const canWaiveApproval =
                   latestRev?.status === "pending" ||
                   latestRev?.status === "in_progress";
@@ -242,7 +338,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                       <div className="flex items-center space-x-2">
                         <span className="w-2 h-2 rounded-full bg-violet-400 animate-pulse" />
                         <span className="font-bold text-violet-200">
-                          待开发者审核与终审决策
+                          {needsApproval ? "待开发者批准" : alreadyAccepted ? "已验收，等待本地集成" : "待审核"}
                         </span>
                       </div>
                       <span className="text-[10px] text-violet-400 font-mono">
@@ -250,23 +346,44 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                       </span>
                     </div>
                     <div className="text-[11px] text-zinc-400 leading-relaxed">
-                      {isPassed
-                        ? "AI 审核已通过并提供完整验证证据。请核对提交产物与验证结果后执行最终批准或填写反馈退回。"
+                      {isPassed && needsApproval
+                        ? "AI 审核已通过并提供完整验证证据。请核对提交产物与验证结果后记录开发者批准。"
+                        : alreadyAccepted && latestRev?.integrationRequired
+                        ? latestRev.integrationMessage ?? `固定审核提交 ${latestRev.commitSha.slice(0, 8)} 尚未通过本地 ${latestRev.integrationTargetBranch} 集成检查。授权合并并完成必要验证后，可重新检查。`
+                        : alreadyAccepted
+                        ? `无需 Git 集成：${latestRev?.integrationNotRequiredReason ?? details.task.integrationNotRequiredReason ?? "已由开发者确认"}`
                         : "AI 审核尚未出具通过结论。可等待 AI 结论、填写反馈退回，或在核对提交产物后填写原因直接验收。"}
                     </div>
+                    {latestRev && (
+                      <div className="text-[10px] text-zinc-500">
+                        审核提交 {latestRev.commitSha} · 本地目标 {latestRev.integrationTargetBranch}
+                        {latestRev.approvedAt ? ` · 已由 ${latestRev.approvedBy ?? "开发者"} 批准` : ""}
+                      </div>
+                    )}
                     <div className="flex items-center space-x-2 pt-1">
                       {onApprove && (
                         <button
                           onClick={() => onApprove(details.task.id)}
-                          disabled={!isPassed}
+                          disabled={!needsApproval}
                           className={`inline-flex items-center space-x-1.5 px-3 py-1 rounded text-xs font-semibold transition-colors ${
-                            isPassed
+                            needsApproval
                               ? "bg-emerald-600 hover:bg-emerald-500 text-zinc-950 cursor-pointer shadow-xs"
                               : "bg-zinc-800 text-zinc-500 cursor-not-allowed opacity-50"
                           }`}
                         >
                           <Check className="w-3.5 h-3.5" />
-                          <span>批准并通过任务</span>
+                          <span>记录批准</span>
+                        </button>
+                      )}
+                      {canCheck && latestRev && onCheckIntegration && (
+                        <button
+                          type="button"
+                          onClick={() => onCheckIntegration(details.task.id, latestRev.id)}
+                          disabled={isCheckingIntegration}
+                          className="inline-flex items-center space-x-1.5 px-3 py-1 rounded text-xs font-semibold bg-cyan-950/60 hover:bg-cyan-900/80 border border-cyan-800 text-cyan-200 disabled:opacity-50"
+                        >
+                          <RefreshCw className={`w-3.5 h-3.5 ${isCheckingIntegration ? "animate-spin" : ""}`} />
+                          <span>{isCheckingIntegration ? "正在检查" : "检查并归档"}</span>
                         </button>
                       )}
                       {canWaiveApproval && onWaiveApproval && (
@@ -649,6 +766,36 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                                 {rev.branch || rev.worktree}
                               </span>
                             </div>
+                          )}
+                        </div>
+
+                        <div className="text-[11px] bg-zinc-950/40 p-2 rounded border border-zinc-850 space-y-1">
+                          <div>
+                            <span className="text-zinc-500">交付要求：</span>
+                            {rev.integrationRequired
+                              ? <span className="text-cyan-300">需要进入本地 {rev.integrationTargetBranch}</span>
+                              : <span className="text-zinc-300">无需 Git 集成：{rev.integrationNotRequiredReason}</span>}
+                          </div>
+                          {rev.approvedAt && (
+                            <div className="text-emerald-300">
+                              开发者批准：{rev.approvedBy ?? "开发者"} · {new Date(rev.approvedAt).toLocaleString()}
+                            </div>
+                          )}
+                          {rev.integrationStatus && (
+                            <div className={rev.integrationStatus === "integrated" || rev.integrationStatus === "not_required" ? "text-emerald-300" : "text-amber-300"}>
+                              集成检查：{rev.integrationStatus === "integrated"
+                                ? `已确认审核提交进入本地 ${rev.integrationTargetBranch}`
+                                : rev.integrationStatus === "not_required"
+                                ? "按开发者确认的策略无需 Git 检查"
+                                : rev.integrationStatus === "not_integrated"
+                                ? "尚未检测到审核提交进入目标分支"
+                                : "无法检查"}
+                              {rev.integrationTargetCommitSha ? ` · 目标提交 ${rev.integrationTargetCommitSha.slice(0, 12)}` : ""}
+                              {rev.integrationCheckedAt ? ` · ${new Date(rev.integrationCheckedAt).toLocaleString()}` : ""}
+                            </div>
+                          )}
+                          {rev.integrationMessage && (
+                            <div className="text-amber-300/90 whitespace-pre-wrap">{rev.integrationMessage}</div>
                           )}
                         </div>
 

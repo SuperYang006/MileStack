@@ -527,6 +527,13 @@ describe("HTTP API Server", () => {
       payload: { title: "Review through HTTP", status: "ready" },
     });
     const created = JSON.parse(createdRes.payload).task;
+    serverInstance.context.service.setTaskIntegrationPolicy({
+      projectId: serverInstance.context.project.id,
+      taskId: created.id,
+      integrationRequired: false,
+      integrationTargetBranch: "main",
+      integrationNotRequiredReason: "This HTTP test isolates review lifecycle behavior.",
+    });
     const firstRun = serverInstance.context.service.startTask({
       projectId: serverInstance.context.project.id,
       taskId: created.id,
@@ -576,7 +583,7 @@ describe("HTTP API Server", () => {
       JSON.parse(fullDetailsResponse.payload).events.map(
         (event: { type: string }) => event.type,
       ),
-    ).toEqual(["created", "started", "submitted_for_review"]);
+    ).toEqual(["created", "progress", "started", "submitted_for_review"]);
 
     const missingFeedback = await serverInstance.app.inject({
       method: "POST",
@@ -723,6 +730,14 @@ describe("HTTP API Server", () => {
     expect(confirmed.task.riskLevel).toBe("low");
     expect(confirmed.task.riskConfirmed).toBe(true);
 
+    serverInstance.context.service.setTaskIntegrationPolicy({
+      projectId: serverInstance.context.project.id,
+      taskId: created.id,
+      integrationRequired: false,
+      integrationTargetBranch: "main",
+      integrationNotRequiredReason: "This HTTP test isolates the low-risk review policy.",
+    });
+
     // 4. Start task, submit for review, start AI review, and complete review with pass
     const run = serverInstance.context.service.startTask({
       projectId: serverInstance.context.project.id,
@@ -762,7 +777,7 @@ describe("HTTP API Server", () => {
       view: "full",
     });
     expect(autoCompleted.task.status).toBe("completed");
-    expect(autoCompleted.events.some((e: any) => e.summary.includes("automatically completed"))).toBe(true);
+    expect(autoCompleted.events.some((event: any) => event.type === "completed")).toBe(true);
     expect(autoCompleted.reviews[0]?.verificationEvidence[0]?.command).toBe("pnpm test");
     expect(autoCompleted.reviews[0]?.reviewerActorLabel).toBe("agent/ai-reviewer");
   });
@@ -774,6 +789,13 @@ describe("HTTP API Server", () => {
       payload: { title: "Waive over HTTP", status: "ready" },
     });
     const created = JSON.parse(createdRes.payload).task;
+    serverInstance.context.service.setTaskIntegrationPolicy({
+      projectId: serverInstance.context.project.id,
+      taskId: created.id,
+      integrationRequired: false,
+      integrationTargetBranch: "main",
+      integrationNotRequiredReason: "This HTTP test isolates direct acceptance behavior.",
+    });
     const run = serverInstance.context.service.startTask({
       projectId: serverInstance.context.project.id,
       taskId: created.id,
@@ -812,8 +834,8 @@ describe("HTTP API Server", () => {
       reviewerActorLabel: "developer",
     });
     expect(details.reviews[0]?.verificationEvidence).toEqual([]);
-    expect(details.events.at(-1)).toMatchObject({ type: "approved" });
-    expect(details.events.at(-1)?.summary).toContain("Reviewed the artifact directly.");
+    expect(details.events.find((event: any) => event.type === "approved")?.summary)
+      .toContain("Reviewed the artifact directly.");
 
     const statusAfterWaiver = JSON.parse(
       (await serverInstance.app.inject({ method: "GET", url: "/api/status" })).payload,
@@ -833,5 +855,115 @@ describe("HTTP API Server", () => {
       payload: { reason: "Already completed." },
     });
     expect(secondWaiver.statusCode).toBe(400);
+  });
+
+  it("keeps approval after an unavailable local check and retries without approving twice", async () => {
+    const createdResponse = await serverInstance.app.inject({
+      method: "POST",
+      url: "/api/tasks",
+      payload: { title: "Retry local integration", status: "ready", riskLevel: "high" },
+    });
+    const created = JSON.parse(createdResponse.payload).task;
+    const run = serverInstance.context.service.startTask({
+      projectId: serverInstance.context.project.id,
+      taskId: created.id,
+    });
+    serverInstance.context.service.submitForReview({
+      projectId: serverInstance.context.project.id,
+      taskId: created.id,
+      runId: run.runId,
+      commitSha: "8888888888888888888888888888888888888888",
+      summary: "Ready for a high-risk review.",
+    });
+    const reviewRun = serverInstance.context.service.startReview({
+      projectId: serverInstance.context.project.id,
+      taskId: created.id,
+    });
+    const passed = serverInstance.context.service.completeReview({
+      projectId: serverInstance.context.project.id,
+      taskId: created.id,
+      reviewRunId: reviewRun.reviewRunId,
+      decision: "passed",
+      summary: "Review passed.",
+      verificationEvidence: [{ command: "pnpm test", result: "passed" }],
+    });
+    const reviewId = passed.reviews[0]!.id;
+
+    const prematureCheck = await serverInstance.app.inject({
+      method: "POST",
+      url: `/api/tasks/${created.id}/check-integration`,
+      payload: { expectedReviewId: reviewId },
+    });
+    expect(prematureCheck.statusCode).toBe(400);
+
+    const approval = await serverInstance.app.inject({
+      method: "POST",
+      url: `/api/tasks/${created.id}/approve`,
+    });
+    expect(approval.statusCode).toBe(200);
+
+    const firstCheck = await serverInstance.app.inject({
+      method: "POST",
+      url: `/api/tasks/${created.id}/check-integration`,
+      payload: { expectedReviewId: reviewId },
+    });
+    expect(firstCheck.statusCode).toBe(200);
+    expect(JSON.parse(firstCheck.payload).task.status).toBe("in_review");
+    const afterFirstCheck = serverInstance.context.service.getTask({
+      projectId: serverInstance.context.project.id,
+      taskId: created.id,
+      view: "full",
+    });
+    expect(afterFirstCheck.reviews.at(-1)).toMatchObject({
+      approvedBy: "developer",
+      integrationRequired: true,
+      integrationStatus: "unavailable",
+    });
+    expect(afterFirstCheck.events.filter((event) => event.type === "approved")).toHaveLength(1);
+
+    const retry = await serverInstance.app.inject({
+      method: "POST",
+      url: `/api/tasks/${created.id}/check-integration`,
+      payload: { expectedReviewId: reviewId },
+    });
+    expect(retry.statusCode).toBe(200);
+    expect(JSON.parse(retry.payload).task.status).toBe("in_review");
+    const afterRetry = serverInstance.context.service.getTask({
+      projectId: serverInstance.context.project.id,
+      taskId: created.id,
+      view: "full",
+    });
+    expect(afterRetry.events.filter((event) => event.type === "approved")).toHaveLength(1);
+    expect(afterRetry.events.filter((event) => event.type === "completed")).toHaveLength(0);
+  });
+
+  it("allows developers to set a different local branch or document that integration is not required", async () => {
+    const createdResponse = await serverInstance.app.inject({
+      method: "POST",
+      url: "/api/tasks",
+      payload: { title: "Configure local delivery", status: "ready" },
+    });
+    const created = JSON.parse(createdResponse.payload).task;
+    expect(created).toMatchObject({
+      integrationRequired: true,
+      integrationTargetBranch: "main",
+      integrationNotRequiredReason: null,
+    });
+
+    const policy = await serverInstance.app.inject({
+      method: "POST",
+      url: `/api/tasks/${created.id}/integration-policy`,
+      payload: {
+        integrationRequired: false,
+        integrationTargetBranch: "develop",
+        integrationNotRequiredReason: "This task only documents external behavior.",
+      },
+    });
+    expect(policy.statusCode).toBe(200);
+    expect(JSON.parse(policy.payload).task).toMatchObject({
+      integrationRequired: false,
+      integrationTargetBranch: "develop",
+      integrationNotRequiredReason: "This task only documents external behavior.",
+    });
   });
 });

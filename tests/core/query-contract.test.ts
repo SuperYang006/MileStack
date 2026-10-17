@@ -32,6 +32,9 @@ describe("core query contract", () => {
       riskConfirmed: true,
       riskConfirmedBy: "developer",
       riskConfirmedAt: "2026-10-11T00:00:00.000Z",
+      integrationRequired: true,
+      integrationTargetBranch: "main",
+      integrationNotRequiredReason: null,
       createdBy: "developer" as const,
       createdAt: "2026-10-11T00:00:00.000Z",
       updatedAt: "2026-10-11T00:00:00.000Z",
@@ -70,6 +73,9 @@ describe("core query contract", () => {
       completedAt: task.completedAt,
       riskLevel: task.riskLevel,
       riskConfirmed: task.riskConfirmed,
+      integrationRequired: task.integrationRequired,
+      integrationTargetBranch: task.integrationTargetBranch,
+      integrationNotRequiredReason: task.integrationNotRequiredReason,
     };
 
     expect(

@@ -58,10 +58,14 @@ export interface TaskSummary {
   completedAt: string | null;
   riskLevel?: RiskLevel;
   riskConfirmed?: boolean;
+  integrationRequired: boolean;
+  integrationTargetBranch: string;
+  integrationNotRequiredReason: string | null;
   latestReview?: ReviewDigest | null;
 }
 
 export type RiskLevel = "low" | "medium" | "high";
+export type IntegrationStatus = "integrated" | "not_integrated" | "unavailable" | "not_required";
 
 export interface TaskStatusCounts {
   inbox: number;
@@ -98,6 +102,15 @@ export interface TaskReview {
   summary: string | null;
   findings: ReviewFinding[];
   verificationEvidence: VerificationEvidence[];
+  integrationRequired: boolean;
+  integrationTargetBranch: string;
+  integrationNotRequiredReason: string | null;
+  approvedAt: string | null;
+  approvedBy: string | null;
+  integrationStatus: IntegrationStatus | null;
+  integrationMessage: string | null;
+  integrationTargetCommitSha: string | null;
+  integrationCheckedAt: string | null;
   createdAt: string;
   startedAt: string | null;
   concludedAt: string | null;
@@ -106,6 +119,7 @@ export interface TaskReview {
 
 /** Compact review facts carried by project status for collapsed queue cards. */
 export interface ReviewDigest {
+  id: string;
   status: "pending" | "in_progress" | "passed" | "changes_requested" | "waived";
   reviewRound: number;
   commitSha: string;
@@ -117,6 +131,14 @@ export interface ReviewDigest {
   acceptanceCriteriaCount: number;
   verificationEvidenceCount: number;
   findingsCount: number;
+  integrationRequired: boolean;
+  integrationTargetBranch: string;
+  integrationNotRequiredReason: string | null;
+  approvedAt: string | null;
+  integrationStatus: IntegrationStatus | null;
+  integrationMessage: string | null;
+  integrationTargetCommitSha: string | null;
+  integrationCheckedAt: string | null;
 }
 
 export interface TaskModel {
@@ -140,6 +162,9 @@ export interface TaskModel {
   riskConfirmed?: boolean;
   riskConfirmedBy?: string | null;
   riskConfirmedAt?: string | null;
+  integrationRequired: boolean;
+  integrationTargetBranch: string;
+  integrationNotRequiredReason: string | null;
   createdBy: "developer" | "agent";
   createdAt: string;
   updatedAt: string;

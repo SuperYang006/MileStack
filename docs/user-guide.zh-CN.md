@@ -171,13 +171,13 @@ flowchart LR
 
 | 风险 | 独立 AI 审核通过后 |
 | --- | --- |
-| 低风险 | 风险已由开发者确认且存在验证证据时自动完成。 |
-| 中风险 | 等待开发者批准。 |
-| 高风险 | 等待开发者批准。 |
+| 低风险 | 审核记录自动验收；本地集成要求满足后才完成。 |
+| 中风险 | 等待开发者批准；批准后还需满足本地集成要求。 |
+| 高风险 | 等待开发者批准；批准后还需满足本地集成要求。 |
 
 ### 本地集成与任务完成
 
-上表描述当前版本的行为。本地集成门槛仍在方案阶段，尚未实现。按目标行为，需要 Git 集成的任务只有在满足风险对应的审核与批准要求，并且固定审核提交已通过检查、确认进入开发者指定的本地目标分支（默认 `main`）后才算完成；开发者也可以明确记录任务无需 Git 集成。Git 无法确认目标或提交时，已记录的批准仍保留，任务继续可见，下游任务仍等待依赖完成。该检查不会执行合并、fetch 或 push，也不代表已发布或部署。详见[任务集成交付与归档检查方案](./task-integration-and-archival.md)。
+每个新任务默认要求固定审核提交进入本地 `main`。任务开始前，开发者可以指定其他本地目标分支，或填写原因明确记录无需 Git 集成。该选择会冻结在本轮审核记录中。风险对应的审核和批准要求满足后，MileStack 检查固定审核提交是否可从选定的本地分支到达。Git 无法证明时，已记录的批准仍保留，任务继续显示，下游任务仍等待依赖完成。获授权在本地合并或修复 Git 后，可点击“检查并归档”重试。检查只读，不执行合并、fetch 或 push，也不表示已发布或部署。若 squash/rebase 改变了审核提交 SHA，该检查无法证明提交已集成。详情见[任务集成交付与归档检查方案](./task-integration-and-archival.md)。
 
 ## CLI 命令
 
@@ -204,7 +204,7 @@ milestack mcp --discover
 | 查询 | `get_project_status`、`list_tasks`、`get_task` |
 | 创建任务 | `create_task`、`create_tasks` |
 | 执行 | `start_task`、`update_task`、`submit_for_review` |
-| 审核 | `start_review`、`approve_review`、`request_changes`、`complete_review` |
+| 审核 | `start_review`、`approve_review`、`request_changes`、`complete_review`、`check_task_integration` |
 
 Agent 创建的任务会进入草稿箱。开发者确认风险和队列位置后，任务才可以被领取。
 

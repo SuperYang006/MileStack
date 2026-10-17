@@ -56,6 +56,9 @@ async function createService(
         let counter = 0;
         return () => `generated-${++counter}`;
       })(),
+      integrationChecker: {
+        check: () => ({ status: "integrated", targetCommitSha: "a".repeat(40) }),
+      },
       ...options,
     }),
   };
@@ -719,7 +722,7 @@ describe("TaskService", () => {
     });
     expect(approved.task.status).toBe("completed");
     expect(approved.task.completedAt).toBeTruthy();
-    expect(approved.events.at(-1)).toMatchObject({
+    expect(approved.events.find((event) => event.type === "approved")).toMatchObject({
       type: "approved",
       actorLabel: "developer",
     });
@@ -1067,7 +1070,7 @@ describe("TaskService", () => {
       actorLabel: "reviewer",
     });
     expect(approved.task.status).toBe("completed");
-    expect(approved.events.at(-1)).toMatchObject({
+    expect(approved.events.find((event) => event.type === "approved")).toMatchObject({
       type: "approved",
       actorLabel: "reviewer",
     });
@@ -1608,11 +1611,11 @@ describe("TaskService", () => {
     });
     expect(waived.reviews[0]?.concludedAt).toBeTruthy();
     expect(waived.reviews[0]?.verificationEvidence).toEqual([]);
-    expect(waived.events.at(-1)).toMatchObject({
+    expect(waived.events.find((event) => event.type === "approved")).toMatchObject({
       type: "approved",
       actorLabel: "developer",
     });
-    expect(waived.events.at(-1)?.summary).toContain("Verified the artifact manually.");
+    expect(waived.events.find((event) => event.type === "approved")?.summary).toContain("Verified the artifact manually.");
 
     database.close();
   });

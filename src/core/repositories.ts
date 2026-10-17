@@ -5,6 +5,7 @@ import type {
   RiskLevel,
   VerificationEvidence,
 } from "./review-model.js";
+import type { IntegrationStatus } from "./integration-model.js";
 
 export type { TaskEventType, TaskStatus } from "./task-model.js";
 
@@ -37,6 +38,9 @@ export type TaskRecord = {
   riskConfirmed: boolean;
   riskConfirmedBy: string | null;
   riskConfirmedAt: string | null;
+  integrationRequired: boolean;
+  integrationTargetBranch: string;
+  integrationNotRequiredReason: string | null;
   createdBy: "developer" | "agent";
   createdAt: string;
   updatedAt: string;
@@ -57,6 +61,15 @@ export type ReviewRecord = {
   summary: string | null;
   findings: ReviewFinding[];
   verificationEvidence: VerificationEvidence[];
+  integrationRequired: boolean;
+  integrationTargetBranch: string;
+  integrationNotRequiredReason: string | null;
+  approvedAt: string | null;
+  approvedBy: string | null;
+  integrationStatus: IntegrationStatus | null;
+  integrationMessage: string | null;
+  integrationTargetCommitSha: string | null;
+  integrationCheckedAt: string | null;
   createdAt: string;
   startedAt: string | null;
   concludedAt: string | null;

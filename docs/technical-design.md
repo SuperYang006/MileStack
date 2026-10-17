@@ -1,6 +1,6 @@
 # MileStack V0 技术方案
 
-后续的完成门槛、Git 检查边界与迁移设计见 [任务集成交付与归档检查方案](./task-integration-and-archival.md)。该方案描述待实现的调整：需要 Git 集成的任务须同时满足风险对应的验收要求，并由后端证明本轮固定审核提交已进入开发者确认的本地目标分支；目标默认是本地 `main`，开发者也可确认无需 Git 集成。检查失败时保留已保存的审核/批准事实，但不归档或解除依赖。该检查只读，不执行合并、fetch 或 push，也不代表发布或部署。下方状态表与当前完成规则描述现有实现，直到该方案实现后再按目标行为调整。
+审核后的本地集成完成门槛已实现，行为与限制见 [任务集成交付与归档检查方案](./task-integration-and-archival.md)。完成必须满足风险对应的验收要求，并由后端确认本轮固定审核提交进入开发者指定的本地目标分支；默认目标为本地 `main`，开发者也可明确记录无需 Git 集成。检查失败保留审核/批准事实，但不归档或解除依赖。检查只读，不执行合并、fetch 或 push，也不表示发布或部署。
 
 最小内核的实施任务见 [自举开发任务](./bootstrap-tasks.md)。该清单只在 MileStack 能管理自身之前使用。
 
@@ -201,6 +201,7 @@ WAL 允许 Web 服务和多个 MCP 进程并发读取，并串行完成短事务
 - `Task` 是任务当前状态的权威记录。任务状态包括 `inbox`、`ready`、`running`、`blocked`、`in_review` 和 `completed`；
 - `TaskEvent` 是只追加的语义历史；
 - `TaskReview` 是每轮审核的不可覆盖记录，保存固定的完整 40 位 commit SHA、可选 branch/worktree、审核领取凭证、结论、结构化 findings 和验证证据；
+- `Task` 保存开发者确认的本地集成要求和目标分支；`TaskReview` 冻结该轮策略，并保存批准事实、集成状态、检查原因、目标分支提交 SHA 和检查时间；
 - `task_dependencies` 以 `(task_id, depends_on_task_id)` 关系保存前置依赖，并对两列建立外键；
 - `runnable`、`waitingFor` 和“可并行”是查询时的派生结果，不写入数据库；
 - 修改任务、审核快照和追加事件必须处于同一个 SQLite 事务；
@@ -210,13 +211,15 @@ WAL 允许 Web 服务和多个 MCP 进程并发读取，并串行完成短事务
 
 每次 `submit_for_review` 都创建新的 `TaskReview`，并清除执行 `activeRunId`。审核使用独立的 `activeReviewRunId`/`reviewRunId`，领取和完成都必须在短事务中校验当前凭证；审核退回或结束后凭证立即失效。新的提交创建新的 review round，旧审核结论不再决定当前任务。
 
-审核策略如下：
+审核策略和本地交付门槛如下：
 
 | 风险 | AI 审核通过条件 | 通过后的状态 |
 | --- | --- | --- |
-| `low` | 开发者已确认风险，且至少有一条验证命令及结果 | 自动进入 `completed` |
-| `medium` | 审核记录完整，可含结构化 findings 和验证证据 | 保持 `in_review`，等待开发者批准 |
-| `high` | 审核记录完整，可含结构化 findings 和验证证据 | 保持 `in_review`，等待开发者批准 |
+| `low` | 开发者已确认风险，且至少有一条验证命令及结果 | 集成门槛通过后自动进入 `completed` |
+| `medium` | 审核记录完整，可含结构化 findings 和验证证据 | 保持 `in_review`，等待开发者批准；批准后检查集成 |
+| `high` | 审核记录完整，可含结构化 findings 和验证证据 | 保持 `in_review`，等待开发者批准；批准后检查集成 |
+
+任务默认需要本地 `main` 集成。开发者可在 `inbox` 或 `ready` 阶段确认其他目标分支，或填写无需集成的原因；策略会在提交审核时冻结到新审核轮次。`TaskService` 先保存审核结论、批准或直接验收事实，再在事务外调用 core 中定义的 `IntegrationChecker`。`src/git` 的实现仅在绑定项目目录运行有超时和输出上限的只读 Git 命令。通过后，审核集成证据、任务完成快照和 `completed` 事件在同一事务写入；失败时保留事实并允许按最新审核 ID 重试。缺少检查器、目标分支或完整历史时失败关闭。通过 squash/rebase 后无法验证原审核 SHA 的提交可达性。
 
 `request_changes` 会将结构化问题与修改建议写入当前审核记录和任务交接说明，清除审核及执行凭证，并将任务放回 `ready`；返工后必须重新领取执行凭证。开发者 `approve` 只能批准最新一轮已经通过 AI 审核的任务，且中高风险任务必须经过此最终批准。
 
@@ -267,8 +270,9 @@ MCP Tool ------/
 - 追加 `TaskEvent`；
 - 固定提交审核的 commit SHA 和 branch/worktree 元数据；
 - 原子领取独立的 AI 审核会话，保存结构化结论和验证证据；
-- 按风险策略自动完成低风险任务，或将中高风险任务留在 `in_review` 等待开发者最终批准；
-- 接受开发者在审核无结论时的直接验收，把审核记为 `waived` 并完成任务；
+- 按风险策略记录自动验收或开发者批准事实，并统一执行本地集成完成门槛；
+- 支持无重复审核或批准地重试失败或不可用的集成检查；
+- 接受开发者在审核无结论时的直接验收，把审核记为 `waived` 并保留原因，再经过集成完成门槛；
 - `request_changes` 记录 findings、清除旧凭证并将任务返回 `ready`；
 - 生成项目状态和任务简报；
 - 批量创建用于旧项目基线的 inbox 任务。
@@ -326,9 +330,9 @@ input.runId == task.activeRunId
 
 ### 6.3.1 开发者直接验收（waived）
 
-开发者可以在 AI 审核尚无结论时直接验收：`in_review` 任务必须带有提交时的 commit，最新审核为 `pending` 或 `in_progress`，且开发者提供非空验收原因。业务核心在同一个事务内把该轮审核置为 `waived`（写入 `concludedAt` 与开发者标识，不改成 `passed`，不补写验证证据），清除 `activeReviewRunId` 使原 `reviewRunId` 无法再提交结论，并把任务置为 `completed`；任务事件仍为 `approved`，摘要记下验收原因。审核状态约束通过前向迁移 `0005_review_waived_status` 增加 `waived`，已有数据库升级后仍能读取原有审核记录。
+开发者可以在 AI 审核尚无结论时直接验收：`in_review` 任务必须有当前固定提交，最新审核为 `pending` 或 `in_progress`，且开发者提供非空验收原因。业务核心把该轮审核置为 `waived`（写入 `concludedAt`、批准者与原因，不改成 `passed`，不补写验证证据），清除 `activeReviewRunId` 使原 `reviewRunId` 无法再提交结论。之后仍须通过本地集成门槛才进入 `completed`；检查失败时直接验收事实保留，后续用集成重试入口完成。
 
-该操作只通过开发者侧 HTTP `POST /api/tasks/:id/waive-approval` 与页面暴露，不进入 MCP。`ready` 与 `running` 任务不能使用它，缺少验收原因同样拒绝。AI 审核通过后的风险策略不变：低风险仍自动完成，中高风险仍在 `passed` 后等待开发者一键批准。
+该操作只通过开发者侧 HTTP `POST /api/tasks/:id/waive-approval` 与页面暴露，不进入 MCP。`ready` 与 `running` 任务不能使用它，缺少验收原因同样拒绝。AI 审核通过后的风险策略不变：低风险自动验收，中高风险在 `passed` 后等待开发者批准；每条路径仍需满足集成门槛。
 
 ### 6.4 V0 并发边界
 
@@ -344,7 +348,7 @@ React V0 页面只包含一个项目状态视图：
 - 需要处理的阻塞；
 - 待整理的 inbox；
 - 最近完成。
-- 审核操作只通过开发者侧 HTTP/UI 暴露：批准、填写反馈退回返工、在 AI 审核无结论时填写原因直接验收，以及将已完成任务重新打开。
+- 审核操作只通过开发者侧 HTTP/UI 暴露：批准、填写反馈退回返工、在 AI 审核无结论时填写原因直接验收，以及将已完成任务重新打开；已验收任务可重试本地集成检查。
 
 完整项目状态返回按状态统计的 `counts`，其中 `counts.completed` 是全部已完成任务数；`recentlyCompleted` 仍是有限窗口（完整视图默认 10 条，compact 视图默认 3 条）。Web 页面展开归档后复用现有 `GET /api/tasks?status=completed` 分页查询，单页 `limit` 使用 1–100（优先 100），滚动到底部并且 `hasMore` 时携带 `nextCursor` 加载下一页。归档收起时保持分页查询禁用，已加载任务合并到前端任务索引和依赖拓扑。
 
@@ -367,7 +371,7 @@ React V0 页面只包含一个项目状态视图：
 - 查看任务详情和事件历史；
 - 手动释放任务。
 
-开发者审核页面或 HTTP API 还应支持查看固定制品引用和审核记录、批准已通过的中高风险任务、提交带结构化 findings 的返工意见。AI 审核使用 `start_review` 和 `complete_review`，不绕过 `TaskService` 直接写入审核或任务表。
+开发者审核页面或 HTTP API 支持查看固定制品引用和审核/集成记录、批准已通过的中高风险任务、提交带结构化 findings 的返工意见，以及按最新审核轮次重试本地集成检查。页面也可在任务开始前确认目标分支或无需集成原因。AI 审核使用 `start_review` 和 `complete_review`，不绕过 `TaskService` 直接写入审核或任务表。
 
 V0 可以用上移、下移操作调整队列顺序，不要求一开始实现拖拽。
 

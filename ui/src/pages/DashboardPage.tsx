@@ -250,6 +250,45 @@ export const DashboardPage: React.FC = () => {
       invalidateProjectQueries();
       queryClient.invalidateQueries({ queryKey: ["taskDetails", taskId] });
     },
+    onError: (_, taskId) => {
+      invalidateProjectQueries();
+      queryClient.invalidateQueries({ queryKey: ["taskDetails", taskId] });
+    },
+  });
+
+  const checkIntegrationMutation = useMutation({
+    mutationFn: ({ taskId, reviewId }: { taskId: string; reviewId: string }) =>
+      apiClient.checkTaskIntegration(taskId, reviewId),
+    onSuccess: (_, variables) => {
+      invalidateProjectQueries();
+      queryClient.invalidateQueries({ queryKey: ["taskDetails", variables.taskId] });
+    },
+    onError: (_, variables) => {
+      invalidateProjectQueries();
+      queryClient.invalidateQueries({ queryKey: ["taskDetails", variables.taskId] });
+    },
+  });
+
+  const integrationPolicyMutation = useMutation({
+    mutationFn: ({
+      taskId,
+      integrationRequired,
+      integrationTargetBranch,
+      integrationNotRequiredReason,
+    }: {
+      taskId: string;
+      integrationRequired: boolean;
+      integrationTargetBranch: string;
+      integrationNotRequiredReason?: string | null;
+    }) => apiClient.setTaskIntegrationPolicy(taskId, {
+      integrationRequired,
+      integrationTargetBranch,
+      integrationNotRequiredReason,
+    }),
+    onSuccess: (_, variables) => {
+      invalidateProjectQueries();
+      queryClient.invalidateQueries({ queryKey: ["taskDetails", variables.taskId] });
+    },
   });
 
   const waiveTaskApprovalMutation = useMutation({
@@ -399,6 +438,14 @@ export const DashboardPage: React.FC = () => {
             <ReviewTasks
               tasks={visibleStatus.inReview}
               onApprove={(id) => approveTaskMutation.mutate(id)}
+              onCheckIntegration={(taskId, reviewId) =>
+                checkIntegrationMutation.mutate({ taskId, reviewId })
+              }
+              checkingTaskId={
+                checkIntegrationMutation.isPending
+                  ? checkIntegrationMutation.variables?.taskId ?? null
+                  : null
+              }
               onWaiveApproval={(taskId, reason) =>
                 waiveTaskApprovalMutation.mutate({ taskId, reason })
               }
@@ -457,6 +504,14 @@ export const DashboardPage: React.FC = () => {
         allTasks={allTasks}
         onSelectTask={(id) => setSelectedTaskId(id)}
         onApprove={(id) => approveTaskMutation.mutate(id)}
+        onCheckIntegration={(taskId, reviewId) =>
+          checkIntegrationMutation.mutate({ taskId, reviewId })
+        }
+        onSetIntegrationPolicy={(taskId, policy) =>
+          integrationPolicyMutation.mutate({ taskId, ...policy })
+        }
+        isCheckingIntegration={checkIntegrationMutation.isPending}
+        isSavingIntegrationPolicy={integrationPolicyMutation.isPending}
         onWaiveApproval={(taskId, reason) =>
           waiveTaskApprovalMutation.mutate({ taskId, reason })
         }

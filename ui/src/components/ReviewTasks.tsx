@@ -8,6 +8,8 @@ import {
   Bot,
   Clock,
   ShieldCheck,
+  GitBranch,
+  RefreshCw,
 } from "lucide-react";
 import type { TaskSummary } from "../types";
 import { TaskIdBadge } from "./CopyTaskIdButton";
@@ -19,6 +21,8 @@ interface ReviewTasksProps {
   onApprove: (taskId: string) => void;
   onWaiveApproval: (taskId: string, reason: string) => void;
   onRequestChanges: (taskId: string, feedback: string) => void;
+  onCheckIntegration: (taskId: string, reviewId: string) => void;
+  checkingTaskId?: string | null;
   onSelectTask: (taskId: string) => void;
 }
 
@@ -27,8 +31,10 @@ const ReviewTaskItem: React.FC<{
   onApprove: (taskId: string) => void;
   onOpenWaive: (task: TaskSummary) => void;
   onOpenRequestChanges: (task: TaskSummary) => void;
+  onCheckIntegration: (taskId: string, reviewId: string) => void;
+  isCheckingIntegration: boolean;
   onSelectTask: (taskId: string) => void;
-}> = ({ task, onApprove, onOpenWaive, onOpenRequestChanges, onSelectTask }) => {
+}> = ({ task, onApprove, onOpenWaive, onOpenRequestChanges, onCheckIntegration, isCheckingIntegration, onSelectTask }) => {
   const digest = task.latestReview;
   const reviewStatus = digest?.status ?? "pending";
 
@@ -40,6 +46,12 @@ const ReviewTaskItem: React.FC<{
   const isPassed = reviewStatus === "passed";
   const isPending = !digest || reviewStatus === "pending";
   const canWaiveApproval = reviewStatus === "pending" || reviewStatus === "in_progress";
+  const isAutoAccepted = task.riskLevel === "low" && task.riskConfirmed === true;
+  const isAccepted = reviewStatus === "waived" || (isPassed && (isAutoAccepted || Boolean(digest?.approvedAt)));
+  const needsDeveloperApproval = isPassed && !isAccepted;
+  const canCheckIntegration = Boolean(
+    digest && isAccepted && digest.integrationRequired && digest.integrationStatus !== "integrated",
+  );
 
   // The review state is passive information, so it renders as plain text instead of a
   // bordered pill; the action buttons carry the visual weight on their own row.
@@ -63,13 +75,35 @@ const ReviewTaskItem: React.FC<{
       );
     }
     if (isPassed) {
+      if (needsDeveloperApproval) {
+        return (
+          <span className="inline-flex items-center space-x-1 text-[10px] font-mono text-emerald-300 font-bold">
+            <CheckCircle2 className="w-2.5 h-2.5 text-emerald-400" />
+            <span>AI 已通过 · 待开发者批准</span>
+          </span>
+        );
+      }
+      if (!digest?.integrationRequired) {
+        return <span className="text-[10px] font-mono text-cyan-300">无需 Git 集成 · 待完成</span>;
+      }
+      if (digest?.integrationStatus === "integrated") {
+        return <span className="text-[10px] font-mono text-emerald-300">本地集成已确认</span>;
+      }
+      if (digest?.integrationStatus === "unavailable") {
+        return <span className="text-[10px] font-mono text-amber-300">已验收 · 无法检查</span>;
+      }
       return (
-        <span className="inline-flex items-center space-x-1 text-[10px] font-mono text-emerald-300 font-bold">
-          <span className="text-zinc-600">·</span>
-          <CheckCircle2 className="w-2.5 h-2.5 text-emerald-400" />
-          <span>AI 已通过 · 待人工批准</span>
+        <span className="inline-flex items-center space-x-1 text-[10px] font-mono text-cyan-300 font-bold">
+          <GitBranch className="w-2.5 h-2.5" />
+          <span>已验收 · 待本地集成</span>
         </span>
       );
+    }
+    if (reviewStatus === "waived") {
+      if (digest?.integrationStatus === "unavailable") {
+        return <span className="text-[10px] font-mono text-amber-300">直接验收 · 无法检查</span>;
+      }
+      return <span className="text-[10px] font-mono text-violet-300">直接验收 · 待本地集成</span>;
     }
     return (
       <span className="inline-flex items-center space-x-1 text-[10px] font-mono text-amber-300">
@@ -139,23 +173,36 @@ const ReviewTaskItem: React.FC<{
           <div className="flex flex-wrap items-center gap-1.5 ml-auto">
             <button
               onClick={() => {
-                if (!isPassed) {
+                if (!needsDeveloperApproval) {
                   alert("当前 AI 审核尚未通过，仅通过后可由开发者执行最终批准。");
                   return;
                 }
                 onApprove(task.id);
               }}
-              disabled={!isPassed}
+              disabled={!needsDeveloperApproval}
               className={`inline-flex items-center space-x-1 px-2.5 py-1 text-[11px] rounded border transition-colors ${
-                isPassed
+                needsDeveloperApproval
                   ? "text-emerald-300 hover:text-emerald-200 bg-emerald-950/60 hover:bg-emerald-900/80 border-emerald-700/80 cursor-pointer shadow-xs font-bold"
                   : "text-zinc-600 bg-zinc-900/40 border-zinc-850 cursor-not-allowed opacity-50"
               }`}
-              title={isPassed ? "开发者批准并归档完成" : "需等待 AI 审核通过后方可执行最终批准"}
+              title={needsDeveloperApproval ? "记录开发者批准并继续检查本地集成" : "当前无需开发者批准"}
             >
               <Check className="w-3 h-3" />
               <span>批准</span>
             </button>
+
+            {canCheckIntegration && digest && (
+              <button
+                type="button"
+                onClick={() => onCheckIntegration(task.id, digest.id)}
+                disabled={isCheckingIntegration}
+                className="inline-flex items-center space-x-1 px-2.5 py-1 text-[11px] text-cyan-200 hover:text-cyan-100 bg-cyan-950/50 hover:bg-cyan-900/70 border border-cyan-800/70 rounded transition-colors disabled:opacity-50"
+                title="只读检查固定审核提交是否已进入本地目标分支"
+              >
+                <RefreshCw className={`w-3 h-3 ${isCheckingIntegration ? "animate-spin" : ""}`} />
+                <span>{isCheckingIntegration ? "正在检查" : "检查并归档"}</span>
+              </button>
+            )}
 
             {canWaiveApproval && (
               <button
@@ -193,6 +240,19 @@ const ReviewTaskItem: React.FC<{
               <span className={item.alert ? "text-amber-400/90" : undefined}>{item.text}</span>
             </React.Fragment>
           ))}
+          {digest?.integrationRequired && (
+            <>
+              <span className="px-1">·</span>
+              <span>本地 {digest.integrationTargetBranch}</span>
+              <span className="px-1">·</span>
+              <span className="text-zinc-400">审核提交 {digest.commitSha.slice(0, 8)}</span>
+            </>
+          )}
+          {digest?.integrationMessage && (
+            <span className="block w-full text-amber-300/90 truncate" title={digest.integrationMessage}>
+              {digest.integrationMessage}
+            </span>
+          )}
         </span>
 
         <button
@@ -213,6 +273,8 @@ export const ReviewTasks: React.FC<ReviewTasksProps> = ({
   onApprove,
   onWaiveApproval,
   onRequestChanges,
+  onCheckIntegration,
+  checkingTaskId = null,
   onSelectTask,
 }) => {
   const { openFeedbackDialog, feedbackDialogProps } = useFeedbackDialog();
@@ -284,8 +346,10 @@ export const ReviewTasks: React.FC<ReviewTasksProps> = ({
                 task={task}
                 onApprove={onApprove}
                 onOpenWaive={handleOpenWaive}
-                onOpenRequestChanges={handleOpenRequestChanges}
-                onSelectTask={onSelectTask}
+      onOpenRequestChanges={handleOpenRequestChanges}
+      onCheckIntegration={onCheckIntegration}
+      isCheckingIntegration={checkingTaskId === task.id}
+      onSelectTask={onSelectTask}
               />
             ))
           )}

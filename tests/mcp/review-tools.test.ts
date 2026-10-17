@@ -206,6 +206,13 @@ describe("MCP review tools", () => {
       riskLevel: "low",
     });
     expect(ready.task).toMatchObject({ riskLevel: "low", riskConfirmed: true });
+    context.service.setTaskIntegrationPolicy({
+      projectId: context.project.id,
+      taskId: ready.task.id,
+      integrationRequired: false,
+      integrationTargetBranch: "main",
+      integrationNotRequiredReason: "This MCP test isolates the low-risk review policy.",
+    });
 
     const server = createMcpServer(context);
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
@@ -257,6 +264,76 @@ describe("MCP review tools", () => {
       status: "passed",
       reviewerActorLabel: "agent",
     });
+
+    await client.close();
+    await server.close();
+    context.database.close();
+  });
+
+  it("uses the shared approval gate when an accepted task retries integration through MCP", async () => {
+    const projectRoot = createTemporaryProject();
+    const initialized = await initializeProject(projectRoot);
+    initialized.database.close();
+    const context = await openProjectContext(projectRoot);
+    const task = context.service.createTask({
+      projectId: context.project.id,
+      title: "Retry integration through MCP",
+      createdBy: "developer",
+      status: "ready",
+      riskLevel: "high",
+    });
+    const server = createMcpServer(context);
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const client = new Client({ name: "integration-retry-test", version: "1.0.0" });
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+
+    const started = JSON.parse(textContent(await client.callTool({
+      name: "start_task",
+      arguments: { taskId: task.task.id },
+    })));
+    await client.callTool({
+      name: "submit_for_review",
+      arguments: {
+        taskId: task.task.id,
+        runId: started.runId,
+        commitSha: "9999999999999999999999999999999999999999",
+        summary: "Submitted high-risk artifact.",
+      },
+    });
+    const review = JSON.parse(textContent(await client.callTool({
+      name: "start_review",
+      arguments: { taskId: task.task.id },
+    })));
+    const passed = JSON.parse(textContent(await client.callTool({
+      name: "approve_review",
+      arguments: {
+        taskId: task.task.id,
+        reviewRunId: review.reviewRunId,
+        summary: "Review passed.",
+        verificationEvidence: [{ command: "pnpm test", result: "passed" }],
+      },
+    })));
+    const expectedReviewId = passed.reviews.at(-1).id as string;
+    const beforeApproval = await client.callTool({
+      name: "check_task_integration",
+      arguments: { taskId: task.task.id, expectedReviewId },
+    });
+    expect(beforeApproval.isError).toBe(true);
+    expect(textContent(beforeApproval)).toContain("INVALID_TASK_STATE");
+
+    context.service.approveTask({ projectId: context.project.id, taskId: task.task.id });
+    const retry = JSON.parse(textContent(await client.callTool({
+      name: "check_task_integration",
+      arguments: { taskId: task.task.id, expectedReviewId },
+    })));
+    expect(retry.task.status).toBe("in_review");
+    expect(retry.reviews.at(-1)).toMatchObject({
+      approvedBy: "developer",
+      integrationStatus: "unavailable",
+    });
+    expect(retry.events.filter((event: { type: string }) => event.type === "approved"))
+      .toHaveLength(1);
 
     await client.close();
     await server.close();

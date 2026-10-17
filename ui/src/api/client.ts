@@ -227,6 +227,34 @@ export const apiClient = {
     });
   },
 
+  async setTaskIntegrationPolicy(
+    taskId: string,
+    policy: {
+      integrationRequired: boolean;
+      integrationTargetBranch: string;
+      integrationNotRequiredReason?: string | null;
+    },
+    projectId?: string,
+  ): Promise<TaskDetails> {
+    return sendJson<TaskDetails>(`/api/tasks/${encodeURIComponent(taskId)}/integration-policy`, {
+      method: "POST",
+      body: { ...policy, projectId },
+      timeoutMs: WRITE_TIMEOUT_MS,
+    });
+  },
+
+  async checkTaskIntegration(
+    taskId: string,
+    expectedReviewId: string,
+    projectId?: string,
+  ): Promise<TaskDetails> {
+    return sendJson<TaskDetails>(`/api/tasks/${encodeURIComponent(taskId)}/check-integration`, {
+      method: "POST",
+      body: { expectedReviewId, projectId },
+      timeoutMs: WRITE_TIMEOUT_MS,
+    });
+  },
+
   async waiveTaskApproval(
     taskId: string,
     reason: string,
