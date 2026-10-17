@@ -1,5 +1,7 @@
 # MileStack V0 技术方案
 
+后续的完成门槛、Git 检查边界与迁移设计见 [任务集成交付与归档检查方案](./task-integration-and-archival.md)。该方案描述待实现的调整，当前实现仍采用本文的审核后完成策略。
+
 最小内核的实施任务见 [自举开发任务](./bootstrap-tasks.md)。该清单只在 MileStack 能管理自身之前使用。
 
 ## 1. 技术目标

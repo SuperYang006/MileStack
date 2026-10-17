@@ -1,5 +1,7 @@
 # MileStack V0 产品需求
 
+后续的审批、集成交付与归档调整见 [任务集成交付与归档检查方案](./task-integration-and-archival.md)。该方案包含本地 Git 完成检查；本文现有状态流转与风险策略在对应实现完成后同步修订。
+
 相关技术方案见 [V0 技术方案](./technical-design.md)。
 
 ## 1. 产品概述
