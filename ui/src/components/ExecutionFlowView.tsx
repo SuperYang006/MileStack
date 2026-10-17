@@ -18,35 +18,35 @@ function getStatusBadge(status: TaskStatus) {
   switch (status) {
     case "completed":
       return (
-        <span className="inline-flex items-center space-x-1 px-1.5 py-0.2 rounded text-[10px] font-mono bg-emerald-950/60 border border-emerald-800/60 text-emerald-300">
+        <span className="inline-flex items-center space-x-1 px-1.5 py-0.2 rounded text-[10px] font-mono bg-emerald-950/60 text-emerald-300">
           <CheckCircle2 className="w-2.5 h-2.5 text-emerald-400" />
           <span>已完成</span>
         </span>
       );
     case "running":
       return (
-        <span className="inline-flex items-center space-x-1 px-1.5 py-0.2 rounded text-[10px] font-mono bg-cyan-950/60 border border-cyan-800/60 text-cyan-300">
+        <span className="inline-flex items-center space-x-1 px-1.5 py-0.2 rounded text-[10px] font-mono bg-cyan-950/60 text-cyan-300">
           <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
           <span>执行中</span>
         </span>
       );
     case "in_review":
       return (
-        <span className="inline-flex items-center space-x-1 px-1.5 py-0.2 rounded text-[10px] font-mono bg-violet-950/60 border border-violet-800/60 text-violet-300">
+        <span className="inline-flex items-center space-x-1 px-1.5 py-0.2 rounded text-[10px] font-mono bg-violet-950/60 text-violet-300">
           <Clock className="w-2.5 h-2.5 text-violet-400" />
           <span>待审核</span>
         </span>
       );
     case "ready":
       return (
-        <span className="inline-flex items-center space-x-1 px-1.5 py-0.2 rounded text-[10px] font-mono bg-indigo-950/60 border border-indigo-800/60 text-indigo-300">
+        <span className="inline-flex items-center space-x-1 px-1.5 py-0.2 rounded text-[10px] font-mono bg-indigo-950/60 text-indigo-300">
           <span className="w-1.5 h-1.5 rounded-full bg-indigo-400" />
           <span>就绪</span>
         </span>
       );
     case "blocked":
       return (
-        <span className="inline-flex items-center space-x-1 px-1.5 py-0.2 rounded text-[10px] font-mono bg-rose-950/60 border border-rose-800/60 text-rose-300">
+        <span className="inline-flex items-center space-x-1 px-1.5 py-0.2 rounded text-[10px] font-mono bg-rose-950/60 text-rose-300">
           <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
           <span>阻塞</span>
         </span>
@@ -54,30 +54,34 @@ function getStatusBadge(status: TaskStatus) {
     case "inbox":
     default:
       return (
-        <span className="inline-flex items-center space-x-1 px-1.5 py-0.2 rounded text-[10px] font-mono bg-zinc-900 border border-zinc-800 text-zinc-400">
+        <span className="inline-flex items-center space-x-1 px-1.5 py-0.2 rounded text-[10px] font-mono bg-zinc-900 text-zinc-400">
           <span>待整理</span>
         </span>
       );
   }
 }
 
+// 卡片平时无边框：可执行任务靠左侧细色条区分，悬停时才出现 zinc-600 边框。
 function getCardStyle(task: DagStageTask) {
+  const border = task.isRunnable
+    ? "border-transparent border-l-2 border-l-emerald-500 hover:border-y-zinc-600 hover:border-r-zinc-600"
+    : "border-transparent hover:border-zinc-600";
   if (task.isRunnable) {
-    return "bg-emerald-950/20 border-emerald-800/60 hover:border-emerald-500";
+    return `bg-emerald-950/20 ${border}`;
   }
   if (task.status === "completed") {
-    return "bg-zinc-900/50 border-zinc-800 hover:border-zinc-700 opacity-90";
+    return `bg-zinc-900/50 opacity-90 ${border}`;
   }
   if (task.status === "running") {
-    return "bg-cyan-950/20 border-cyan-800/60 hover:border-cyan-500";
+    return `bg-cyan-950/20 ${border}`;
   }
   if (task.status === "in_review") {
-    return "bg-violet-950/20 border-violet-800/60 hover:border-violet-500";
+    return `bg-violet-950/20 ${border}`;
   }
   if (task.status === "blocked") {
-    return "bg-rose-950/20 border-rose-800/60 hover:border-rose-500";
+    return `bg-rose-950/20 ${border}`;
   }
-  return "bg-zinc-900/80 border-zinc-800 hover:border-zinc-700";
+  return `bg-zinc-900/80 ${border}`;
 }
 
 export const ExecutionFlowView: React.FC<ExecutionFlowViewProps> = ({
@@ -125,10 +129,10 @@ export const ExecutionFlowView: React.FC<ExecutionFlowViewProps> = ({
           {graphs.map((graph: ConnectedDagGraph) => (
             <div
               key={graph.id}
-              className="p-3.5 rounded-md bg-zinc-950/70 border border-zinc-850 space-y-4 font-mono text-xs"
+              className="p-3.5 rounded-md bg-zinc-950/70 border border-zinc-800 space-y-4 font-mono text-xs"
             >
               {/* 拓扑图头部 */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5 border-b border-zinc-850/80">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5">
                 <div className="flex items-center space-x-2 min-w-0">
                   <span className="w-2 h-2 rounded-full bg-indigo-400 shrink-0" />
                   <span className="font-semibold text-zinc-200 truncate text-xs">
@@ -210,9 +214,9 @@ export const ExecutionFlowView: React.FC<ExecutionFlowViewProps> = ({
                       )}
 
                       {/* 阶段泳道列 (PC 端自适应等宽弹性列) */}
-                      <div className="flex-1 min-w-[250px] flex flex-col space-y-2 rounded-md bg-zinc-900/20 p-2.5 border border-zinc-850/50">
+                      <div className="flex-1 min-w-[250px] flex flex-col space-y-2 rounded-md bg-zinc-900/20 p-2.5">
                         {/* 阶段标题栏 */}
-                        <div className="flex items-center justify-between text-[11px] text-zinc-400 pb-1.5 border-b border-zinc-800/60">
+                        <div className="flex items-center justify-between text-[11px] text-zinc-400 pb-1.5">
                           <div className="flex items-center space-x-1.5 min-w-0">
                             <span
                               className={`w-1.5 h-1.5 rounded-full shrink-0 ${

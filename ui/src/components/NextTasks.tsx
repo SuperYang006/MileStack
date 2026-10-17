@@ -110,7 +110,7 @@ export const NextTasks: React.FC<NextTasksProps> = ({
               return (
                 <div
                   key={task.id}
-                  className="group flex items-start justify-between p-2.5 rounded-md bg-zinc-950/60 border border-zinc-850 hover:border-zinc-700/80 transition-colors gap-3 lg:grid lg:grid-cols-[2.75rem_minmax(0,7rem)_minmax(0,1fr)_auto] lg:items-start lg:gap-x-3"
+                  className="group flex items-start justify-between p-2.5 rounded-md bg-zinc-950/60 border border-zinc-800 hover:border-zinc-600 transition-colors gap-3 lg:grid lg:grid-cols-[2.75rem_minmax(0,7rem)_minmax(0,1fr)_auto] lg:items-start lg:gap-x-3"
                 >
                   {/* Reorder and Index */}
                   <div className="flex items-center space-x-2 shrink-0 pt-0.5">
