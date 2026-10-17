@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import { runMcp } from "../mcp/server.js";
@@ -18,6 +18,8 @@ import {
   openProjectContext,
   resolveProjectRoot,
 } from "../project/project-context.js";
+import { resolveEntryPath } from "./entry-path.js";
+import { defaultOutput, type CliOutput } from "./output.js";
 import {
   configureProjectMcpClients,
   projectMcpClientDisplayNames,
@@ -25,6 +27,11 @@ import {
   type ProjectMcpClientName,
   type ProjectMcpConfigResult,
 } from "./project-mcp-config.js";
+import {
+  defaultUpdateDependencies,
+  runUpdate,
+  type UpdateDependencies,
+} from "./update.js";
 
 export const helpText = `Usage: milestack <command> [options]
 
@@ -33,33 +40,26 @@ Commands:
   status               Show the current project status
   mcp                  Run the MCP stdio server
   serve                Run the HTTP web and API server
+  update               Update the global CLI and refresh generated project files
 Options:
   --project <path>     Project root (defaults to the current directory)
   --discover           Auto-discover the project by walking up from cwd (for mcp/status)
   --json               Output JSON format (for status command)
   --port <port>        Server port (for serve command)
+  --check              Report versions and generated-file status without installing or writing (for update command)
   --client <name>      Project-only MCP config for init; repeatable or comma-separated (claude, cursor, grok, codex, opencode, agy)
   -v, --version        Print the version number and the resolved entry path, then exit
   -h, --help           Show this help message
 `;
 
-export type CliOutput = {
-  writeStdout: (message: string) => void;
-  writeStderr: (message: string) => void;
-};
-
-const defaultOutput: CliOutput = {
-  writeStdout: (message) => process.stdout.write(message),
-  writeStderr: (message) => process.stderr.write(message),
-};
-
 type ParsedCommand = {
-  command: "init" | "status" | "mcp" | "serve";
+  command: "init" | "status" | "mcp" | "serve" | "update";
   projectPath?: string | undefined;
   discover?: boolean | undefined;
   port?: number | undefined;
   json?: boolean | undefined;
   clients?: ProjectMcpClientName[] | undefined;
+  check?: boolean | undefined;
 };
 
 function isProjectMcpClientName(value: string): value is ProjectMcpClientName {
@@ -88,7 +88,13 @@ function parseClientNames(value: string): ProjectMcpClientName[] {
 
 function parseCommand(args: readonly string[]): ParsedCommand {
   const [command, ...options] = args;
-  if (command !== "init" && command !== "status" && command !== "mcp" && command !== "serve") {
+  if (
+    command !== "init" &&
+    command !== "status" &&
+    command !== "mcp" &&
+    command !== "serve" &&
+    command !== "update"
+  ) {
     throw new Error(`Unknown command '${command ?? ""}'.`);
   }
 
@@ -97,6 +103,7 @@ function parseCommand(args: readonly string[]): ParsedCommand {
   let port: number | undefined;
   let json: boolean | undefined;
   let clients: ProjectMcpClientName[] | undefined;
+  let check: boolean | undefined;
   for (let index = 0; index < options.length; index += 1) {
     const option = options[index];
     if (option === "--project") {
@@ -169,6 +176,10 @@ function parseCommand(args: readonly string[]): ParsedCommand {
       discover = true;
       continue;
     }
+    if (option === "--check") {
+      check = true;
+      continue;
+    }
     if (option === "--help" || option === "-h") {
       continue;
     }
@@ -179,6 +190,9 @@ function parseCommand(args: readonly string[]): ParsedCommand {
   if (clients !== undefined && command !== "init") {
     throw new Error("--client is only supported for the init command.");
   }
+  if (check !== undefined && command !== "update") {
+    throw new Error("--check is only supported for the update command.");
+  }
   if (discover && projectPath !== undefined) {
     throw new Error("--discover and --project cannot be used together.");
   }
@@ -186,7 +200,7 @@ function parseCommand(args: readonly string[]): ParsedCommand {
     throw new Error("--discover is only supported for the mcp and status commands.");
   }
 
-  return { command, projectPath, discover, port, json, clients };
+  return { command, projectPath, discover, port, json, clients, check };
 }
 
 function ensureGitignoreEntry(projectRoot: string): void {
@@ -514,7 +528,11 @@ async function runInit(
   try {
     ensureGitignoreEntry(projectRoot);
     const agentInstructionsPath = path.join(projectRoot, projectAgentInstructionsPath);
-    writeFileSync(agentInstructionsPath, formatProjectAgentInstructions(), "utf8");
+    writeFileSync(
+      agentInstructionsPath,
+      formatProjectAgentInstructions(runtimeVersion),
+      "utf8",
+    );
     const projectConfiguration = {
       mcpServers: {
         milestack: {
@@ -582,21 +600,10 @@ async function runStatus(
   }
 }
 
-function resolveEntryPath(): string {
-  const entry = process.argv[1];
-  if (entry === undefined || entry.length === 0) {
-    return path.resolve("");
-  }
-  try {
-    return realpathSync(entry);
-  } catch {
-    return path.resolve(entry);
-  }
-}
-
 export async function runCli(
   args: readonly string[],
   output: CliOutput = defaultOutput,
+  updateDependencies: UpdateDependencies = defaultUpdateDependencies,
 ): Promise<number> {
   if (args.length === 0 || args.includes("--help") || args.includes("-h")) {
     output.writeStdout(helpText);
@@ -620,6 +627,13 @@ export async function runCli(
     if (parsed.command === "status") {
       await runStatus(parsed.projectPath, parsed.discover, parsed.json, output);
       return 0;
+    }
+    if (parsed.command === "update") {
+      return runUpdate(
+        { projectPath: parsed.projectPath, check: parsed.check === true },
+        output,
+        updateDependencies,
+      );
     }
     if (parsed.command === "serve") {
       const { app, url } = await startHttpServer({

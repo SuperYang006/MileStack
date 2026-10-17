@@ -1,6 +1,8 @@
 import { accessSync, constants, realpathSync, statSync } from "node:fs";
 import path from "node:path";
 
+import { isInsideDirectory } from "./entry-path.js";
+
 const launcherName = "milestack";
 
 export type McpLauncher = {
@@ -63,16 +65,6 @@ function realPathOrSelf(candidatePath: string): string {
   } catch {
     return candidatePath;
   }
-}
-
-function isInsideDirectory(candidatePath: string, directory: string): boolean {
-  const relative = path.relative(directory, candidatePath);
-  return (
-    relative !== "" &&
-    !path.isAbsolute(relative) &&
-    relative !== ".." &&
-    !relative.startsWith(`..${path.sep}`)
-  );
 }
 
 // A CLI started from the target project's own node_modules is a deliberate
