@@ -90,6 +90,40 @@ function createPnpmGlobalEntry(): string {
   return path.join(packageRoot, "dist", "index.js");
 }
 
+// Real pnpm global installs resolve through the virtual store below the
+// global node_modules directory when PNPM_HOME is not set.
+function createPnpmGlobalVirtualStoreEntry(): string {
+  const root = createTemporaryDirectory("pnpm-virtual");
+  const globalRoot = path.join(root, "global", "10");
+  const packageRoot = path.join(
+    globalRoot,
+    "node_modules",
+    ".pnpm",
+    "milestack@0.1.0",
+    "node_modules",
+    "milestack",
+  );
+  writeFileAt(path.join(packageRoot, "dist", "index.js"));
+  writeFileSync(
+    path.join(packageRoot, "package.json"),
+    JSON.stringify({ name: "milestack" }),
+    "utf8",
+  );
+  // The global directory can declare the dependency and carry a pnpm lockfile;
+  // the entry must still be classified as a pnpm global install.
+  writeFileSync(
+    path.join(globalRoot, "package.json"),
+    JSON.stringify({ dependencies: { milestack: "^0.1.0" } }),
+    "utf8",
+  );
+  writeFileSync(
+    path.join(globalRoot, "pnpm-lock.yaml"),
+    "lockfileVersion: '9.0'\n",
+    "utf8",
+  );
+  return path.join(packageRoot, "dist", "index.js");
+}
+
 function createNpxEntry(): string {
   const root = createTemporaryDirectory("npx");
   const npxRoot = path.join(root, ".npm", "_npx", "a1b2c3");
@@ -591,6 +625,40 @@ describe("milestack update: source repository and non-npm installs", () => {
     expect(readFileSync(instructionsPath, "utf8")).toBe(
       formatProjectAgentInstructions(runtimeVersion),
     );
+  });
+
+  it("does not install for a pnpm global entry resolved through the virtual store without PNPM_HOME", async () => {
+    const previousPnpmHome = process.env["PNPM_HOME"];
+    delete process.env["PNPM_HOME"];
+    try {
+      const entryPath = createPnpmGlobalVirtualStoreEntry();
+      const { projectRoot, instructionsPath } = createInitializedProject();
+      const fake = createCommandFake({});
+      const capture = outputCapture();
+
+      const exitCode = await runCli(
+        ["update", "--project", projectRoot],
+        capture.output,
+        fake.dependencies(entryPath),
+      );
+
+      expect(exitCode).toBe(1);
+      const stdout = capture.stdout.join("");
+      expect(stdout).toContain("pnpm 全局安装");
+      expect(stdout).toContain("沿用原来的 pnpm 方式自行升级");
+      expect(stdout).not.toContain("项目内安装");
+      expect(installerCalls(fake)).toEqual([]);
+      expect(queryCalls(fake)).toEqual([]);
+      expect(readFileSync(instructionsPath, "utf8")).toBe(
+        formatProjectAgentInstructions(runtimeVersion),
+      );
+    } finally {
+      if (previousPnpmHome === undefined) {
+        delete process.env["PNPM_HOME"];
+      } else {
+        process.env["PNPM_HOME"] = previousPnpmHome;
+      }
+    }
   });
 
   it("does not install for an npx entry and prints the manual command", async () => {

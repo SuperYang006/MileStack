@@ -122,9 +122,12 @@ function isNpxEntry(entryPath: string): boolean {
   return pathSegments(entryPath).includes("_npx");
 }
 
-// pnpm global installs live at <pnpm home>/global/<major>/node_modules/milestack;
-// pnpm link --global resolves into the source checkout instead, so it never
-// matches this layout.
+// pnpm global installs live under <pnpm home>/global/<major>/node_modules.
+// A real install may resolve through the .pnpm virtual store
+// (global/<major>/node_modules/.pnpm/milestack@<version>/node_modules/milestack),
+// so without PNPM_HOME the whole global/<major>/node_modules tree counts as an
+// install that this command must not touch. pnpm link --global resolves into
+// the source checkout instead, so it never matches this layout.
 function isPnpmGlobalEntry(entryPath: string): boolean {
   const pnpmHome = process.env["PNPM_HOME"];
   if (
@@ -135,14 +138,11 @@ function isPnpmGlobalEntry(entryPath: string): boolean {
     return true;
   }
   const segments = pathSegments(entryPath);
-  const packageIndex = segments.lastIndexOf("milestack");
-  if (packageIndex < 3) {
-    return false;
-  }
-  return (
-    segments[packageIndex - 1] === "node_modules" &&
-    /^\d+$/.test(segments[packageIndex - 2] ?? "") &&
-    segments[packageIndex - 3] === "global"
+  return segments.some(
+    (segment, index) =>
+      segment === "global" &&
+      /^\d+$/.test(segments[index + 1] ?? "") &&
+      segments[index + 2] === "node_modules",
   );
 }
 
