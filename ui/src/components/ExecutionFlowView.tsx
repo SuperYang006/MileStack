@@ -55,7 +55,7 @@ function getStatusBadge(status: TaskStatus) {
     default:
       return (
         <span className="inline-flex items-center space-x-1 px-1.5 py-0.2 rounded text-[10px] font-mono bg-zinc-900 text-zinc-400">
-          <span>待整理</span>
+          <span>草稿</span>
         </span>
       );
   }
@@ -106,15 +106,15 @@ export const ExecutionFlowView: React.FC<ExecutionFlowViewProps> = ({
         <div className="flex items-center space-x-2">
           <GitFork className="w-3.5 h-3.5 text-indigo-400" />
           <h2 className="text-xs font-mono font-bold tracking-wider text-zinc-200 uppercase">
-            执行关系拓扑 ({graphs.length})
+            目标路径 ({graphs.length})
           </h2>
           <span className="text-[11px] font-mono text-zinc-500 hidden sm:inline">
-            · 按最终目标分组的未完成依赖与并行前置
+            · 每个最终目标，以及还没做完的前置工作
           </span>
         </div>
         <div className="flex items-center space-x-2">
           <span className="text-[10px] font-mono text-zinc-500">
-            {isExpanded ? "收起拓扑" : "展开拓扑"}
+            {isExpanded ? "收起" : "展开"}
           </span>
           {isExpanded ? (
             <ChevronDown className="w-3.5 h-3.5 text-zinc-500" />
@@ -142,7 +142,7 @@ export const ExecutionFlowView: React.FC<ExecutionFlowViewProps> = ({
                 <div className="flex items-center space-x-2 shrink-0 text-[10px] text-zinc-500">
                   <span>共 {graph.taskIds.length} 个任务</span>
                   <span>·</span>
-                  <span>{graph.stages.length} 个执行阶段</span>
+                  <span>{graph.stages.length} 步</span>
                 </div>
               </div>
 
@@ -164,7 +164,7 @@ export const ExecutionFlowView: React.FC<ExecutionFlowViewProps> = ({
                                 <div className="h-px bg-zinc-800 flex-1" />
                                 <div className="flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full bg-zinc-900 border border-zinc-800 text-indigo-300 shrink-0">
                                   <GitFork className="w-3 h-3 text-indigo-400" />
-                                  <span>派生 {stage.tasks.length} 个并行分支</span>
+                                  <span>这里可以同时做 {stage.tasks.length} 件</span>
                                 </div>
                                 <div className="h-px bg-zinc-800 flex-1" />
                               </div>
@@ -173,7 +173,7 @@ export const ExecutionFlowView: React.FC<ExecutionFlowViewProps> = ({
                                 <div className="h-px bg-zinc-800 flex-1" />
                                 <div className="flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full bg-zinc-900 border border-zinc-800 text-amber-300 shrink-0">
                                   <GitMerge className="w-3 h-3 text-amber-400" />
-                                  <span>汇合推进 (需分支全部完成)</span>
+                                  <span>都做完后才能继续</span>
                                 </div>
                                 <div className="h-px bg-zinc-800 flex-1" />
                               </div>
@@ -191,7 +191,7 @@ export const ExecutionFlowView: React.FC<ExecutionFlowViewProps> = ({
                             {stage.isParallel ? (
                               <div
                                 className="flex flex-col items-center space-y-1 p-1.5 rounded bg-zinc-900/80 border border-zinc-800 text-indigo-400"
-                                title={`派生 ${stage.tasks.length} 个并行分支`}
+                                title={`这里可以同时做 ${stage.tasks.length} 件`}
                               >
                                 <GitFork className="w-3.5 h-3.5" />
                                 <ArrowRight className="w-3 h-3 text-zinc-500" />
@@ -199,7 +199,7 @@ export const ExecutionFlowView: React.FC<ExecutionFlowViewProps> = ({
                             ) : isLastStage && graph.stages.length > 2 && stage.tasks.length === 1 ? (
                               <div
                                 className="flex flex-col items-center space-y-1 p-1.5 rounded bg-zinc-900/80 border border-zinc-800 text-amber-400"
-                                title="汇合推进目标"
+                                title="都做完后才能继续"
                               >
                                 <GitMerge className="w-3.5 h-3.5" />
                                 <ArrowRight className="w-3 h-3 text-zinc-500" />

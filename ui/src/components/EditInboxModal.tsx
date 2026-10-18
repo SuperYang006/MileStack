@@ -160,7 +160,7 @@ export const EditInboxModal: React.FC<EditInboxModalProps> = ({
           <div className="flex items-center space-x-2">
             <Edit3 className="w-4 h-4 text-amber-400" />
             <h2 className="text-xs font-bold text-zinc-100 uppercase tracking-wider">
-              编辑 Inbox 任务草稿
+              编辑草稿
             </h2>
           </div>
           <button

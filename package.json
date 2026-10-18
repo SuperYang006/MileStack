@@ -1,8 +1,8 @@
 {
   "name": "milestack",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "license": "Apache-2.0",
-  "description": "Local-first project progress and task context database shared by developers and coding agents.",
+  "description": "面向 Vibe Coding 项目，让开发者和编程 Agent 不必翻找零散文档和历史对话，也能随时掌握进展、接续工作并稳步推进。",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/SuperYang006/MileStack.git"

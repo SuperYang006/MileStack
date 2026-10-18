@@ -230,7 +230,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
               <button
                 onClick={() => onEditInboxTask(details)}
                 className="inline-flex items-center space-x-1 px-2 py-0.5 text-[11px] font-mono text-amber-300 bg-amber-950/50 hover:bg-amber-950/80 border border-amber-900/60 rounded transition-colors"
-                title="编辑此 Inbox 任务"
+                title="编辑这篇草稿"
               >
                 <Edit3 className="w-3 h-3" />
                 <span>编辑草稿</span>
@@ -477,7 +477,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
               <div>
                 <h3 className="text-[11px] font-bold text-zinc-500 uppercase tracking-wider mb-2 flex items-center space-x-1.5">
                   <GitFork className="w-3.5 h-3.5 text-zinc-400" />
-                  <span>任务依赖与拓扑关系</span>
+                  <span>前置任务</span>
                 </h3>
                 <div className="bg-zinc-900/40 p-3 rounded border border-zinc-850 space-y-3 font-mono text-xs">
                   {/* Direct Dependencies */}

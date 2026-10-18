@@ -449,15 +449,15 @@ export function buildConnectedDagGraphs(
       for (const task of tasks) {
         task.isParallelStageTask = isParallel;
       }
-      let label = `阶段 ${idx + 1}`;
-      if (idx === 0) {
-        label += tasks.length > 1 ? ` · 初始并行输入 (${tasks.length} 项)` : " · 核心输入";
-      } else if (idx === sortedStageIndexes.length - 1 && tasks.length === 1 && maxStageIndex > 1) {
+      let label = `${idx + 1} 步`;
+      if (idx === sortedStageIndexes.length - 1 && tasks.length === 1 && maxStageIndex > 1) {
         label += " · 最终目标";
+      } else if (idx === 0) {
+        label += tasks.length > 1 ? " · 先做，可以同时做" : " · 先做";
       } else if (isParallel) {
-        label += ` · 并行分支推进 (${tasks.length} 个任务)`;
+        label += " · 可以同时做";
       } else {
-        label += " · 后续分支推进";
+        label += " · 接着做";
       }
 
       return {

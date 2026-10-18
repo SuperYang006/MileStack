@@ -107,7 +107,7 @@ export const InboxTasks: React.FC<InboxTasksProps> = ({
         <div className="flex items-center space-x-2">
           <span className="w-2 h-2 rounded-full bg-zinc-500" />
           <h2 className="text-xs font-mono font-bold tracking-wider text-zinc-300 uppercase">
-            待整理收件箱 ({tasks.length})
+            草稿箱 ({tasks.length})
           </h2>
         </div>
         <span className="text-[11px] font-mono text-zinc-500">
@@ -119,9 +119,9 @@ export const InboxTasks: React.FC<InboxTasksProps> = ({
         {tasks.length === 0 ? (
           <EmptyState
             icon={Inbox}
-            title="收件箱已清空"
-            description="暂无待整理的新增任务。Agent 发现的新事项或手动录入的需求将暂存在此"
-            tag="收件箱已清空"
+            title="草稿箱已清空"
+            description="暂无新草稿。Agent 发现的新事项或手动录入的需求将暂存在此"
+            tag="草稿箱已清空"
             variant="default"
             className="lg:h-full"
             action={
@@ -324,7 +324,7 @@ export const InboxTasks: React.FC<InboxTasksProps> = ({
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        if (window.confirm(`确认删除 Inbox 任务“${task.title}”？`)) {
+                        if (window.confirm(`确认删除草稿“${task.title}”？`)) {
                           onDeleteTask(task.id);
                         }
                       }}

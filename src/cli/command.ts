@@ -40,7 +40,7 @@ Commands:
   status               Show the current project status
   mcp                  Run the MCP stdio server
   serve                Run the HTTP web and API server
-  update               Update the global CLI and refresh generated project files
+  update               Upgrade npm global and package.json-declared project-local installs, then refresh generated project files
 Options:
   --project <path>     Project root (defaults to the current directory)
   --discover           Auto-discover the project by walking up from cwd (for mcp/status)

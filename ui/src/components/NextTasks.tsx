@@ -86,7 +86,7 @@ export const NextTasks: React.FC<NextTasksProps> = ({
           <EmptyState
             icon={ListOrdered}
             title="就绪队列为空"
-            description="当前没有排队中的就绪任务。可在待整理收件箱中确认任务，或新增规划"
+            description="当前没有排队中的就绪任务。可在草稿箱中确认任务，或新增规划"
             tag="队列清空"
             variant="indigo"
             className="lg:h-full"
@@ -262,7 +262,7 @@ export const NextTasks: React.FC<NextTasksProps> = ({
                         onReturnToInbox(task.id);
                       }}
                       className="inline-flex items-center space-x-1 px-2 py-0.5 text-[11px] font-mono text-zinc-400 hover:text-amber-300 bg-zinc-900 hover:bg-zinc-850 border border-zinc-800 rounded transition-colors"
-                      title="退回待整理收件箱"
+                      title="退回草稿箱"
                     >
                       <RotateCcw className="w-3 h-3" />
                       <span>退回</span>

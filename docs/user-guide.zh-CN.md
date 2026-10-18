@@ -186,6 +186,8 @@ milestack init [--project <path>] [--client <name>]...
 milestack status [--project <path>] [--discover] [--json]
 milestack mcp [--project <path>] [--discover]
 milestack serve [--project <path>] [--port <port>]
+milestack update [--project <path>] [--check]
+milestack -v | --version
 ```
 
 示例：
@@ -216,7 +218,31 @@ Agent 创建的任务会进入草稿箱。开发者确认风险和队列位置�
 
 对非空数据库应用待执行迁移前，MileStack 会在 `.milestack/backups/` 中创建备份。升级时不要删除已有数据库。
 
-Web UI 显示当前运行中的 MileStack 进程版本。升级 npm 包后，需要重启 `milestack serve` 才会使用新版本。
+### 查看版本
+
+```bash
+milestack -v
+milestack --version
+```
+
+两者都会向标准输出打印一行：当前版本号和本次运行入口文件的 realpath。Web UI 也显示当前运行中的 MileStack 进程版本。
+
+### 升级
+
+`milestack update` 会升级 npm 全局安装，以及已经写入某个项目 `package.json` 的 `dependencies` 或 `devDependencies` 的项目内安装，然后刷新已初始化项目中由 `init` 生成的文件。
+
+- 项目内升级只在该依赖声明所在的项目根目录执行固定的包管理器命令，不会另外安装一份全局命令。
+- 从源码目录运行，以及通过 `pnpm link --global` 链回源码仓库的入口，仍按现有规则在该仓库内执行 `pnpm build`，`update` 不会把它们当成已安装的包去升级。
+- `--check` 只报告当前版本、最新版本和生成文件状态，不安装、不写文件。
+
+如果你现在安装的是 0.1.0，第一次升级还不能使用 `milestack update`，请先用原来的安装方式装到 0.2.0：
+
+- 全局安装：`npm install -g milestack@latest`；
+- 项目内安装：在声明了该依赖的项目根目录安装 `milestack@latest`，例如 npm 项目执行 `npm install --save-dev milestack@latest`，pnpm 项目执行 `pnpm update milestack --latest`。
+
+装上 0.2.0 之后，才可以使用 `milestack update` 继续升级。
+
+升级后请新开一个终端，并重启 MCP 客户端和 `milestack serve`，确保它们加载新版本。已有数据库会保留，不需要删除；程序会对非空数据库执行前向迁移，并在迁移前创建备份。
 
 ## 常见问题
 

@@ -469,7 +469,7 @@ export const DashboardPage: React.FC = () => {
             />
           </div>
 
-          {/* Bottom-right: 待整理收件箱 */}
+          {/* Bottom-right: 草稿箱 */}
           <div className="lg:h-full lg:min-h-0">
             <InboxTasks
               tasks={visibleStatus.inbox}

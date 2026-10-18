@@ -277,7 +277,7 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
                     onChange={() => setStatus("inbox")}
                     className="accent-amber-500"
                   />
-                  <span className="text-[11px]">收件箱 (Inbox 待整理)</span>
+                  <span className="text-[11px]">草稿箱</span>
                 </label>
 
                 <label
@@ -359,7 +359,7 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
                 </div>
               ) : (
                 <div className="text-zinc-600 italic">
-                  支持 - 或 * 或 1. 列表，每行自动解析为一条待整理收件箱任务
+                  支持 - 或 * 或 1. 列表，每行自动解析为一条草稿箱任务
                 </div>
               )}
             </div>
@@ -381,7 +381,7 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
                 <span>
                   {isSubmitting
                     ? "导入中..."
-                    : `批量导入 (${parsedBatchTasks.length}) 到收件箱`}
+                    : `批量导入 (${parsedBatchTasks.length}) 到草稿箱`}
                 </span>
               </button>
             </div>

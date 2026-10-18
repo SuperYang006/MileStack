@@ -12,6 +12,7 @@ import { toJSONSchema, z, ZodError } from "zod";
 
 import { DomainError } from "../core/errors.js";
 import { formatMcpInstructions } from "../core/agent-instructions.js";
+import { runtimeVersion } from "../server/runtime-version.js";
 import {
   createTaskInputSchema,
   createTasksInputSchema,
@@ -184,7 +185,7 @@ export function createMcpServer(
       : async () => contextOrResolver;
 
   const server = new Server(
-    { name: "milestack", version: "0.1.0" },
+    { name: "milestack", version: runtimeVersion },
     {
       capabilities: { tools: {} },
       instructions: formatMcpInstructions(),
