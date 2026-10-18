@@ -8,7 +8,7 @@ MileStack 把项目进度和任务上下文统一保存在本地，让开发者�
 
 > MileStack 目前处于早期 V0 阶段，面向本地开发工作流。项目数据始终保存在你自己的机器上。
 
-![MileStack 项目状态面板](docs/assets/milestack-dashboard.png)
+![MileStack 项目状态面板](https://raw.githubusercontent.com/SuperYang006/MileStack/main/docs/assets/milestack-dashboard.png)
 
 ## MileStack 解决什么问题
 

@@ -8,7 +8,7 @@ MileStack is a local-first project progress and task-context database for agent-
 
 > MileStack is an early V0 for local development workflows. Your project data stays on your machine.
 
-![MileStack project dashboard](docs/assets/milestack-dashboard.png)
+![MileStack project dashboard](https://raw.githubusercontent.com/SuperYang006/MileStack/main/docs/assets/milestack-dashboard.png)
 
 ## The problem it solves
 
