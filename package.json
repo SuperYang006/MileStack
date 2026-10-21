@@ -1,6 +1,6 @@
 {
   "name": "milestack",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "license": "Apache-2.0",
   "description": "面向 Vibe Coding 项目，让开发者和编程 Agent 不必翻找零散文档和历史对话，也能随时掌握进展、接续工作并稳步推进。",
   "repository": {

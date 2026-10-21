@@ -235,12 +235,12 @@ milestack --version
 - 从源码目录运行，以及通过 `pnpm link --global` 链回源码仓库的入口，仍按现有规则在该仓库内执行 `pnpm build`，`update` 不会把它们当成已安装的包去升级。
 - `--check` 只报告当前版本、最新版本和生成文件状态，不安装、不写文件。
 
-如果你现在安装的是 0.1.0，第一次升级还不能使用 `milestack update`，请先用原来的安装方式装到 0.2.0：
+如果你现在安装的是 0.1.0，第一次升级还不能使用 `milestack update`，请先用原来的安装方式装到 0.2.0 或更高版本：
 
 - 全局安装：`npm install -g milestack@latest`；
 - 项目内安装：在声明了该依赖的项目根目录安装 `milestack@latest`，例如 npm 项目执行 `npm install --save-dev milestack@latest`，pnpm 项目执行 `pnpm update milestack --latest`。
 
-装上 0.2.0 之后，才可以使用 `milestack update` 继续升级。
+装上 0.2.0 或更高版本之后，才可以使用 `milestack update` 继续升级。已经安装 0.2.0 的用户可以直接用 `milestack update` 升级到 0.2.1。
 
 升级后请新开一个终端，并重启 MCP 客户端和 `milestack serve`，确保它们加载新版本。已有数据库会保留，不需要删除；程序会对非空数据库执行前向迁移，并在迁移前创建备份。
 
