@@ -20,6 +20,7 @@ import { TaskDetailModal } from "../components/TaskDetailModal";
 import { CreateTaskModal } from "../components/CreateTaskModal";
 import { BriefingModal } from "../components/BriefingModal";
 import { EditInboxModal } from "../components/EditInboxModal";
+import { DeleteTaskConfirmModal } from "../components/DeleteTaskConfirmModal";
 import { ServiceDisconnectedModal } from "../components/ServiceDisconnectedModal";
 import {
   projectStatusQueryOptions,
@@ -90,6 +91,11 @@ export const DashboardPage: React.FC = () => {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [briefingTask, setBriefingTask] = useState<TaskSummary | null>(null);
   const [editingInboxTask, setEditingInboxTask] = useState<TaskSummary | TaskDetails | null>(null);
+  const [pendingDeletion, setPendingDeletion] = useState<{
+    taskId: string;
+    taskTitle: string;
+    source: "inbox" | "ready";
+  } | null>(null);
   const [isArchiveOpen, setIsArchiveOpen] = useState(false);
   const [lastProject, setLastProject] = useState<ProjectSummary>({ id: "", name: "", goal: null });
   const [isDisconnectNoticeDismissed, setIsDisconnectNoticeDismissed] = useState(false);
@@ -350,6 +356,15 @@ export const DashboardPage: React.FC = () => {
     setIsCreateModalOpen(true);
   };
 
+  const confirmPendingDeletion = async () => {
+    if (!pendingDeletion) return;
+    if (pendingDeletion.source === "inbox") {
+      await deleteInboxMutation.mutateAsync(pendingDeletion.taskId);
+    } else {
+      await deleteReadyMutation.mutateAsync(pendingDeletion.taskId);
+    }
+  };
+
   const allTasks = useMemo(
     () => buildTaskIndex(visibleStatus, completedTasks),
     [visibleStatus, completedTasks],
@@ -429,7 +444,9 @@ export const DashboardPage: React.FC = () => {
               allTasks={allTasks}
               onReorder={(id, dir) => reorderTaskMutation.mutate({ taskId: id, direction: dir })}
               onReturnToInbox={(id) => returnReadyMutation.mutate(id)}
-              onDeleteTask={(id) => deleteReadyMutation.mutate(id)}
+              onRequestDelete={(task) =>
+                setPendingDeletion({ taskId: task.id, taskTitle: task.title, source: "ready" })
+              }
               onSelectTask={(id) => setSelectedTaskId(id)}
               onOpenBriefing={(task) => setBriefingTask(task)}
             />
@@ -475,7 +492,9 @@ export const DashboardPage: React.FC = () => {
               tasks={visibleStatus.inbox}
               allTasks={allTasks}
               onConfirmTask={(id, riskLevel) => confirmInboxMutation.mutate({ taskId: id, riskLevel })}
-              onDeleteTask={(id) => deleteInboxMutation.mutate(id)}
+              onRequestDelete={(task) =>
+                setPendingDeletion({ taskId: task.id, taskTitle: task.title, source: "inbox" })
+              }
               onSelectTask={(id) => setSelectedTaskId(id)}
               onEditTask={(task) => setEditingInboxTask(task)}
               onCreateTask={isServiceDisconnected ? undefined : openCreateModal}
@@ -562,6 +581,15 @@ export const DashboardPage: React.FC = () => {
         project={visibleStatus.project}
         isOpen={!!briefingTask}
         onClose={() => setBriefingTask(null)}
+      />
+
+      <DeleteTaskConfirmModal
+        isOpen={pendingDeletion !== null}
+        taskId={pendingDeletion?.taskId ?? ""}
+        taskTitle={pendingDeletion?.taskTitle ?? ""}
+        taskSourceLabel={pendingDeletion?.source === "ready" ? "就绪队列" : "草稿箱"}
+        onClose={() => setPendingDeletion(null)}
+        onConfirm={confirmPendingDeletion}
       />
 
       <ServiceDisconnectedModal

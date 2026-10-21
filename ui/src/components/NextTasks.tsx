@@ -26,7 +26,7 @@ interface NextTasksProps {
   allTasks?: Map<string, TaskSummary>;
   onReorder: (taskId: string, direction: "up" | "down") => void;
   onReturnToInbox: (taskId: string) => void;
-  onDeleteTask: (taskId: string) => void;
+  onRequestDelete: (task: TaskSummary) => void;
   onSelectTask: (taskId: string) => void;
   onOpenBriefing: (task: TaskSummary) => void;
 }
@@ -36,7 +36,7 @@ export const NextTasks: React.FC<NextTasksProps> = ({
   allTasks = new Map(),
   onReorder,
   onReturnToInbox,
-  onDeleteTask,
+  onRequestDelete,
   onSelectTask,
   onOpenBriefing,
 }) => {
@@ -271,9 +271,7 @@ export const NextTasks: React.FC<NextTasksProps> = ({
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        if (window.confirm(`确认删除 Ready 任务“${task.title}”？`)) {
-                          onDeleteTask(task.id);
-                        }
+                        onRequestDelete(task);
                       }}
                       className="inline-flex items-center space-x-1 px-2 py-0.5 text-[11px] font-mono text-zinc-400 hover:text-rose-300 bg-zinc-900 hover:bg-zinc-850 border border-zinc-800 rounded transition-colors"
                       title="删除任务"

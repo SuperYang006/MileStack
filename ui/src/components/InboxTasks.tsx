@@ -16,7 +16,7 @@ interface InboxTasksProps {
   tasks: TaskSummary[];
   allTasks?: Map<string, TaskSummary>;
   onConfirmTask: (taskId: string, riskLevel?: RiskLevel) => void;
-  onDeleteTask: (taskId: string) => void;
+  onRequestDelete: (task: TaskSummary) => void;
   onSelectTask: (taskId: string) => void;
   onEditTask?: (task: TaskSummary) => void;
   onCreateTask?: () => void;
@@ -26,7 +26,7 @@ export const InboxTasks: React.FC<InboxTasksProps> = ({
   tasks,
   allTasks = new Map(),
   onConfirmTask,
-  onDeleteTask,
+  onRequestDelete,
   onSelectTask,
   onEditTask,
   onCreateTask,
@@ -324,9 +324,7 @@ export const InboxTasks: React.FC<InboxTasksProps> = ({
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        if (window.confirm(`确认删除草稿“${task.title}”？`)) {
-                          onDeleteTask(task.id);
-                        }
+                        onRequestDelete(task);
                       }}
                       className="p-1 text-zinc-500 hover:text-rose-400 rounded transition-all opacity-0 group-hover:opacity-100"
                       title="删除任务"
