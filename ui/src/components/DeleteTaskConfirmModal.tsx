@@ -110,7 +110,7 @@ export const DeleteTaskConfirmModal: React.FC<DeleteTaskConfirmModalProps> = ({
       role="presentation"
     >
       <div
-        className={`w-full max-w-md overflow-hidden rounded-lg border border-rose-900/70 bg-zinc-950 font-mono text-xs shadow-[0_0_45px_rgba(244,63,94,0.18)] transition-[opacity,transform] duration-150 ease-out motion-reduce:transition-none ${
+        className={`w-full max-w-md overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950 font-sans text-sm shadow-2xl transition-[opacity,transform] duration-150 ease-out motion-reduce:transition-none ${
           isClosing ? "scale-95 opacity-0" : "scale-100 opacity-100"
         }`}
         role="dialog"
@@ -120,18 +120,15 @@ export const DeleteTaskConfirmModal: React.FC<DeleteTaskConfirmModalProps> = ({
         onClick={(event) => event.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-zinc-800 bg-zinc-900/30 px-5 py-3">
-          <div className="flex min-w-0 items-center space-x-2.5">
-            <AlertTriangle className="h-4 w-4 shrink-0 text-rose-400" />
+        <div className="flex items-center justify-between border-b border-zinc-800 px-5 py-3">
+          <div className="flex min-w-0 items-center space-x-2.5 text-zinc-400">
+            <Trash2 className="h-4 w-4 shrink-0" />
             <h2
-              id="delete-task-confirm-title"
-              className="truncate text-xs font-bold uppercase tracking-wider text-zinc-100"
+              id="delete-task-confirm-heading"
+              className="truncate text-[11px] font-semibold uppercase tracking-[0.16em]"
             >
               删除任务
             </h2>
-            <span className="shrink-0 rounded border border-rose-800/70 bg-rose-950/60 px-1.5 py-0.5 text-[10px] font-semibold text-rose-300">
-              DANGER
-            </span>
           </div>
           <button
             type="button"
@@ -146,25 +143,29 @@ export const DeleteTaskConfirmModal: React.FC<DeleteTaskConfirmModalProps> = ({
         </div>
 
         {/* Body */}
-        <div className="space-y-3.5 p-5">
-          <div className="space-y-1.5 rounded border border-zinc-800 bg-zinc-900/60 p-3">
-            <div className="flex items-center justify-between gap-2 text-[10px] uppercase tracking-wider text-zinc-500">
-              <span>目标任务</span>
-              <span className="text-zinc-600">{taskSourceLabel}</span>
-            </div>
-            <TaskIdBadge taskId={taskId} variant="rose" className="max-w-full" />
-            <div className="break-words text-xs font-medium leading-relaxed text-zinc-200">
+        <div className="space-y-4 p-5">
+          <div className="space-y-2">
+            <h3
+              id="delete-task-confirm-title"
+              className="break-words text-lg font-semibold leading-snug text-zinc-100"
+            >
               {taskTitle}
+            </h3>
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-[11px] text-zinc-500">
+              <span className="rounded border border-zinc-800 bg-zinc-900/70 px-1.5 py-0.5">
+                {taskSourceLabel}
+              </span>
+              <TaskIdBadge taskId={taskId} variant="muted" className="max-w-full" />
             </div>
           </div>
 
           <div
             id="delete-task-confirm-warning"
-            className="flex items-start space-x-2.5 rounded border border-rose-900/60 bg-rose-950/30 p-3"
+            className="flex items-start space-x-2.5 rounded-lg border border-rose-900/60 bg-rose-950/30 p-3.5"
           >
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-rose-400" />
             <div className="space-y-1">
-              <div className="font-bold text-rose-300">此操作不可撤销</div>
+              <div className="text-xs font-semibold text-rose-300">此操作不可撤销</div>
               <p className="text-[11px] leading-relaxed text-rose-200/80">
                 删除后该任务的记录与事件历史将被永久移除，无法恢复。请确认后继续。
               </p>
@@ -179,7 +180,7 @@ export const DeleteTaskConfirmModal: React.FC<DeleteTaskConfirmModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between gap-3 border-t border-zinc-800 bg-zinc-900/40 px-5 py-3">
+        <div className="flex items-center justify-between gap-3 border-t border-zinc-800 px-5 py-3">
           <span className="hidden text-[10px] text-zinc-500 sm:inline">
             Esc 取消 · 点击遮罩关闭
           </span>
@@ -197,7 +198,7 @@ export const DeleteTaskConfirmModal: React.FC<DeleteTaskConfirmModalProps> = ({
               type="button"
               onClick={() => void handleConfirm()}
               disabled={controlsDisabled}
-              className="inline-flex items-center space-x-1.5 rounded border border-rose-600/70 bg-rose-700/80 px-3.5 py-1.5 font-bold text-rose-50 transition-colors hover:bg-rose-600/80 disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex items-center space-x-1.5 rounded border border-rose-600/70 bg-rose-700/80 px-3.5 py-1.5 font-semibold text-rose-50 transition-colors hover:bg-rose-600/80 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {isDeleting ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
