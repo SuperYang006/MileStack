@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  computePopoverPlacement,
+  computePopoverPosition,
   getRiskOption,
   RISK_OPTIONS,
 } from "../../ui/src/utils/riskOptions.js";
@@ -12,13 +12,34 @@ describe("Risk popover options and placement contracts", () => {
       expect(levels).toEqual(["low", "medium", "high"]);
     });
 
-    it("includes required labels, tags, and cyber terminal colors", () => {
-      for (const opt of RISK_OPTIONS) {
-        expect(opt.label).toBeTruthy();
-        expect(opt.tag).toBeTruthy();
-        expect(opt.description).toBeTruthy();
-        expect(opt.dotColorClass).toContain("shadow-");
-      }
+    it("keeps the required labels, tags, descriptions, and order", () => {
+      expect(
+        RISK_OPTIONS.map(({ level, label, tag, description }) => ({
+          level,
+          label,
+          tag,
+          description,
+        }))
+      ).toEqual([
+        {
+          level: "low",
+          label: "低风险",
+          tag: "Low",
+          description: "AI 审核通过后自动完成",
+        },
+        {
+          level: "medium",
+          label: "中风险",
+          tag: "Medium",
+          description: "需人工复核终审 (推荐)",
+        },
+        {
+          level: "high",
+          label: "高风险",
+          tag: "High",
+          description: "核心架构或破坏性变更",
+        },
+      ]);
     });
   });
 
@@ -35,32 +56,69 @@ describe("Risk popover options and placement contracts", () => {
     });
   });
 
-  describe("computePopoverPlacement", () => {
-    it("places down when sufficient space is available below", () => {
-      // window height = 800, button bottom = 300 (500px below)
-      expect(computePopoverPlacement(300, 270, 800)).toBe("down");
+  describe("computePopoverPosition", () => {
+    const size = { width: 288, height: 180 };
+
+    it("places the menu below the trigger when the space below fits", () => {
+      expect(
+        computePopoverPosition(
+          { top: 260, bottom: 290, right: 500 },
+          size,
+          { width: 1024, height: 800 }
+        )
+      ).toEqual({ top: 296, left: 212, placement: "down" });
     });
 
-    it("places up when space below is tight and space above is sufficient", () => {
-      // window height = 800, button bottom = 720 (80px below, button top = 690)
-      expect(computePopoverPlacement(720, 690, 800)).toBe("up");
+    it("flips above the trigger in a short widescreen window", () => {
+      expect(
+        computePopoverPosition(
+          { top: 430, bottom: 460, right: 500 },
+          size,
+          { width: 1024, height: 520 }
+        )
+      ).toEqual({ top: 244, left: 212, placement: "up" });
     });
 
-    it("falls back to down when space above is also constrained", () => {
-      // window height = 200, button bottom = 120 (80px below, button top = 90)
-      expect(computePopoverPlacement(120, 90, 200)).toBe("down");
+    it("clamps the menu into the viewport when neither side fits", () => {
+      const position = computePopoverPosition(
+        { top: 150, bottom: 180, right: 500 },
+        size,
+        { width: 1024, height: 300 }
+      );
+
+      expect(position.placement).toBe("up");
+      expect(position.top).toBe(8);
+      expect(position.top + size.height).toBeLessThanOrEqual(300);
     });
 
-    it("never places up when space above containerTop would collide with the header", () => {
-      // button is at top of container: containerTop = 300, button top = 320 (only 20px clearance)
-      // window height = 800, button bottom = 720 (tight below window, but tight above container!)
-      expect(computePopoverPlacement(720, 320, 800, 300)).toBe("down");
+    it("keeps a downward menu inside the viewport when the window is very short", () => {
+      const position = computePopoverPosition(
+        { top: 20, bottom: 50, right: 300 },
+        size,
+        { width: 1024, height: 200 }
+      );
+
+      expect(position.placement).toBe("down");
+      expect(position.top).toBe(12);
+      expect(position.top + size.height).toBeLessThanOrEqual(200);
     });
 
-    it("allows placing up only when clearance above containerTop is greater than popoverHeight + margin", () => {
-      // containerTop = 200, button top = 450 (250px clearance above containerTop)
-      // window height = 800, button bottom = 720 (tight below window)
-      expect(computePopoverPlacement(720, 450, 800, 200)).toBe("up");
+    it("clamps the menu horizontally so it does not leave the viewport", () => {
+      expect(
+        computePopoverPosition(
+          { top: 100, bottom: 130, right: 500 },
+          size,
+          { width: 320, height: 800 }
+        ).left
+      ).toBe(24);
+
+      expect(
+        computePopoverPosition(
+          { top: 100, bottom: 130, right: 100 },
+          size,
+          { width: 320, height: 800 }
+        ).left
+      ).toBe(8);
     });
   });
 });

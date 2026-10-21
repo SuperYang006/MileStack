@@ -53,25 +53,71 @@ export function getRiskOption(level?: RiskLevel | null): RiskOptionConfig {
   return found ?? (RISK_OPTIONS[1] as RiskOptionConfig);
 }
 
-export function computePopoverPlacement(
-  buttonBottom: number,
-  buttonTop: number,
-  windowHeight: number,
-  containerTop?: number,
-  popoverHeight = 160
-): "up" | "down" {
-  // If inside a container with a header, never open upward if it would collide with the container top or header
-  if (containerTop !== undefined && buttonTop - containerTop < popoverHeight + 10) {
-    return "down";
-  }
+export interface PopoverAnchorRect {
+  readonly top: number;
+  readonly bottom: number;
+  readonly right: number;
+}
 
-  const spaceBelow = windowHeight - buttonBottom;
-  const spaceAbove = containerTop !== undefined ? buttonTop - containerTop : buttonTop;
+export interface PopoverSize {
+  readonly width: number;
+  readonly height: number;
+}
 
-  // Only open upward if space below is truly tight AND space above has plenty of clearance
-  if (spaceBelow < popoverHeight && spaceAbove >= popoverHeight + 10) {
-    return "up";
-  }
+export interface PopoverViewport {
+  readonly width: number;
+  readonly height: number;
+}
 
-  return "down";
+export interface PopoverPosition {
+  readonly top: number;
+  readonly left: number;
+  readonly placement: "up" | "down";
+}
+
+const POPOVER_VIEWPORT_MARGIN = 8;
+const POPOVER_ANCHOR_GAP = 6;
+
+/**
+ * Positions the risk menu in viewport coordinates so that it is never clipped
+ * by ancestor overflow containers. The menu prefers the side below the trigger
+ * and flips above when that side cannot fit, then clamps to the viewport as a
+ * final guard for windows shorter than the menu itself.
+ */
+export function computePopoverPosition(
+  anchor: PopoverAnchorRect,
+  size: PopoverSize,
+  viewport: PopoverViewport
+): PopoverPosition {
+  const spaceBelow = viewport.height - anchor.bottom - POPOVER_ANCHOR_GAP - POPOVER_VIEWPORT_MARGIN;
+  const spaceAbove = anchor.top - POPOVER_ANCHOR_GAP - POPOVER_VIEWPORT_MARGIN;
+
+  const placement: "up" | "down" =
+    spaceBelow >= size.height
+      ? "down"
+      : spaceAbove >= size.height
+        ? "up"
+        : spaceBelow >= spaceAbove
+          ? "down"
+          : "up";
+
+  const preferredTop =
+    placement === "down"
+      ? anchor.bottom + POPOVER_ANCHOR_GAP
+      : anchor.top - POPOVER_ANCHOR_GAP - size.height;
+
+  const maxTop = Math.max(
+    POPOVER_VIEWPORT_MARGIN,
+    viewport.height - size.height - POPOVER_VIEWPORT_MARGIN
+  );
+  const maxLeft = Math.max(
+    POPOVER_VIEWPORT_MARGIN,
+    viewport.width - size.width - POPOVER_VIEWPORT_MARGIN
+  );
+
+  return {
+    top: Math.min(Math.max(preferredTop, POPOVER_VIEWPORT_MARGIN), maxTop),
+    left: Math.min(Math.max(anchor.right - size.width, POPOVER_VIEWPORT_MARGIN), maxLeft),
+    placement,
+  };
 }
