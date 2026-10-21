@@ -140,7 +140,7 @@ export class TaskHasDependentsError extends DomainError {
   constructor(taskId: string, dependentTaskIds: string[]) {
     super(
       "TASK_HAS_DEPENDENTS",
-      `Task '${taskId}' cannot be deleted because it is required by: ${dependentTaskIds.join(", ")}.`,
+      `无法删除任务 ${taskId}，因为以下任务仍依赖它：${dependentTaskIds.join("、")}。`,
     );
     this.dependentTaskIds = dependentTaskIds;
   }

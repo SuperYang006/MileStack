@@ -570,10 +570,10 @@ describe("HTTP API Server", () => {
       url: `/api/tasks/${prerequisite.id}/delete`,
     });
     expect(deleteRes.statusCode).toBe(400);
-    expect(JSON.parse(deleteRes.payload).error).toContain(prerequisite.id);
-    expect(JSON.parse(deleteRes.payload).error).toContain(
-      JSON.parse(dependentRes.payload).task.id,
-    );
+    const deleteError = JSON.parse(deleteRes.payload).error as string;
+    expect(deleteError).toContain(`无法删除任务 ${prerequisite.id}`);
+    expect(deleteError).toContain("因为以下任务仍依赖它");
+    expect(deleteError).toContain(JSON.parse(dependentRes.payload).task.id);
   });
 
   it("supports developer review, change requests, approval, and reopening over HTTP", async () => {
