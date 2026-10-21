@@ -219,9 +219,36 @@ describe("CLI entry point", () => {
     expect(generatedInstructions).toContain(
       "- Do not invent or prescribe internal file lists, private functions, helper types, algorithms, test fixture names, or implementation steps unless the developer confirmed them, an existing public contract requires them, or they are necessary for architecture or safety.",
     );
-    expect(generatedInstructions).toContain(
+    expect(generatedInstructions).not.toContain(
       "- Prefer “scenario → expected result → verification” over a step-by-step implementation blueprint.",
     );
+    expect(generatedInstructions).toContain(
+      "- Write every acceptance criterion by default as scenario, expected result, and verification, with one independently checkable result per criterion.",
+    );
+    expect(generatedInstructions).toContain(
+      "Scenario is the trigger or starting condition; expected result is the observable behavior, deliverable, or confirmed structural requirement; verification is how to obtain evidence.",
+    );
+    expect(generatedInstructions).toContain(
+      "A simple task may state the same in one sentence without the three labels.",
+    );
+    expect(generatedInstructions).toContain(
+      "Include only developer-confirmed requirements, existing contracts, necessary architecture or safety boundaries, and file or module ownership plus exclusions needed for parallel tasks.",
+    );
+    expect(generatedInstructions).toContain(
+      "Do not write unconfirmed implementation suggestions as acceptance criteria.",
+    );
+    expect(generatedInstructions).toContain("createPhoneBindingPage");
+    expect(generatedInstructions).toContain("domain/phone-binding.js");
+    expect(generatedInstructions).toContain("a verification code has been sent");
+    expect(generatedInstructions).toContain(
+      "resend is unavailable during the countdown and available after it ends",
+    );
+    expect(generatedInstructions).toContain(
+      "a page behavior test controls time and checks the send button state",
+    );
+    expect(generatedInstructions).toContain("explicitly requires a native Page");
+    expect(generatedInstructions).toContain("Expected result: it is a native Page.");
+    expect(generatedInstructions).toContain("inspect the registered page type");
     expect(generatedInstructions).toContain(
       "- Distinguish acceptance constraints from implementation suggestions. Put only confirmed constraints in the objective and acceptance criteria; omit unconfirmed implementation ideas or label them explicitly as non-binding.",
     );

@@ -9,7 +9,10 @@ import type {
 } from "../types";
 import { CopyTaskIdButton } from "./CopyTaskIdButton";
 import { apiClient } from "../api/client";
-import { reconcileCriteriaLines } from "../utils/acceptanceCriteria";
+import {
+  acceptanceCriteriaPreSubmissionReminder,
+  reconcileCriteriaLines,
+} from "../utils/acceptanceCriteria";
 
 const MIN_TEXTAREA_ROWS = 3;
 const MAX_TEXTAREA_ROWS = 12;
@@ -243,6 +246,9 @@ export const EditInboxModal: React.FC<EditInboxModalProps> = ({
                 placeholder="- 代码通过类型检查与单元测试&#10;- 完成功能验收..."
                 className="w-full px-3 py-2 bg-zinc-900 border border-zinc-750 rounded text-zinc-100 placeholder-zinc-600 focus:outline-hidden focus:border-cyan-500 transition-colors resize-none leading-relaxed font-mono"
               />
+              <p className="mt-1 text-[10px] text-zinc-500 leading-relaxed">
+                {acceptanceCriteriaPreSubmissionReminder}
+              </p>
             </div>
 
             {/* Dependencies */}

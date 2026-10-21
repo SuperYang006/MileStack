@@ -10,6 +10,7 @@ import {
   initializeProject,
   openProjectContext,
 } from "../../src/project/project-context.js";
+import { acceptanceCriteriaPreSubmissionCheck } from "../../src/core/agent-instructions.js";
 import { createMcpServer } from "../../src/mcp/server.js";
 
 const temporaryProjects: string[] = [];
@@ -86,6 +87,12 @@ describe("MCP task tools", () => {
     ]);
     expect(toolNames).toContain("submit_for_review");
     expect(toolNames).not.toContain("finish_task");
+    const createTaskTool = listed.tools.find((tool) => tool.name === "create_task");
+    const createTasksTool = listed.tools.find((tool) => tool.name === "create_tasks");
+    expect(createTaskTool?.description).toContain(acceptanceCriteriaPreSubmissionCheck);
+    expect(createTasksTool?.description).toContain(acceptanceCriteriaPreSubmissionCheck);
+    expect(createTaskTool?.description).not.toContain("createPhoneBindingPage");
+    expect(createTasksTool?.description).not.toContain("createPhoneBindingPage");
     const approveReviewTool = listed.tools.find((tool) => tool.name === "approve_review");
     const requestChangesTool = listed.tools.find((tool) => tool.name === "request_changes");
     const getTaskTool = listed.tools.find((tool) => tool.name === "get_task");

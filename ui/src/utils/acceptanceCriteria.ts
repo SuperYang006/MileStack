@@ -3,6 +3,9 @@ import type {
   AcceptanceCriterion,
 } from "../types.js";
 
+export const acceptanceCriteriaPreSubmissionReminder =
+  "提交前检查：条件是否描述交付结果、是否有对应验证方式、是否包含未经确认的实现限制。";
+
 /**
  * Turns the edited criterion lines back into edit entries while keeping the
  * stable id of each criterion the developer edited in place. Lines whose text

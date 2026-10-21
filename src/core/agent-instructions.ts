@@ -9,6 +9,9 @@ const taskClaimValidationRule =
 const taskCompletionRule =
   "After the acceptance criteria and required verification pass, call submit_for_review with an exact 40-character commit SHA and exactly one delivery result per acceptance criterion, filed under the criterion id returned by get_task (met, not_met, or unverifiable; met requires at least one recorded command and result). Submission moves the task to in_review and invalidates the execution runId. A reviewer must then call start_review and conclude the review with approve_review, request_changes, or complete_review using the returned reviewRunId. Required local Git integration is checked against the fixed review commit and the developer-confirmed local target branch. A low-risk task may complete automatically only after that check; medium- and high-risk tasks require developer approval and the same integration gate.";
 
+export const acceptanceCriteriaPreSubmissionCheck =
+  "Before submitting, check that each acceptance criterion describes a delivery result, has a corresponding verification, and does not smuggle in an unconfirmed implementation restriction.";
+
 export const projectAgentInstructionsPath = ".milestack/agent-instructions.md";
 
 export const rootAgentInstructionsFile = "AGENTS.md";
@@ -58,9 +61,14 @@ export function formatProjectAgentInstructions(version: string): string {
     "",
     "- Make task definitions concrete about observable behavior, developer-confirmed examples, external contracts, architectural boundaries, compatibility requirements, and verification outcomes.",
     "- Do not invent or prescribe internal file lists, private functions, helper types, algorithms, test fixture names, or implementation steps unless the developer confirmed them, an existing public contract requires them, or they are necessary for architecture or safety.",
-    "- Prefer “scenario → expected result → verification” over a step-by-step implementation blueprint.",
+    "- Write every acceptance criterion by default as scenario, expected result, and verification, with one independently checkable result per criterion. Scenario is the trigger or starting condition; expected result is the observable behavior, deliverable, or confirmed structural requirement; verification is how to obtain evidence. A simple task may state the same in one sentence without the three labels.",
+    "- Include only developer-confirmed requirements, existing contracts, necessary architecture or safety boundaries, and file or module ownership plus exclusions needed for parallel tasks. Do not write unconfirmed implementation suggestions as acceptance criteria.",
+    "- Example of an unconfirmed implementation suggestion that must not become a criterion: “Create `createPhoneBindingPage` in `domain/phone-binding.js`.” State the confirmed observable result instead.",
+    "- Example of a behavior criterion: “Scenario: a verification code has been sent. Expected result: resend is unavailable during the countdown and available after it ends. Verification: a page behavior test controls time and checks the send button state.”",
+    "- Example of a confirmed structural requirement: when the developer explicitly requires a native Page, keep it in the criterion, for example “Scenario: the page is opened. Expected result: it is a native Page. Verification: inspect the registered page type.”",
     "- Distinguish acceptance constraints from implementation suggestions. Put only confirmed constraints in the objective and acceptance criteria; omit unconfirmed implementation ideas or label them explicitly as non-binding.",
     "- Treat developer-confirmed UI layouts, field order, workflows, state behavior, and API/protocol fields as mandatory acceptance constraints. Do not lock down unconfirmed file lists, private function boundaries, internal JSON nesting, matching algorithms, or test fixture names.",
+    `- ${acceptanceCriteriaPreSubmissionCheck}`,
     "",
     "## Discover, claim, and execute work",
     "",

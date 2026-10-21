@@ -71,6 +71,25 @@ afterEach(() => {
 });
 
 describe("acceptance criterion identities", () => {
+  it("stores a single-sentence criterion without format labels and keeps it through an edit", async () => {
+    const { database, service } = await createService(createTemporaryProject());
+    const criterionText = "点击保存后页面刷新并显示新任务。";
+    const created = createInboxTask(service, [criterionText]);
+    const createdCriterion = created.task.acceptanceCriteria?.[0];
+
+    expect(createdCriterion?.text).toBe(criterionText);
+
+    const edited = service.editInboxTask({
+      projectId: "project-1",
+      taskId: created.task.id,
+      title: "Criterion identity task",
+      acceptanceCriteria: [{ id: createdCriterion?.id, text: criterionText }],
+    });
+    expect(edited.task.acceptanceCriteria).toEqual([createdCriterion]);
+
+    database.close();
+  });
+
   it("gives identical criterion texts distinct ids that must each receive a result", async () => {
     const { database, service } = await createService(createTemporaryProject());
     const created = createInboxTask(service, ["相同标准", "相同标准"]);

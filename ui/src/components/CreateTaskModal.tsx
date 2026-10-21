@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { X, Plus, Terminal, ListPlus } from "lucide-react";
 import type { CreateTaskPayload, RiskLevel } from "../types";
+import { acceptanceCriteriaPreSubmissionReminder } from "../utils/acceptanceCriteria";
 
 interface CreateTaskModalProps {
   isOpen: boolean;
@@ -179,6 +180,9 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
                 placeholder="- 命令执行退出码为 0&#10;- 新增状态流转回归测试并通过"
                 className="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded text-zinc-100 placeholder:text-zinc-600 focus:outline-hidden focus:border-cyan-500/80 transition-colors"
               />
+              <p className="mt-1 text-[10px] text-zinc-500 leading-relaxed">
+                {acceptanceCriteriaPreSubmissionReminder}
+              </p>
             </div>
 
             <div>

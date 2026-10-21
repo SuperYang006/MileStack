@@ -11,7 +11,10 @@ import {
 import { toJSONSchema, z, ZodError } from "zod";
 
 import { DomainError } from "../core/errors.js";
-import { formatMcpInstructions } from "../core/agent-instructions.js";
+import {
+  acceptanceCriteriaPreSubmissionCheck,
+  formatMcpInstructions,
+} from "../core/agent-instructions.js";
 import { runtimeVersion } from "../server/runtime-version.js";
 import {
   createTaskInputSchema,
@@ -85,13 +88,13 @@ const toolDefinitions: Tool[] = [
   {
     name: "create_task",
     description:
-      "Record one newly discovered task in the project's inbox. Optionally include the model label. Agent-created tasks are not ready until a developer confirms and orders them.",
+      `Record one newly discovered task in the project's inbox. Optionally include the model label. Agent-created tasks are not ready until a developer confirms and orders them. ${acceptanceCriteriaPreSubmissionCheck}`,
     inputSchema: toJSONSchema(agentCreateTaskSchema) as Tool["inputSchema"],
   },
   {
     name: "create_tasks",
     description:
-      "Record several newly discovered inbox tasks atomically, optionally including model labels. If one input is invalid, the complete batch is rolled back.",
+      `Record several newly discovered inbox tasks atomically, optionally including model labels. If one input is invalid, the complete batch is rolled back. ${acceptanceCriteriaPreSubmissionCheck}`,
     inputSchema: toJSONSchema(agentCreateTasksSchema) as Tool["inputSchema"],
   },
   {
