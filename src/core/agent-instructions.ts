@@ -7,7 +7,9 @@ const taskClaimRule =
 const taskClaimValidationRule =
   "start_task is the final atomic claim boundary: the server validates task status, developer-confirmed risk, completed dependencies, and concurrent claims. Do not expect get_task to expose runnable.";
 const taskCompletionRule =
-  "After the acceptance criteria and required verification pass, call submit_for_review with an exact 40-character commit SHA and exactly one delivery result per acceptance criterion, filed under the criterion id returned by get_task (met, not_met, or unverifiable; met requires at least one recorded command and result). Submission moves the task to in_review and invalidates the execution runId. A reviewer must then call start_review and conclude the review with approve_review, request_changes, or complete_review using the returned reviewRunId. Required local Git integration is checked against the fixed review commit and the developer-confirmed local target branch. A low-risk task may complete automatically only after that check; medium- and high-risk tasks require developer approval and the same integration gate.";
+  "After the acceptance criteria and required verification pass, call submit_for_review with an exact 40-character commit SHA and exactly one delivery result per acceptance criterion, filed under the criterion id returned by get_task (met, not_met, or unverifiable; met requires at least one recorded command and result). Submission moves the task to in_review and invalidates the execution runId. The implementation agent stops after a successful submit_for_review: do not call start_review, approve_review, request_changes, or complete_review, and do not spawn a subagent, new session, or any other reviewer context to review the task you just submitted. Review starts only after the developer sends that task ID to an independent review agent, which then calls start_review and concludes the review with approve_review, request_changes, or complete_review using the returned reviewRunId. Required local Git integration is checked against the fixed review commit and the developer-confirmed local target branch. A low-risk task may complete automatically only after that check; medium- and high-risk tasks require developer approval and the same integration gate.";
+const integrationRetryRule =
+  "For a task that is already accepted and still waiting for local integration, call check_task_integration with its latest review id after the developer has completed any authorized local merge. This is a separate integration retry, not a continuation of the implementation agent's work after submission.";
 
 export const acceptanceCriteriaPreSubmissionCheck =
   "Before submitting, check that each acceptance criterion describes a delivery result, has a corresponding verification, and does not smuggle in an unconfirmed implementation restriction.";
@@ -93,12 +95,14 @@ export function formatProjectAgentInstructions(version: string): string {
     "- Submit only after the task-specific acceptance criteria and required verification pass. Use submit_for_review with an existing full 40-character commit SHA and record the actual branch and worktree when available.",
     "- Before submission, verify git cat-file -e <commitSha>^{commit}. Uncommitted working-tree changes are not part of the review artifact.",
     "- Submission invalidates the execution runId. Further implementation after requested changes requires a new start_task claim and a new review round.",
+    "- Stop after a successful submit_for_review. Do not call start_review, approve_review, request_changes, or complete_review, and do not spawn a subagent, new session, or any other reviewer context to review the task you just submitted. Review starts only when the developer sends that task ID to an independent review agent.",
     "- For tasks whose confirmed delivery condition requires local Git integration, review or approval alone is not delivery. Completion requires the fixed reviewed commit to be verifiably present on the developer-confirmed local target branch, or the developer to explicitly record that Git integration is not required. This proves local integration only, not push, release, or deployment.",
     "- If the current task workflow cannot record or verify a required integration check, state the missing evidence and next action instead of claiming integration or completion. Do not merge, fetch, push, or deploy without explicit developer authorization.",
     "",
     "## Perform an independent review",
     "",
-    "- Review the exact submitted commit, not an uncommitted working tree or a moving branch tip. Use a separate reviewer context when available; actorLabel alone does not prove independence.",
+    "- Review work is assigned by the developer. Perform this section only after the developer sends the task ID to you as an independent review agent; do not select a pending review task from the queue yourself.",
+    "- Review the exact submitted commit, not an uncommitted working tree or a moving branch tip. actorLabel alone does not prove independence.",
     "- Call start_review(taskId, actorLabel?) to atomically claim the latest pending review and save its independent reviewRunId. Never substitute the implementer's runId.",
     "- A passing review must record the commands actually run and their results. Do not claim verification that was not performed. A review cannot pass while a submitted acceptance criterion is not_met or unverifiable.",
     "- Use approve_review(taskId, reviewRunId, summary, findings, verificationEvidence, actorLabel?) or complete_review with decision=passed to pass a review.",
@@ -118,7 +122,7 @@ export function formatProjectAgentInstructions(version: string): string {
     "",
     "- Keep review artifacts local unless the developer explicitly authorizes a push. Do not push, merge, or modify a shared remote branch without that authorization.",
     "- Do not use short SHAs, invented references, or uncommitted snapshots as review artifacts.",
-    "- Before handing off, confirm the task-specific acceptance criteria, verification results, resolvable commit SHA, review evidence, remaining risks, and next required action are recorded in MileStack.",
+    "- Before handing off, confirm the task-specific acceptance criteria, verification results, resolvable commit SHA, remaining risks, and next required action are recorded in MileStack. Review evidence, findings, and the risk conclusion belong to the independent review agent that receives this task ID from the developer.",
     "",
   ].join("\n");
 }
@@ -140,7 +144,7 @@ export function formatMcpInstructions(): string {
     `Known task: ${knownTaskRule}`,
     `Claiming: ${taskClaimRule} ${taskClaimValidationRule}`,
     `Submission and review: ${taskCompletionRule}`,
-    "If an accepted task is still waiting for local integration, call check_task_integration with its latest review id after the developer has completed any authorized local merge.",
+    `Accepted task awaiting local integration: ${integrationRetryRule}`,
     "Record newly discovered independent work with create_task or create_tasks; agent-created work enters inbox.",
   ].join(" ");
 }
@@ -154,6 +158,6 @@ export function formatKnownTaskBriefInstructions(taskId: string): string {
     "4. If the claim fails, do not modify the project; report the returned error and required action.",
     "5. Record meaningful progress with update_task and the current runId. Include a summary and, when they change, currentStep and nextStep.",
     "6. If you are blocked or cannot continue, call update_task with the current runId, blocker, requiredAction, and handoffNote, then stop. Do not invent a separate release or block tool.",
-    "7. After the acceptance criteria and required verification pass, call submit_for_review with the current runId, an existing full 40-character commit SHA, the actual branch and worktree, and exactly one delivery result per acceptance criterion filed under the criterion id returned by get_task (met, not_met, or unverifiable; met requires recorded evidence). Submission moves the task to in_review and invalidates the runId. A verified low-risk review may complete automatically only after the fixed review commit is verified on the developer-confirmed local target branch; medium- and high-risk tasks also require developer approval. If accepted but waiting for integration, retry with check_task_integration and the latest review id after an authorized local merge.",
+    "7. After the acceptance criteria and required verification pass, call submit_for_review with the current runId, an existing full 40-character commit SHA, the actual branch and worktree, and exactly one delivery result per acceptance criterion filed under the criterion id returned by get_task (met, not_met, or unverifiable; met requires recorded evidence). Submission moves the task to in_review and invalidates the runId. Stop after a successful submit_for_review: do not call start_review, approve_review, request_changes, or complete_review, and do not spawn a subagent, new session, or any other reviewer context to review this task. The developer sends this task ID to an independent review agent for the next step.",
   ].join("\n");
 }

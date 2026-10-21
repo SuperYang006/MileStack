@@ -287,6 +287,22 @@ describe("CLI entry point", () => {
     expect(generatedInstructions).toContain("request_changes");
     expect(generatedInstructions).toContain("approve_review");
     expect(generatedInstructions).toContain("complete_review");
+    expect(generatedInstructions).toContain(
+      "Stop after a successful submit_for_review. Do not call start_review, approve_review, request_changes, or complete_review, and do not spawn a subagent, new session, or any other reviewer context to review the task you just submitted.",
+    );
+    expect(generatedInstructions).toContain(
+      "Review starts only when the developer sends that task ID to an independent review agent.",
+    );
+    expect(generatedInstructions).not.toContain(
+      "Use a separate reviewer context when available",
+    );
+    expect(generatedInstructions).toContain(
+      "Review work is assigned by the developer. Perform this section only after the developer sends the task ID to you as an independent review agent; do not select a pending review task from the queue yourself.",
+    );
+    expect(generatedInstructions).toContain(
+      "Review evidence, findings, and the risk conclusion belong to the independent review agent that receives this task ID from the developer.",
+    );
+    expect(generatedInstructions).not.toContain("resolvable commit SHA, review evidence");
     expect(generatedInstructions).toContain("low");
     expect(generatedInstructions).toContain("medium");
     expect(generatedInstructions).toContain("high");
@@ -466,15 +482,34 @@ describe("CLI entry point", () => {
     expect(mcpInstructions).toContain("Task discovery:");
     expect(mcpInstructions).toContain("Known task:");
     expect(mcpInstructions).toContain("start_task is the final atomic claim boundary");
+    expect(mcpInstructions).toContain(
+      "The implementation agent stops after a successful submit_for_review",
+    );
+    expect(mcpInstructions).toContain(
+      "do not call start_review, approve_review, request_changes, or complete_review",
+    );
+    expect(mcpInstructions).toContain(
+      "do not spawn a subagent, new session, or any other reviewer context",
+    );
+    expect(mcpInstructions).toContain(
+      "Review starts only after the developer sends that task ID to an independent review agent",
+    );
+    expect(mcpInstructions).not.toContain("A reviewer must then call start_review");
+    expect(mcpInstructions).toContain("Accepted task awaiting local integration:");
+    expect(mcpInstructions).toContain("check_task_integration");
     expect(knownTaskInstructions).toContain(`Call get_task directly with taskId \`${taskId}\``);
     expect(knownTaskInstructions).toContain("If the claim fails, do not modify the project");
     expect(knownTaskInstructions).toContain("full 40-character commit SHA");
     expect(knownTaskInstructions).toContain(
-      "A verified low-risk review may complete automatically only after the fixed review commit",
+      "Stop after a successful submit_for_review: do not call start_review, approve_review, request_changes, or complete_review",
     );
     expect(knownTaskInstructions).toContain(
-      "medium- and high-risk tasks also require developer approval",
+      "do not spawn a subagent, new session, or any other reviewer context",
     );
+    expect(knownTaskInstructions).not.toContain(
+      "A verified low-risk review may complete automatically",
+    );
+    expect(knownTaskInstructions).not.toContain("check_task_integration");
     for (const step of [1, 2, 3, 4, 5, 6, 7]) {
       expect(knownTaskInstructions.split(`\n${step}. `).length - 1).toBe(1);
     }
