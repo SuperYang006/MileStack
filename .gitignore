@@ -15,6 +15,7 @@ coverage/
 .grok/
 opencode.json
 .mcp.json
+.claude
 # Local environment and logs
 .env
 .env.*
