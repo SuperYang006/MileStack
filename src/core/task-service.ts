@@ -72,6 +72,7 @@ import {
   ProjectNotFoundError,
   TaskDependenciesIncompleteError,
   TaskDependenciesNotEditableError,
+  TaskEditConflictError,
   TaskHasDependentsError,
   TaskNotFoundError,
   TaskRunOwnershipError,
@@ -896,6 +897,12 @@ export class TaskService {
       if (task.status !== "inbox") {
         throw new InvalidTaskStateError(task.id, "inbox", task.status);
       }
+      if (
+        parsed.expectedUpdatedAt !== undefined &&
+        task.updatedAt !== parsed.expectedUpdatedAt
+      ) {
+        throw new TaskEditConflictError(task.id);
+      }
 
       const projectTasks = transaction.listByProjectId(project.id);
       const projectDependencies = transaction.listDependenciesByProjectId(
@@ -933,14 +940,14 @@ export class TaskService {
         taskId: task.id,
         runId: null,
         type: "progress",
-        summary: "Inbox task definition updated by developer.",
+        summary: `Inbox task definition updated by ${parsed.editedBy}.`,
         completedWork: null,
         currentStep: task.currentStep,
         nextStep: task.nextStep,
         blocker: task.blocker,
         requiredAction: task.requiredAction,
         handoffNote: task.handoffNote,
-        actorLabel: parsed.actorLabel ?? "developer",
+        actorLabel: parsed.actorLabel ?? parsed.editedBy,
         createdAt: now,
       });
     });

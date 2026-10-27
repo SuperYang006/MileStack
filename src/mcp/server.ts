@@ -19,6 +19,7 @@ import { runtimeVersion } from "../server/runtime-version.js";
 import {
   createTaskInputSchema,
   createTasksInputSchema,
+  editInboxTaskInputSchema,
   completeReviewInputSchema,
   submitForReviewInputSchema,
   getProjectStatusInputSchema,
@@ -47,6 +48,17 @@ const agentCreateTaskSchema = createTaskInputSchema.omit({
 const agentCreateTasksSchema = z
   .object({ tasks: z.array(agentCreateTaskSchema).min(1) })
   .strict();
+const agentEditInboxTaskSchema = editInboxTaskInputSchema
+  .omit({ projectId: true, riskLevel: true, editedBy: true })
+  .extend({
+    expectedUpdatedAt: z
+      .string()
+      .trim()
+      .min(1)
+      .describe(
+        "Task updatedAt read from get_task; the edit is rejected if the task changed since then.",
+      ),
+  });
 const projectStatusArgumentsSchema = getProjectStatusInputSchema.omit({
   projectId: true,
   since: true,
@@ -98,6 +110,12 @@ const toolDefinitions: Tool[] = [
     inputSchema: toJSONSchema(agentCreateTasksSchema) as Tool["inputSchema"],
   },
   {
+    name: "edit_inbox_task",
+    description:
+      "Correct the definition of an inbox task created by you or another agent. Call get_task first and pass the task's latest updatedAt with the complete title, objective, acceptance criteria, and dependencyIds. The edit is rejected if the task changed since it was read, cannot change risk level or risk confirmation, and only works while the task is in inbox. Use update_task for run-scoped progress instead.",
+    inputSchema: toJSONSchema(agentEditInboxTaskSchema) as Tool["inputSchema"],
+  },
+  {
     name: "start_task",
     description:
       "After get_task, atomically claim a runnable ready task. Optionally include the model label. Save the returned runId and include it in every subsequent execution update.",
@@ -106,7 +124,7 @@ const toolDefinitions: Tool[] = [
   {
     name: "update_task",
     description:
-      "Record meaningful progress for a running task. The runId must belong to the current execution.",
+      "Record run-scoped progress for a running task. The runId must belong to the current execution. Use edit_inbox_task to correct an inbox task definition instead.",
     inputSchema: toJSONSchema(updateTaskArgumentsSchema) as Tool["inputSchema"],
   },
   {
@@ -252,6 +270,16 @@ export function createMcpServer(
             })),
           });
           return jsonResult(context.service.createTasks(input));
+        }
+        case "edit_inbox_task": {
+          const parsed = agentEditInboxTaskSchema.parse(args);
+          return jsonResult(
+            context.service.editInboxTask({
+              ...parsed,
+              projectId: context.project.id,
+              editedBy: "agent",
+            }),
+          );
         }
         case "start_task": {
           const parsed = startTaskArgumentsSchema.parse(args);

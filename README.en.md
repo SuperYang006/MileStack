@@ -38,7 +38,7 @@ flowchart LR
 A typical project moves through a simple loop:
 
 1. The developer and a strong reasoning model discuss the requirements and solution until the objective and boundaries are agreed.
-2. The AI calls MileStack to turn that agreement into structured tasks instead of asking the developer to enter each task manually.
+2. The AI calls MileStack to turn that agreement into structured tasks and can correct a task definition while it is still in the inbox, instead of asking the developer to enter each task manually.
 3. The developer reviews the AI-created inbox tasks and confirms their risk, dependencies, and order.
 4. With a task ID, the implementation agent loads that task directly. Without one, it queries project status, selects the first task in `next` with `runnable = true`, and calls `start_task` to establish execution ownership.
 5. The implementation agent records milestones, blockers, and handoff context, then submits a fixed Git commit.

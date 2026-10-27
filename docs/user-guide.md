@@ -207,10 +207,11 @@ milestack mcp --discover
 | --- | --- |
 | Query | `get_project_status`, `list_tasks`, `get_task` |
 | Task creation | `create_task`, `create_tasks` |
+| Inbox editing | `edit_inbox_task` |
 | Execution | `start_task`, `update_task`, `submit_for_review` |
 | Review | `start_review`, `approve_review`, `request_changes`, `complete_review`, `check_task_integration` |
 
-Agent-created tasks enter the inbox. A developer must confirm their risk and queue position before they become claimable.
+Agent-created tasks enter the inbox. A developer must confirm their risk and queue position before they become claimable. `edit_inbox_task` requires the latest `updatedAt` from `get_task`, rejects an edit when the task changed since it was read, cannot change risk, and only works on inbox tasks.
 
 `get_task` defaults to the `working` view, which keeps the full task definition and current work context. Pass `view: "full"` to inspect every immutable task event and review record. The HTTP task-detail endpoint used by the Web UI always returns the full timeline.
 

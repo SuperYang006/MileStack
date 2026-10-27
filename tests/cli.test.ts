@@ -270,6 +270,12 @@ describe("CLI entry point", () => {
       "start_task is the final atomic claim boundary",
     );
     expect(generatedInstructions).toContain("Do not expect get_task to expose runnable");
+    expect(generatedInstructions).toContain("edit_inbox_task");
+    expect(generatedInstructions).toContain("expectedUpdatedAt");
+    expect(generatedInstructions).toContain(
+      "cannot change risk level or risk confirmation",
+    );
+    expect(generatedInstructions).toContain("use update_task for run-scoped progress");
     expect(generatedInstructions).not.toContain(
       "确认任务状态为 ready 且 runnable=true 后调用 start_task",
     );
@@ -478,6 +484,10 @@ describe("CLI entry point", () => {
     }
     expect(integrationInstructions).toContain("Run milestack init in every local checkout");
     expect(mcpInstructions).toContain("Task creation:");
+    expect(mcpInstructions).toContain("Inbox edits:");
+    expect(mcpInstructions).toContain("edit_inbox_task");
+    expect(mcpInstructions).toContain("pass the returned updatedAt as expectedUpdatedAt");
+    expect(mcpInstructions).toContain("cannot change risk level or risk confirmation");
     expect(mcpInstructions).toContain("Task discovery:");
     expect(mcpInstructions).toContain("Known task:");
     expect(mcpInstructions).toContain("start_task is the final atomic claim boundary");

@@ -41,6 +41,15 @@ export class TaskDependenciesNotEditableError extends DomainError {
   }
 }
 
+export class TaskEditConflictError extends DomainError {
+  constructor(taskId: string) {
+    super(
+      "TASK_EDIT_CONFLICT",
+      `Task '${taskId}' changed since it was read. Call get_task again and retry the edit with the latest updatedAt.`,
+    );
+  }
+}
+
 export class InvalidTaskStateError extends DomainError {
   constructor(taskId: string, expected: string, actual: string) {
     super(

@@ -8,6 +8,8 @@ const taskClaimValidationRule =
   "start_task is the final atomic claim boundary: the server validates task status, developer-confirmed risk, completed dependencies, and concurrent claims. Do not expect get_task to expose runnable.";
 const taskCreationRule =
   "Create inbox tasks only for independently verifiable outcomes. State a verifiable objective and acceptance criteria that each describe one independently checkable result as scenario, expected result, and verification. Preserve developer-confirmed examples and UI hierarchy, ordering, and state behavior as acceptance constraints. Include same-project dependencyIds and explain each dependency in the objective or acceptance criteria. State file or module ownership and exclusions only for planned parallel work, and do not copy the general workflow, review, risk, or Git rules into each task.";
+const inboxEditRule =
+  "Use edit_inbox_task only to correct an inbox task definition. Call get_task first and pass the returned updatedAt as expectedUpdatedAt; the edit is rejected if the task changed since it was read, so call get_task again before retrying. This tool cannot change risk level or risk confirmation and cannot edit ready or later tasks. Use update_task for run-scoped progress instead.";
 const taskSubmissionRule =
   "After the acceptance criteria and required verification pass, call submit_for_review with an exact 40-character commit SHA and exactly one delivery result per acceptance criterion, filed under the criterion id returned by get_task (met, not_met, or unverifiable; met requires at least one recorded command and result). Submission moves the task to in_review and invalidates the execution runId.";
 const implementationStopRule =
@@ -89,6 +91,7 @@ export function formatProjectAgentInstructions(version: string): string {
     "- Use the current runId for update_task and submit_for_review. Never reuse a credential after submission, requested changes, or reopen.",
     "- Record meaningful milestones and handoffs, not every command, tool call, or individual file edit.",
     "- Do not expand scope silently. Put related work into the active task only when it fits the objective and acceptance criteria; otherwise create an inbox task.",
+    "- To correct an inbox task definition, call get_task for the latest updatedAt, then call edit_inbox_task with the complete definition and that updatedAt as expectedUpdatedAt. The edit is rejected if the task changed since it was read. This tool cannot change risk level or risk confirmation and cannot edit ready or later tasks; use update_task for run-scoped progress instead.",
     "- actorLabel is optional. Use agent when no model label is available. Labels are audit metadata only and do not establish identity, authority, or reviewer independence.",
     "",
     "## Isolate parallel implementations",
@@ -149,6 +152,7 @@ export function formatAgentIntegrationInstructions(): string {
 export function formatMcpInstructions(): string {
   return [
     `Task creation: ${taskCreationRule} Record newly discovered independent work with create_task or create_tasks; agent-created work enters inbox for developer review and prioritization.`,
+    `Inbox edits: ${inboxEditRule}`,
     `Task discovery: ${taskDiscoveryRule}`,
     `Known task: ${knownTaskRule}`,
     `Claiming: ${taskClaimRule} ${taskClaimValidationRule}`,

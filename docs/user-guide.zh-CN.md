@@ -207,10 +207,11 @@ milestack mcp --discover
 | --- | --- |
 | 查询 | `get_project_status`、`list_tasks`、`get_task` |
 | 创建任务 | `create_task`、`create_tasks` |
+| 编辑草稿 | `edit_inbox_task` |
 | 执行 | `start_task`、`update_task`、`submit_for_review` |
 | 审核 | `start_review`、`approve_review`、`request_changes`、`complete_review`、`check_task_integration` |
 
-Agent 创建的任务会进入草稿箱。开发者确认风险和队列位置后，任务才可以被领取。
+Agent 创建的任务会进入草稿箱。开发者确认风险和队列位置后，任务才可以被领取。`edit_inbox_task` 必须携带 `get_task` 返回的最新 `updatedAt`；任务在读取后被修改时编辑会被拒绝，该工具不能修改风险，也只能编辑草稿箱任务。
 
 `get_task` 默认返回 `working` 视图，完整保留任务定义并提供当前工作上下文。传入 `view: "full"` 可查看全部不可变任务事件和审核记录。WebUI 使用的 HTTP 任务详情接口始终返回完整时间线。
 

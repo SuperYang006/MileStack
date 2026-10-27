@@ -624,6 +624,15 @@ export const editInboxTaskInputSchema = z
     acceptanceCriteria: z.array(acceptanceCriteriaEditEntrySchema).default([]),
     dependencyIds: dependencyIdsSchema.default([]),
     riskLevel: riskLevelSchema.optional(),
+    expectedUpdatedAt: z
+      .string()
+      .trim()
+      .min(1)
+      .optional()
+      .describe(
+        "Task updatedAt read from get_task; the edit is rejected if the task changed since then.",
+      ),
+    editedBy: z.enum(["developer", "agent"]).default("developer"),
     actorLabel: z.string().trim().min(1).optional(),
   })
   .strict();

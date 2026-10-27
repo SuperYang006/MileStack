@@ -12,6 +12,7 @@ import {
   ProjectNotFoundError,
   TaskRunOwnershipError,
   TaskDependenciesNotEditableError,
+  TaskEditConflictError,
   TaskHasDependentsError,
   TaskNotFoundError,
   TaskRiskNotConfirmedError,
@@ -929,6 +930,65 @@ describe("TaskService", () => {
         title: "Non-existent",
       }),
     ).toThrow(TaskNotFoundError);
+
+    database.close();
+  });
+
+  it("rejects a stale inbox edit and attributes an agent edit in the event history", async () => {
+    let clock = 0;
+    const { database, service } = await createService(createTemporaryProject(), {
+      now: () => new Date(Date.UTC(2026, 9, 11, 12, 0, clock++)),
+    });
+    const inbox = service.createTask({
+      projectId: "project-1",
+      title: "Draft",
+      acceptanceCriteria: ["Original criterion"],
+      createdBy: "agent",
+      status: "inbox",
+    });
+
+    const first = service.editInboxTask({
+      projectId: "project-1",
+      taskId: inbox.task.id,
+      title: "Agent revision",
+      acceptanceCriteria: ["Original criterion"],
+      expectedUpdatedAt: inbox.task.updatedAt,
+      editedBy: "agent",
+      actorLabel: "edit-model",
+    });
+    expect(first.events.at(-1)).toMatchObject({
+      summary: "Inbox task definition updated by agent.",
+      actorLabel: "edit-model",
+    });
+
+    const developerEdit = service.editInboxTask({
+      projectId: "project-1",
+      taskId: inbox.task.id,
+      title: "Developer revision",
+      actorLabel: "developer",
+    });
+    expect(developerEdit.task.updatedAt).not.toBe(first.task.updatedAt);
+
+    expect(() =>
+      service.editInboxTask({
+        projectId: "project-1",
+        taskId: inbox.task.id,
+        title: "Stale agent revision",
+        expectedUpdatedAt: first.task.updatedAt,
+        editedBy: "agent",
+      }),
+    ).toThrow(TaskEditConflictError);
+
+    const current = service.getTask({
+      projectId: "project-1",
+      taskId: inbox.task.id,
+      view: "full",
+    });
+    expect(current.task.title).toBe("Developer revision");
+    expect(current.events.at(-1)).toMatchObject({
+      summary: "Inbox task definition updated by developer.",
+      actorLabel: "developer",
+    });
 
     database.close();
   });

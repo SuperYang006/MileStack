@@ -88,6 +88,11 @@ describe("MCP task tools", () => {
     expect(instructions).toContain("check the work against the repository root AGENTS.md");
     expect(instructions).toContain("severity does not permit a pass");
     expect(instructions).toContain("Task creation:");
+    expect(instructions).toContain("Inbox edits:");
+    expect(instructions).toContain("edit_inbox_task");
+    expect(instructions).toContain("pass the returned updatedAt as expectedUpdatedAt");
+    expect(instructions).toContain("cannot change risk level or risk confirmation");
+    expect(instructions).toContain("Use update_task for run-scoped progress");
     expect(instructions).not.toMatch(/[\u3400-\u9fff]/u);
 
     const listed = await client.listTools();
@@ -98,6 +103,7 @@ describe("MCP task tools", () => {
       "get_task",
       "create_task",
       "create_tasks",
+      "edit_inbox_task",
       "start_task",
       "update_task",
       "submit_for_review",
@@ -148,6 +154,24 @@ describe("MCP task tools", () => {
     expect(createTasksItems?.dependencyIds?.description).toContain("Same-project task ids");
     expect(createTasksItems?.riskLevel?.description).toContain("Risk level");
     expect(createTasksItems?.sourceTaskId?.description).toContain("follow-up work");
+    const editInboxTaskTool = listed.tools.find((tool) => tool.name === "edit_inbox_task");
+    expect(editInboxTaskTool?.description).toContain("inbox task");
+    expect(editInboxTaskTool?.description).toContain("get_task");
+    expect(editInboxTaskTool?.description).toContain("updatedAt");
+    expect(editInboxTaskTool?.description).toContain("risk");
+    expect(editInboxTaskTool?.description).toContain("update_task");
+    expect(editInboxTaskTool?.inputSchema).toMatchObject({
+      required: expect.arrayContaining(["taskId", "title", "expectedUpdatedAt"]),
+    });
+    expect(editInboxTaskTool?.inputSchema.properties).toMatchObject({
+      expectedUpdatedAt: { description: expect.stringContaining("get_task") },
+    });
+    expect(editInboxTaskTool?.inputSchema.properties).not.toHaveProperty("riskLevel");
+    expect(editInboxTaskTool?.inputSchema.properties).not.toHaveProperty("riskConfirmed");
+    expect(editInboxTaskTool?.inputSchema.properties).not.toHaveProperty("editedBy");
+    const updateTaskTool = listed.tools.find((tool) => tool.name === "update_task");
+    expect(updateTaskTool?.description).toContain("run-scoped progress");
+    expect(updateTaskTool?.description).toContain("edit_inbox_task");
     const startReviewTool = listed.tools.find((tool) => tool.name === "start_review");
     expect(startReviewTool?.description).toContain("confirm phase=review");
     expect(startReviewTool?.description).toContain(
@@ -419,6 +443,311 @@ describe("MCP task tools", () => {
       status: "passed",
       reviewerActorLabel: "agent",
       verificationEvidence: [{ command: "pnpm test", result: "passed" }],
+    });
+
+    await client.close();
+    await server.close();
+    context.database.close();
+  });
+
+  it("edits an inbox definition with optimistic concurrency and agent attribution", async () => {
+    const projectRoot = createTemporaryProject();
+    const initialized = await initializeProject(projectRoot);
+    initialized.database.close();
+    const context = await openProjectContext(projectRoot);
+    const dependency = context.service.createTask({
+      projectId: context.project.id,
+      title: "Dependency",
+      createdBy: "developer",
+      status: "ready",
+    });
+    const draft = context.service.createTask({
+      projectId: context.project.id,
+      title: "Agent draft",
+      objective: "Old objective",
+      acceptanceCriteria: ["Keep this criterion", "Replace this criterion"],
+      riskLevel: "high",
+      createdBy: "agent",
+      status: "inbox",
+    });
+    const developerDraft = context.service.createTask({
+      projectId: context.project.id,
+      title: "Developer draft",
+      createdBy: "developer",
+      status: "inbox",
+    });
+    const server = createMcpServer(context);
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const client = new Client({ name: "edit-test-client", version: "1.0.0" });
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+
+    const before = JSON.parse(
+      textContent(
+        await client.callTool({
+          name: "get_task",
+          arguments: { taskId: draft.task.id, view: "full" },
+        }),
+      ),
+    );
+    const keptCriterionId = before.task.acceptanceCriteria[0].id;
+
+    const editedResult = await client.callTool({
+      name: "edit_inbox_task",
+      arguments: {
+        taskId: draft.task.id,
+        title: "Refined agent draft",
+        objective: "Refined objective",
+        acceptanceCriteria: [
+          { id: keptCriterionId, text: "Keep this criterion" },
+          "New criterion",
+        ],
+        dependencyIds: [dependency.task.id],
+        expectedUpdatedAt: before.task.updatedAt,
+        actorLabel: "edit-model",
+      },
+    });
+    expect(editedResult.isError).toBeFalsy();
+    const edited = JSON.parse(textContent(editedResult));
+    expect(edited.task).toMatchObject({
+      id: draft.task.id,
+      title: "Refined agent draft",
+      objective: "Refined objective",
+      status: "inbox",
+      queuePosition: null,
+      riskLevel: before.task.riskLevel,
+      riskConfirmed: before.task.riskConfirmed,
+    });
+    expect(edited.task.acceptanceCriteria.map((criterion: { text: string }) => criterion.text)).toEqual([
+      "Keep this criterion",
+      "New criterion",
+    ]);
+    expect(edited.task.acceptanceCriteria[0].id).toBe(keptCriterionId);
+    expect(edited.task.dependencyIds).toEqual([dependency.task.id]);
+
+    const afterEdit = JSON.parse(
+      textContent(
+        await client.callTool({
+          name: "get_task",
+          arguments: { taskId: draft.task.id, view: "full" },
+        }),
+      ),
+    );
+    expect(afterEdit.task.acceptanceCriteria[0].id).toBe(keptCriterionId);
+    expect(afterEdit.events).toHaveLength(before.events.length + 1);
+    expect(afterEdit.events.at(-1)).toMatchObject({
+      type: "progress",
+      summary: "Inbox task definition updated by agent.",
+      actorLabel: "edit-model",
+      runId: null,
+    });
+
+    const secondEdit = await client.callTool({
+      name: "edit_inbox_task",
+      arguments: {
+        taskId: draft.task.id,
+        title: "Refined agent draft again",
+        objective: "Refined objective again",
+        acceptanceCriteria: ["Keep this criterion", "New criterion"],
+        dependencyIds: [dependency.task.id],
+        expectedUpdatedAt: afterEdit.task.updatedAt,
+      },
+    });
+    const secondEditValue = JSON.parse(textContent(secondEdit));
+    expect(secondEditValue.events.at(-1)).toMatchObject({
+      summary: "Inbox task definition updated by agent.",
+      actorLabel: "agent",
+    });
+
+    const developerBefore = JSON.parse(
+      textContent(
+        await client.callTool({
+          name: "get_task",
+          arguments: { taskId: developerDraft.task.id, view: "full" },
+        }),
+      ),
+    );
+    context.service.editInboxTask({
+      projectId: context.project.id,
+      taskId: developerDraft.task.id,
+      title: "Developer edited draft",
+      actorLabel: "developer",
+    });
+    const developerAfter = JSON.parse(
+      textContent(
+        await client.callTool({
+          name: "get_task",
+          arguments: { taskId: developerDraft.task.id, view: "full" },
+        }),
+      ),
+    );
+    expect(developerAfter.events).toHaveLength(developerBefore.events.length + 1);
+    expect(developerAfter.events.at(-1)).toMatchObject({
+      summary: "Inbox task definition updated by developer.",
+      actorLabel: "developer",
+    });
+
+    await client.close();
+    await server.close();
+    context.database.close();
+  });
+
+  it("rejects inbox edits for every non-inbox status without changing the task", async () => {
+    const projectRoot = createTemporaryProject();
+    const initialized = await initializeProject(projectRoot);
+    initialized.database.close();
+    const context = await openProjectContext(projectRoot);
+    const ready = context.service.createTask({
+      projectId: context.project.id,
+      title: "Ready task",
+      createdBy: "developer",
+      status: "ready",
+    });
+    const running = context.service.createTask({
+      projectId: context.project.id,
+      title: "Running task",
+      createdBy: "developer",
+      status: "ready",
+    });
+    context.service.startTask({
+      projectId: context.project.id,
+      taskId: running.task.id,
+    });
+    const inReview = context.service.createTask({
+      projectId: context.project.id,
+      title: "Review task",
+      createdBy: "developer",
+      status: "ready",
+    });
+    const reviewRun = context.service.startTask({
+      projectId: context.project.id,
+      taskId: inReview.task.id,
+    });
+    context.service.submitForReview({
+      projectId: context.project.id,
+      taskId: inReview.task.id,
+      runId: reviewRun.runId,
+      commitSha: "2222222222222222222222222222222222222222",
+      summary: "Submitted",
+    });
+    const completed = context.service.createTask({
+      projectId: context.project.id,
+      title: "Completed task",
+      createdBy: "agent",
+      status: "inbox",
+    });
+    context.repository.transaction((transaction) => {
+      transaction.updateTask(completed.task.id, {
+        status: "completed",
+        completedAt: "2026-10-27T16:40:00.000Z",
+        updatedAt: "2026-10-27T16:40:00.000Z",
+      });
+    });
+
+    const server = createMcpServer(context);
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const client = new Client({ name: "edit-status-test-client", version: "1.0.0" });
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+
+    for (const taskId of [ready.task.id, running.task.id, inReview.task.id, completed.task.id]) {
+      const before = JSON.parse(
+        textContent(
+          await client.callTool({
+            name: "get_task",
+            arguments: { taskId, view: "full" },
+          }),
+        ),
+      );
+      const rejected = await client.callTool({
+        name: "edit_inbox_task",
+        arguments: {
+          taskId,
+          title: "Should not be applied",
+          expectedUpdatedAt: before.task.updatedAt,
+        },
+      });
+      expect(rejected.isError).toBe(true);
+      expect(textContent(rejected)).toContain("INVALID_TASK_STATE");
+
+      const after = JSON.parse(
+        textContent(
+          await client.callTool({
+            name: "get_task",
+            arguments: { taskId, view: "full" },
+          }),
+        ),
+      );
+      expect(after.task).toEqual(before.task);
+      expect(after.events).toEqual(before.events);
+    }
+
+    await client.close();
+    await server.close();
+    context.database.close();
+  });
+
+  it("rejects a stale inbox edit after a developer change", async () => {
+    const projectRoot = createTemporaryProject();
+    const initialized = await initializeProject(projectRoot);
+    initialized.database.close();
+    const context = await openProjectContext(projectRoot);
+    const draft = context.service.createTask({
+      projectId: context.project.id,
+      title: "Draft before conflict",
+      acceptanceCriteria: ["Original criterion"],
+      createdBy: "agent",
+      status: "inbox",
+    });
+    const server = createMcpServer(context);
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const client = new Client({ name: "edit-conflict-test-client", version: "1.0.0" });
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+
+    const before = JSON.parse(
+      textContent(
+        await client.callTool({
+          name: "get_task",
+          arguments: { taskId: draft.task.id, view: "full" },
+        }),
+      ),
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    context.service.editInboxTask({
+      projectId: context.project.id,
+      taskId: draft.task.id,
+      title: "Developer changed the draft",
+      actorLabel: "developer",
+    });
+
+    const rejected = await client.callTool({
+      name: "edit_inbox_task",
+      arguments: {
+        taskId: draft.task.id,
+        title: "Agent overwrite",
+        acceptanceCriteria: ["Agent overwrite criterion"],
+        expectedUpdatedAt: before.task.updatedAt,
+      },
+    });
+    expect(rejected.isError).toBe(true);
+    expect(textContent(rejected)).toContain("TASK_EDIT_CONFLICT");
+    expect(textContent(rejected)).toContain("get_task");
+
+    const after = JSON.parse(
+      textContent(
+        await client.callTool({
+          name: "get_task",
+          arguments: { taskId: draft.task.id, view: "full" },
+        }),
+      ),
+    );
+    expect(after.task.title).toBe("Developer changed the draft");
+    expect(after.task.acceptanceCriteria).toEqual([]);
+    expect(after.events.at(-1)).toMatchObject({
+      summary: "Inbox task definition updated by developer.",
+      actorLabel: "developer",
     });
 
     await client.close();

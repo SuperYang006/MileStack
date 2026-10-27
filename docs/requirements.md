@@ -104,6 +104,8 @@ V0 不使用 AI 自动规划或复杂优先级算法。开发者通过调整待�
 
 这些任务不会直接进入执行队列。开发者负责检查任务是否准确，确认风险与依赖，并决定正式待办顺序。开发者仍可在页面手动创建或编辑任务，但这不是典型工作流的主要录入方式。
 
+Agent 也可通过 `edit_inbox_task` 修正已经记录的 `inbox` 任务定义，但必须携带 `get_task` 返回的最新 `updatedAt`；服务端用该值做乐观并发校验，避免覆盖开发者的页面修改。该工具不暴露风险字段，也不能用于 `ready` 及之后的任务。
+
 MileStack 只负责保存和推进双方已确认的任务，不在 V0 中自行生成需求、规划项目或替开发者决定优先级。
 
 ### 5.3 新 AI 会话获取任务
@@ -576,6 +578,7 @@ V0 暂不实现请求幂等键和通用乐观锁；出现实际重复写入或�
 
 - `create_task`：记录一个新任务；Agent 创建时默认进入 `inbox`；
 - `create_tasks`：在一个请求中批量创建 `inbox` 任务，用于旧项目基线和集中记录新工作；
+- `edit_inbox_task`：仅修正 `inbox` 任务定义；输入携带 `get_task` 返回的 `updatedAt` 做乐观并发校验，不包含风险字段，不适用于 `ready` 及之后状态；
 - `confirm_task`：将 `inbox` 任务确认为 `ready`，主要供开发者界面使用。
 
 ### 10.3 执行
@@ -612,6 +615,7 @@ MileStack 应提供一段可加入项目 `AGENTS.md` 或其他 AI 指令文件�
 - 因输入、依赖或外部条件无法继续时调用 block_task。
 - 阻塞解除且继续原任务时调用 resume_task。
 - 执行中发现的新工作通过 create_task 记录到 inbox，不要写入新的任务文档。
+- 发现已有 `inbox` 任务定义有误时，先调用 `get_task` 取得最新 `updatedAt`，再调用 `edit_inbox_task` 修正；不得修改风险等级，也不得编辑 `ready` 及之后的任务。
 - 无法继续或需要其他 AI 接手时调用 release_task，并写明交接信息。
 - 只有在验收条件满足且验证完成后调用 `submit_for_review`，并为每条验收标准按 `get_task` 返回的标准标识记录满足、不满足或无法验证及实际证据；低风险审核通过也只有在本地集成检查通过后才自动完成，中高风险还需开发者批准。若已验收但集成待确认，使用最新审核 ID 调用 `check_task_integration` 重试。
 - 审核入口：只有开发者明确提供待审核任务的 `taskId` 后，审核 Agent 才调用 `get_task` 确认 `phase=review`，再调用 `start_review` 保存 `reviewRunId`；不得自行选择待审核任务。审核提交的精确 commit，逐条独立验证验收条件，上一轮被退回时逐条关闭发现，最后用 `approve_review`、`request_changes` 或 `complete_review` 收尾后停止。提交 `complete_review` 时必须携带该凭证和验证命令结果。

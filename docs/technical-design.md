@@ -410,6 +410,8 @@ milestack init --project <absolute-checkout>
 
 V0 的 `create_tasks` 是多条 `create_task` 的事务封装。默认创建 `inbox` 任务，单条输入失败时整个批次回滚并返回具体错误。
 
+Agent 可通过 MCP 的 `edit_inbox_task` 修正已记录的 `inbox` 任务定义。编辑必须携带 `get_task` 返回的 `updatedAt`，服务端据此做乐观并发校验，避免覆盖开发者在页面中的修改；该工具不暴露风险字段，`ready` 及之后的任务不能通过它编辑。
+
 ### 8.2 自举顺序
 
 MileStack 不等待完整 Web 页面完成后才开始自用。实现以下自举内核后，应立即在当前仓库执行 `milestack init`：
