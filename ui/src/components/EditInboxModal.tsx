@@ -276,7 +276,7 @@ export const EditInboxModal: React.FC<EditInboxModalProps> = ({
                   className={`flex flex-col p-2 rounded border cursor-pointer transition-colors ${
                     riskLevel === "low"
                       ? "border-emerald-600/70 bg-emerald-950/30 text-emerald-300"
-                      : "border-zinc-850 bg-zinc-900/50 text-zinc-500 hover:text-zinc-300"
+                      : "border-zinc-800 bg-zinc-900/50 text-zinc-500 hover:text-zinc-300"
                   }`}
                 >
                   <div className="flex items-center space-x-1.5 mb-1">
@@ -299,7 +299,7 @@ export const EditInboxModal: React.FC<EditInboxModalProps> = ({
                   className={`flex flex-col p-2 rounded border cursor-pointer transition-colors ${
                     riskLevel === "medium"
                       ? "border-amber-600/70 bg-amber-950/30 text-amber-300"
-                      : "border-zinc-850 bg-zinc-900/50 text-zinc-500 hover:text-zinc-300"
+                      : "border-zinc-800 bg-zinc-900/50 text-zinc-500 hover:text-zinc-300"
                   }`}
                 >
                   <div className="flex items-center space-x-1.5 mb-1">
@@ -322,7 +322,7 @@ export const EditInboxModal: React.FC<EditInboxModalProps> = ({
                   className={`flex flex-col p-2 rounded border cursor-pointer transition-colors ${
                     riskLevel === "high"
                       ? "border-rose-600/70 bg-rose-950/30 text-rose-300"
-                      : "border-zinc-850 bg-zinc-900/50 text-zinc-500 hover:text-zinc-300"
+                      : "border-zinc-800 bg-zinc-900/50 text-zinc-500 hover:text-zinc-300"
                   }`}
                 >
                   <div className="flex items-center space-x-1.5 mb-1">
@@ -352,7 +352,7 @@ export const EditInboxModal: React.FC<EditInboxModalProps> = ({
                 type="button"
                 onClick={onClose}
                 disabled={isSubmitting}
-                className="px-3 py-1.5 text-zinc-400 hover:text-zinc-200 bg-zinc-900 hover:bg-zinc-850 border border-zinc-800 rounded transition-colors"
+                className="px-3 py-1.5 text-zinc-400 hover:text-zinc-200 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded transition-colors"
               >
                 取消
               </button>

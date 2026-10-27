@@ -77,7 +77,7 @@ export const BriefingModal: React.FC<BriefingModalProps> = ({
               <div className="text-[11px] text-zinc-500 mb-2">
                 可直接将以下包含完整任务目标与验收条件的简报复制粘贴给 AI 编程助手：
               </div>
-              <pre className="p-3.5 bg-zinc-900/90 border border-zinc-850 text-zinc-200 rounded text-xs overflow-x-auto whitespace-pre-wrap leading-relaxed selection:bg-cyan-500/30">
+              <pre className="p-3.5 bg-zinc-900/90 border border-zinc-800 text-zinc-200 rounded text-xs overflow-x-auto whitespace-pre-wrap leading-relaxed selection:bg-cyan-500/30">
                 {briefingText}
               </pre>
             </>
@@ -89,7 +89,7 @@ export const BriefingModal: React.FC<BriefingModalProps> = ({
           <div className="flex items-center space-x-2">
             <button
               onClick={onClose}
-              className="px-3 py-1 text-xs text-zinc-400 hover:text-zinc-200 bg-zinc-900 hover:bg-zinc-850 border border-zinc-850 rounded transition-colors"
+              className="px-3 py-1 text-xs text-zinc-400 hover:text-zinc-200 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded transition-colors"
             >
               关闭
             </button>

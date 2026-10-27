@@ -44,7 +44,7 @@ export const RISK_OPTIONS: readonly RiskOptionConfig[] = [
     dotColorClass: "bg-rose-400 shadow-[0_0_6px_rgba(244,63,94,0.6)]",
     textColorClass: "text-rose-400 group-hover/item:text-rose-300",
     hoverBgClass: "hover:bg-rose-950/40",
-    hoverBorderClass: "hover:border-rose-850/60",
+    hoverBorderClass: "hover:border-rose-900/60",
   },
 ] as const;
 

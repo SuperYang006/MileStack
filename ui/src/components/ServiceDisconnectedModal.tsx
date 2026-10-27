@@ -69,7 +69,7 @@ export const ServiceDisconnectedModal: React.FC<ServiceDisconnectedModalProps> =
             type="button"
             onClick={onClose}
             disabled={isReconnecting}
-            className="px-3 py-1.5 text-zinc-400 hover:text-zinc-200 bg-zinc-900 hover:bg-zinc-850 border border-zinc-850 rounded transition-colors disabled:opacity-50"
+            className="px-3 py-1.5 text-zinc-400 hover:text-zinc-200 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded transition-colors disabled:opacity-50"
           >
             关闭
           </button>

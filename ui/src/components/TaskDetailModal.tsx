@@ -264,11 +264,11 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
               <div>
                 <h2 className="text-sm font-bold text-zinc-100">{details.task.title}</h2>
                 {details.task.objective ? (
-                  <p className="mt-2 text-zinc-400 bg-zinc-900/70 p-3 rounded border border-zinc-850 leading-relaxed">
+                  <p className="mt-2 text-zinc-400 bg-zinc-900/70 p-3 rounded border border-zinc-800 leading-relaxed">
                     {details.task.objective}
                   </p>
                 ) : (
-                  <p className="mt-2 text-zinc-500 italic bg-zinc-900/30 p-2.5 rounded border border-zinc-850/80 leading-relaxed text-[11px]">
+                  <p className="mt-2 text-zinc-500 italic bg-zinc-900/30 p-2.5 rounded border border-zinc-800/80 leading-relaxed text-[11px]">
                     未提供详细目标说明
                   </p>
                 )}
@@ -458,7 +458,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                   <span>验收条件</span>
                 </h3>
                 {details.task.acceptanceCriteria && details.task.acceptanceCriteria.length > 0 ? (
-                  <div className="space-y-1 bg-zinc-900/40 p-2.5 rounded border border-zinc-850">
+                  <div className="space-y-1 bg-zinc-900/40 p-2.5 rounded border border-zinc-800">
                     {details.task.acceptanceCriteria.map((item) => (
                       <div key={item.id} className="flex items-start space-x-2 text-zinc-300">
                         <span className="text-cyan-400 select-none">[x]</span>
@@ -467,7 +467,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                     ))}
                   </div>
                 ) : (
-                  <div className="bg-zinc-900/30 p-2.5 rounded border border-zinc-850 text-zinc-500 italic text-[11px]">
+                  <div className="bg-zinc-900/30 p-2.5 rounded border border-zinc-800 text-zinc-500 italic text-[11px]">
                     未指定具体验收条件
                   </div>
                 )}
@@ -479,7 +479,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                   <GitFork className="w-3.5 h-3.5 text-zinc-400" />
                   <span>前置任务</span>
                 </h3>
-                <div className="bg-zinc-900/40 p-3 rounded border border-zinc-850 space-y-3 font-mono text-xs">
+                <div className="bg-zinc-900/40 p-3 rounded border border-zinc-800 space-y-3 font-mono text-xs">
                   {/* Direct Dependencies */}
                   <div>
                     <div className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1.5 flex items-center justify-between">
@@ -548,7 +548,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                     const downstreamIds = dMap.get(details.task.id) || [];
                     if (downstreamIds.length === 0) return null;
                     return (
-                      <div className="pt-2 border-t border-zinc-850/80">
+                      <div className="pt-2 border-t border-zinc-800/80">
                         <div className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1.5">
                           <span>完成后将推进/解锁的下游任务 ({downstreamIds.length})</span>
                         </div>
@@ -582,7 +582,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
               </div>
 
               {/* Execution Duration & Metadata */}
-              <div className="bg-zinc-900/60 p-3 rounded border border-zinc-850 space-y-2.5">
+              <div className="bg-zinc-900/60 p-3 rounded border border-zinc-800 space-y-2.5">
                 {primaryRun && primaryRun.durationMs !== null && (
                   <div className="flex items-center justify-between p-2.5 rounded bg-zinc-950/80 border border-zinc-800">
                     <div className="flex items-center space-x-2.5">
@@ -673,7 +673,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                       {runs.map((r, i) => (
                         <div
                           key={r.runId}
-                          className="flex items-center justify-between text-[11px] bg-zinc-950/60 px-2 py-1 rounded border border-zinc-850"
+                          className="flex items-center justify-between text-[11px] bg-zinc-950/60 px-2 py-1 rounded border border-zinc-800"
                         >
                           <div className="flex items-center space-x-1.5 min-w-0">
                             <span className="text-zinc-500">#{i + 1}</span>
@@ -739,7 +739,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                 </h3>
 
                 {!details.reviews || details.reviews.length === 0 ? (
-                  <div className="bg-zinc-900/30 p-3 rounded border border-zinc-850 text-zinc-500 text-[11px]">
+                  <div className="bg-zinc-900/30 p-3 rounded border border-zinc-800 text-zinc-500 text-[11px]">
                     该任务尚未产生 AI 审核会话记录
                   </div>
                 ) : (
@@ -790,7 +790,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                         </div>
 
                         {/* Git Commit & Worktree Artifact */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-[11px] bg-zinc-950/50 p-2 rounded border border-zinc-850">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-[11px] bg-zinc-950/50 p-2 rounded border border-zinc-800">
                           <div className="flex items-center space-x-1.5 truncate">
                             <GitCommit className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
                             <span className="text-zinc-500">Commit SHA:</span>
@@ -808,7 +808,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                           )}
                         </div>
 
-                        <div className="text-[11px] bg-zinc-950/40 p-2 rounded border border-zinc-850 space-y-1">
+                        <div className="text-[11px] bg-zinc-950/40 p-2 rounded border border-zinc-800 space-y-1">
                           <div>
                             <span className="text-zinc-500">交付要求：</span>
                             {rev.integrationRequired
@@ -840,7 +840,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
 
                         {/* Summary */}
                         {rev.summary && (
-                          <div className="text-[11px] bg-zinc-950/30 p-2 rounded border border-zinc-850 leading-relaxed text-zinc-300">
+                          <div className="text-[11px] bg-zinc-950/30 p-2 rounded border border-zinc-800 leading-relaxed text-zinc-300">
                             <span className="text-zinc-500 font-semibold block mb-0.5">审核摘要：</span>
                             {rev.summary}
                           </div>
@@ -853,7 +853,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                               <Terminal className="w-3 h-3 text-emerald-400" />
                               <span>验证命令与执行结果 ({rev.verificationEvidence.length})：</span>
                             </div>
-                            <div className="space-y-1 bg-zinc-950/80 p-2 rounded border border-zinc-850 font-mono text-[11px]">
+                            <div className="space-y-1 bg-zinc-950/80 p-2 rounded border border-zinc-800 font-mono text-[11px]">
                               {rev.verificationEvidence.map((ev, i) => (
                                 <div key={i} className="space-y-0.5 border-b border-zinc-900 last:border-b-0 pb-1 last:pb-0">
                                   <div className="text-cyan-300 flex items-center space-x-1">
@@ -1005,7 +1005,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                     {details.events.map((evt) => (
                       <div key={evt.id} className="relative">
                         <div className="absolute -left-5 top-1.5 w-1.5 h-1.5 rounded-full bg-cyan-400" />
-                        <div className="bg-zinc-900/80 border border-zinc-850 rounded p-2.5 text-[11px]">
+                        <div className="bg-zinc-900/80 border border-zinc-800 rounded p-2.5 text-[11px]">
                           <div className="flex items-center justify-between mb-1">
                             <span className="font-semibold text-zinc-200">{evt.summary}</span>
                             <span className="text-zinc-500 text-[10px]">
@@ -1097,7 +1097,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
         <div className="px-5 py-2.5 border-t border-zinc-800 bg-zinc-900/50 flex justify-end">
           <button
             onClick={onClose}
-            className="px-3 py-1 font-mono text-xs text-zinc-400 hover:text-zinc-200 bg-zinc-900 hover:bg-zinc-800 border border-zinc-850 rounded transition-colors"
+            className="px-3 py-1 font-mono text-xs text-zinc-400 hover:text-zinc-200 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded transition-colors"
           >
             [关闭 ESC]
           </button>

@@ -130,7 +130,7 @@ const ReviewTaskItem: React.FC<{
         task.riskLevel === "low"
           ? "bg-emerald-950/60 border border-emerald-850 text-emerald-300"
           : task.riskLevel === "high"
-          ? "bg-rose-950/60 border border-rose-850 text-rose-300 font-bold"
+          ? "bg-rose-950/60 border border-rose-900 text-rose-300 font-bold"
           : "bg-amber-950/60 border border-amber-850 text-amber-300"
       }`}
       title={`风险等级: ${task.riskLevel || "medium"}`}
@@ -193,7 +193,7 @@ const ReviewTaskItem: React.FC<{
               className={`inline-flex items-center space-x-1 px-2.5 py-1 text-[11px] rounded border transition-colors ${
                 needsDeveloperApproval
                   ? "text-emerald-300 hover:text-emerald-200 bg-emerald-950/60 hover:bg-emerald-900/80 border-emerald-700/80 cursor-pointer shadow-xs font-bold"
-                  : "text-zinc-600 bg-zinc-900/40 border-zinc-850 cursor-not-allowed opacity-50"
+                  : "text-zinc-600 bg-zinc-900/40 border-zinc-800 cursor-not-allowed opacity-50"
               }`}
               title={needsDeveloperApproval ? "记录开发者批准并继续检查本地集成" : "当前无需开发者批准"}
             >

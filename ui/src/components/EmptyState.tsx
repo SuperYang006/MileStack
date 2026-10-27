@@ -26,7 +26,7 @@ const variantStyles = {
     glow: "group-hover:border-zinc-700",
     tag: "text-zinc-500 bg-zinc-900/60 border-zinc-800/80",
     actionBtn:
-      "bg-zinc-900 hover:bg-zinc-850 text-zinc-200 border-zinc-700 hover:border-zinc-600",
+      "bg-zinc-900 hover:bg-zinc-800 text-zinc-200 border-zinc-700 hover:border-zinc-600",
   },
   cyan: {
     iconBg: "bg-cyan-950/30 border-cyan-800/40 text-cyan-400",
@@ -168,7 +168,7 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
           {secondaryAction && (
             <button
               onClick={secondaryAction.onClick}
-              className="inline-flex items-center space-x-1.5 px-2.5 py-1.5 text-xs font-mono text-zinc-400 hover:text-zinc-200 bg-zinc-900/60 hover:bg-zinc-850 border border-zinc-800 hover:border-zinc-700 rounded-md transition-colors cursor-pointer"
+              className="inline-flex items-center space-x-1.5 px-2.5 py-1.5 text-xs font-mono text-zinc-400 hover:text-zinc-200 bg-zinc-900/60 hover:bg-zinc-800 border border-zinc-800 hover:border-zinc-700 rounded-md transition-colors cursor-pointer"
             >
               {secondaryAction.icon && <secondaryAction.icon className="w-3.5 h-3.5" />}
               <span>{secondaryAction.label}</span>

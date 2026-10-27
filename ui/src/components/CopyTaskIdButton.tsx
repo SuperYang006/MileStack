@@ -17,7 +17,7 @@ const variantStyles: Record<NonNullable<TaskIdBadgeProps["variant"]>, string> = 
   rose:
     "text-rose-300 hover:text-rose-200 bg-rose-950/70 hover:bg-rose-900/80 border-rose-800/60 hover:border-rose-700",
   zinc:
-    "text-zinc-300 hover:text-zinc-100 bg-zinc-900 hover:bg-zinc-850 border-zinc-800 hover:border-zinc-700",
+    "text-zinc-300 hover:text-zinc-100 bg-zinc-900 hover:bg-zinc-800 border-zinc-800 hover:border-zinc-700",
   plain:
     "text-zinc-400 hover:text-zinc-200 bg-transparent hover:bg-zinc-800/50 border-transparent",
 };

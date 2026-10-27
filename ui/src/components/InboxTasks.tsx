@@ -235,7 +235,7 @@ export const InboxTasks: React.FC<InboxTasksProps> = ({
                             task.riskLevel === "low"
                               ? "bg-emerald-950/60 border border-emerald-800/60 text-emerald-300"
                               : task.riskLevel === "high"
-                              ? "bg-rose-950/60 border border-rose-850 text-rose-300"
+                              ? "bg-rose-950/60 border border-rose-900 text-rose-300"
                               : "bg-amber-950/60 border border-amber-800/60 text-amber-300"
                           }`}
                           title={`当前风险设定: ${task.riskLevel || "medium"}`}

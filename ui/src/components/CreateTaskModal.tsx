@@ -194,7 +194,7 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
                   className={`flex flex-col p-2 rounded border cursor-pointer transition-colors ${
                     riskLevel === "low"
                       ? "border-emerald-600/70 bg-emerald-950/30 text-emerald-300"
-                      : "border-zinc-850 bg-zinc-900/50 text-zinc-500 hover:text-zinc-300"
+                      : "border-zinc-800 bg-zinc-900/50 text-zinc-500 hover:text-zinc-300"
                   }`}
                 >
                   <div className="flex items-center space-x-1.5 mb-1">
@@ -217,7 +217,7 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
                   className={`flex flex-col p-2 rounded border cursor-pointer transition-colors ${
                     riskLevel === "medium"
                       ? "border-amber-600/70 bg-amber-950/30 text-amber-300"
-                      : "border-zinc-850 bg-zinc-900/50 text-zinc-500 hover:text-zinc-300"
+                      : "border-zinc-800 bg-zinc-900/50 text-zinc-500 hover:text-zinc-300"
                   }`}
                 >
                   <div className="flex items-center space-x-1.5 mb-1">
@@ -240,7 +240,7 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
                   className={`flex flex-col p-2 rounded border cursor-pointer transition-colors ${
                     riskLevel === "high"
                       ? "border-rose-600/70 bg-rose-950/30 text-rose-300"
-                      : "border-zinc-850 bg-zinc-900/50 text-zinc-500 hover:text-zinc-300"
+                      : "border-zinc-800 bg-zinc-900/50 text-zinc-500 hover:text-zinc-300"
                   }`}
                 >
                   <div className="flex items-center space-x-1.5 mb-1">
@@ -270,7 +270,7 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
                   className={`flex items-center space-x-2 p-2 rounded border cursor-pointer transition-colors ${
                     status === "inbox"
                       ? "border-amber-600/60 bg-amber-950/30 text-amber-300"
-                      : "border-zinc-850 bg-zinc-900/50 text-zinc-500 hover:text-zinc-300"
+                      : "border-zinc-800 bg-zinc-900/50 text-zinc-500 hover:text-zinc-300"
                   }`}
                 >
                   <input
@@ -288,7 +288,7 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
                   className={`flex items-center space-x-2 p-2 rounded border cursor-pointer transition-colors ${
                     status === "ready"
                       ? "border-cyan-600/60 bg-cyan-950/30 text-cyan-300"
-                      : "border-zinc-850 bg-zinc-900/50 text-zinc-500 hover:text-zinc-300"
+                      : "border-zinc-800 bg-zinc-900/50 text-zinc-500 hover:text-zinc-300"
                   }`}
                 >
                   <input
@@ -304,11 +304,11 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
               </div>
             </div>
 
-            <div className="pt-3 border-t border-zinc-850 flex items-center justify-end space-x-2">
+            <div className="pt-3 border-t border-zinc-800 flex items-center justify-end space-x-2">
               <button
                 type="button"
                 onClick={onClose}
-                className="px-3 py-1 text-xs text-zinc-400 hover:text-zinc-200 bg-zinc-900 hover:bg-zinc-850 border border-zinc-850 rounded transition-colors"
+                className="px-3 py-1 text-xs text-zinc-400 hover:text-zinc-200 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded transition-colors"
               >
                 取消
               </button>
@@ -340,7 +340,7 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
             </div>
 
             {/* Preview Box */}
-            <div className="p-3 bg-zinc-900/60 rounded border border-zinc-850 text-[11px]">
+            <div className="p-3 bg-zinc-900/60 rounded border border-zinc-800 text-[11px]">
               <div className="flex items-center justify-between text-zinc-400 mb-1.5">
                 <span>解析结果：</span>
                 <span className="text-cyan-400 font-bold">
@@ -368,11 +368,11 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
               )}
             </div>
 
-            <div className="pt-3 border-t border-zinc-850 flex items-center justify-end space-x-2">
+            <div className="pt-3 border-t border-zinc-800 flex items-center justify-end space-x-2">
               <button
                 type="button"
                 onClick={onClose}
-                className="px-3 py-1 text-xs text-zinc-400 hover:text-zinc-200 bg-zinc-900 hover:bg-zinc-850 border border-zinc-850 rounded transition-colors"
+                className="px-3 py-1 text-xs text-zinc-400 hover:text-zinc-200 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded transition-colors"
               >
                 取消
               </button>

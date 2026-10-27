@@ -202,7 +202,7 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({
         {/* Content Body */}
         <div className="p-5 flex flex-col space-y-3.5">
           {/* Target Task Context Box */}
-          <div className="p-3 rounded bg-zinc-900/60 border border-zinc-850 space-y-1.5">
+          <div className="p-3 rounded bg-zinc-900/60 border border-zinc-800 space-y-1.5">
             <div className="flex items-center space-x-1.5 text-[11px] text-zinc-500 font-mono">
               <span className="text-zinc-400 font-semibold uppercase">目标任务</span>
               <span className="text-zinc-600">#</span>
@@ -283,7 +283,7 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({
               type="button"
               onClick={onClose}
               disabled={isSubmitting}
-              className="px-3 py-1.5 text-xs text-zinc-400 hover:text-zinc-200 bg-zinc-900 hover:bg-zinc-850 border border-zinc-850 rounded transition-colors disabled:opacity-50"
+              className="px-3 py-1.5 text-xs text-zinc-400 hover:text-zinc-200 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded transition-colors disabled:opacity-50"
             >
               {cancelLabel}
             </button>

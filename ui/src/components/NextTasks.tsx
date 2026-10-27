@@ -249,7 +249,7 @@ export const NextTasks: React.FC<NextTasksProps> = ({
                         e.stopPropagation();
                         onOpenBriefing(task);
                       }}
-                      className="inline-flex items-center space-x-1 px-2 py-0.5 text-[11px] font-mono text-zinc-400 hover:text-cyan-300 bg-zinc-900 hover:bg-zinc-850 border border-zinc-800 rounded transition-colors"
+                      className="inline-flex items-center space-x-1 px-2 py-0.5 text-[11px] font-mono text-zinc-400 hover:text-cyan-300 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded transition-colors"
                       title="生成并复制 AI 任务简报"
                     >
                       <Copy className="w-3 h-3" />
@@ -261,7 +261,7 @@ export const NextTasks: React.FC<NextTasksProps> = ({
                         e.stopPropagation();
                         onReturnToInbox(task.id);
                       }}
-                      className="inline-flex items-center space-x-1 px-2 py-0.5 text-[11px] font-mono text-zinc-400 hover:text-amber-300 bg-zinc-900 hover:bg-zinc-850 border border-zinc-800 rounded transition-colors"
+                      className="inline-flex items-center space-x-1 px-2 py-0.5 text-[11px] font-mono text-zinc-400 hover:text-amber-300 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded transition-colors"
                       title="退回草稿箱"
                     >
                       <RotateCcw className="w-3 h-3" />
@@ -273,7 +273,7 @@ export const NextTasks: React.FC<NextTasksProps> = ({
                         e.stopPropagation();
                         onRequestDelete(task);
                       }}
-                      className="inline-flex items-center space-x-1 px-2 py-0.5 text-[11px] font-mono text-zinc-400 hover:text-rose-300 bg-zinc-900 hover:bg-zinc-850 border border-zinc-800 rounded transition-colors"
+                      className="inline-flex items-center space-x-1 px-2 py-0.5 text-[11px] font-mono text-zinc-400 hover:text-rose-300 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded transition-colors"
                       title="删除任务"
                     >
                       <Trash2 className="w-3 h-3" />

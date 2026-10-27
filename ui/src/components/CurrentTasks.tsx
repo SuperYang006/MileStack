@@ -119,7 +119,7 @@ export const CurrentTasks: React.FC<CurrentTasksProps> = ({
                           e.stopPropagation();
                           onReleaseTask(task.id);
                         }}
-                        className="inline-flex items-center space-x-1 px-2 py-0.5 text-[11px] font-mono text-zinc-400 hover:text-amber-300 bg-zinc-900 hover:bg-zinc-850 border border-zinc-800 rounded transition-colors"
+                        className="inline-flex items-center space-x-1 px-2 py-0.5 text-[11px] font-mono text-zinc-400 hover:text-amber-300 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded transition-colors"
                         title="手动释放任务，回退至就绪队列"
                       >
                         <LogOut className="w-3 h-3" />
@@ -131,7 +131,7 @@ export const CurrentTasks: React.FC<CurrentTasksProps> = ({
                   {/* Bottom bar: Execution Steps */}
                   {(task.currentStep || task.nextStep) && (
                     <div
-                      className="space-y-1.5 text-xs font-mono mt-2.5 pt-2 border-t border-zinc-850/80 cursor-pointer lg:col-span-4"
+                      className="space-y-1.5 text-xs font-mono mt-2.5 pt-2 border-t border-zinc-800/80 cursor-pointer lg:col-span-4"
                       onClick={() => onSelectTask(task.id)}
                     >
                       {task.currentStep && (
@@ -160,7 +160,7 @@ export const CurrentTasks: React.FC<CurrentTasksProps> = ({
                     const detail = computeTaskDependencyDetail(task, allTasks);
                     if (detail.unblocks.length === 0) return null;
                     return (
-                      <div className="mt-2 pt-2 border-t border-zinc-850/60 flex items-center flex-wrap gap-1.5 text-[10px] font-mono lg:col-span-4">
+                      <div className="mt-2 pt-2 border-t border-zinc-800/60 flex items-center flex-wrap gap-1.5 text-[10px] font-mono lg:col-span-4">
                         <span className="text-zinc-500 shrink-0 flex items-center space-x-1">
                           <GitFork className="w-3 h-3 text-cyan-400" />
                           <span>完成后解锁:</span>
