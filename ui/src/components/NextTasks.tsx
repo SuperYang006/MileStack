@@ -200,7 +200,7 @@ export const NextTasks: React.FC<NextTasksProps> = ({
                         {/* 可并行 / 可领取徽标 */}
                         {isRunnable && (
                           <span
-                            className={`inline-flex items-center space-x-0.5 px-1.5 py-0.2 rounded text-[10px] font-mono shrink-0 ${
+                            className={`inline-flex items-center space-x-0.5 px-1.5 py-px rounded text-[10px] font-mono shrink-0 ${
                               isParallelizable
                                 ? "bg-emerald-950/80 border border-emerald-700/60 text-emerald-300"
                                 : "bg-cyan-950/80 border border-cyan-700/60 text-cyan-300"
@@ -279,7 +279,7 @@ export const NextTasks: React.FC<NextTasksProps> = ({
 
                   {reworkReview && reworkDetail && (
                     <div className="col-span-2 flex min-w-0 items-center gap-1.5 text-[10px] font-mono lg:col-span-4 lg:col-start-1 lg:row-start-2">
-                      <span className="inline-flex shrink-0 items-center space-x-0.5 px-1.5 py-0.2 rounded border border-rose-800/60 bg-rose-950/50 text-rose-300">
+                      <span className="inline-flex shrink-0 items-center space-x-0.5 px-1.5 py-px rounded border border-rose-800/60 bg-rose-950/50 text-rose-300">
                         <RotateCcw className="w-2.5 h-2.5" />
                         <span>退回 第 {reworkReview.reviewRound} 轮</span>
                       </span>

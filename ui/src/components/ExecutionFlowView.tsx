@@ -18,35 +18,35 @@ function getStatusBadge(status: TaskStatus) {
   switch (status) {
     case "completed":
       return (
-        <span className="inline-flex items-center space-x-1 px-1.5 py-0.2 rounded text-[10px] font-mono bg-emerald-950/60 text-emerald-300">
+        <span className="inline-flex items-center space-x-1 px-1.5 py-px rounded text-[10px] font-mono bg-emerald-950/60 text-emerald-300">
           <CheckCircle2 className="w-2.5 h-2.5 text-emerald-400" />
           <span>已完成</span>
         </span>
       );
     case "running":
       return (
-        <span className="inline-flex items-center space-x-1 px-1.5 py-0.2 rounded text-[10px] font-mono bg-cyan-950/60 text-cyan-300">
+        <span className="inline-flex items-center space-x-1 px-1.5 py-px rounded text-[10px] font-mono bg-cyan-950/60 text-cyan-300">
           <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
           <span>执行中</span>
         </span>
       );
     case "in_review":
       return (
-        <span className="inline-flex items-center space-x-1 px-1.5 py-0.2 rounded text-[10px] font-mono bg-violet-950/60 text-violet-300">
+        <span className="inline-flex items-center space-x-1 px-1.5 py-px rounded text-[10px] font-mono bg-violet-950/60 text-violet-300">
           <Clock className="w-2.5 h-2.5 text-violet-400" />
           <span>待审核</span>
         </span>
       );
     case "ready":
       return (
-        <span className="inline-flex items-center space-x-1 px-1.5 py-0.2 rounded text-[10px] font-mono bg-indigo-950/60 text-indigo-300">
+        <span className="inline-flex items-center space-x-1 px-1.5 py-px rounded text-[10px] font-mono bg-indigo-950/60 text-indigo-300">
           <span className="w-1.5 h-1.5 rounded-full bg-indigo-400" />
           <span>就绪</span>
         </span>
       );
     case "blocked":
       return (
-        <span className="inline-flex items-center space-x-1 px-1.5 py-0.2 rounded text-[10px] font-mono bg-rose-950/60 text-rose-300">
+        <span className="inline-flex items-center space-x-1 px-1.5 py-px rounded text-[10px] font-mono bg-rose-950/60 text-rose-300">
           <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
           <span>阻塞</span>
         </span>
@@ -54,7 +54,7 @@ function getStatusBadge(status: TaskStatus) {
     case "inbox":
     default:
       return (
-        <span className="inline-flex items-center space-x-1 px-1.5 py-0.2 rounded text-[10px] font-mono bg-zinc-900 text-zinc-400">
+        <span className="inline-flex items-center space-x-1 px-1.5 py-px rounded text-[10px] font-mono bg-zinc-900 text-zinc-400">
           <span>草稿</span>
         </span>
       );
@@ -232,7 +232,7 @@ export const ExecutionFlowView: React.FC<ExecutionFlowViewProps> = ({
                             </span>
                           </div>
                           {stage.isParallel && (
-                            <span className="text-[9px] px-1.5 py-0.2 rounded bg-indigo-950/70 border border-indigo-800/60 text-indigo-300 shrink-0">
+                            <span className="text-[9px] px-1.5 py-px rounded bg-indigo-950/70 border border-indigo-800/60 text-indigo-300 shrink-0">
                               并行
                             </span>
                           )}
@@ -255,7 +255,7 @@ export const ExecutionFlowView: React.FC<ExecutionFlowViewProps> = ({
                                 </div>
                                 <div className="shrink-0 flex items-center space-x-1.5">
                                   {task.isRunnable && (
-                                    <span className="inline-flex items-center space-x-0.5 px-1.5 py-0.2 rounded text-[9px] bg-emerald-950/80 border border-emerald-700/60 text-emerald-300">
+                                    <span className="inline-flex items-center space-x-0.5 px-1.5 py-px rounded text-[9px] bg-emerald-950/80 border border-emerald-700/60 text-emerald-300">
                                       <Zap className="w-2.5 h-2.5 text-emerald-400" />
                                       <span>{task.isParallelStageTask ? "可并行" : "可推进"}</span>
                                     </span>

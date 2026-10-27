@@ -525,7 +525,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                               </div>
                               <div className="shrink-0 flex items-center space-x-1.5">
                                 <span
-                                  className={`px-1.5 py-0.2 rounded text-[10px] ${
+                                  className={`px-1.5 py-px rounded text-[10px] ${
                                     isDone
                                       ? "text-emerald-300 bg-emerald-950/60 border border-emerald-800/60"
                                       : "text-amber-300 bg-amber-950/60 border border-amber-800/60"
@@ -681,7 +681,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                               {r.runId.slice(0, 8)}...
                             </span>
                             <span
-                              className={`text-[10px] px-1 py-0.2 rounded font-mono ${
+                              className={`text-[10px] px-1 py-px rounded font-mono ${
                                 r.status === "completed"
                                   ? "text-emerald-400 bg-emerald-950/60"
                                   : r.status === "review_passed"
@@ -756,7 +756,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                               第 {rev.reviewRound} 轮审核
                             </span>
                             <span
-                              className={`px-1.5 py-0.2 rounded text-[10px] ${
+                              className={`px-1.5 py-px rounded text-[10px] ${
                                 rev.status === "passed"
                                   ? "bg-emerald-950/80 border border-emerald-800 text-emerald-300 font-bold"
                                   : rev.status === "in_progress"
@@ -779,7 +779,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                                 : "未领取 (PENDING)"}
                             </span>
                             {rev.reviewerActorLabel && (
-                              <span className="text-[10px] text-violet-300 bg-violet-950/40 px-1.5 py-0.2 rounded border border-violet-900/50">
+                              <span className="text-[10px] text-violet-300 bg-violet-950/40 px-1.5 py-px rounded border border-violet-900/50">
                                 审核代理: {rev.reviewerActorLabel}
                               </span>
                             )}
@@ -887,7 +887,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                                   >
                                     <div className="flex items-center space-x-1.5">
                                       <span
-                                        className={`px-1 py-0.2 rounded text-[9px] uppercase font-bold ${
+                                        className={`px-1 py-px rounded text-[9px] uppercase font-bold ${
                                           f.severity === "high"
                                             ? "bg-rose-950 border border-rose-800 text-rose-300"
                                             : f.severity === "low"
@@ -950,7 +950,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                                   >
                                     <div className="flex items-center space-x-1.5">
                                       <span
-                                        className={`shrink-0 px-1 py-0.2 rounded text-[9px] font-bold ${toneBadgeClass(closure.tone)}`}
+                                        className={`shrink-0 px-1 py-px rounded text-[9px] font-bold ${toneBadgeClass(closure.tone)}`}
                                       >
                                         {closure.statusLabel}
                                       </span>
@@ -1046,7 +1046,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                                     >
                                       <div className="flex items-start space-x-1.5">
                                         <span
-                                          className={`shrink-0 px-1 py-0.2 rounded text-[9px] font-bold ${toneBadgeClass(result.tone)}`}
+                                          className={`shrink-0 px-1 py-px rounded text-[9px] font-bold ${toneBadgeClass(result.tone)}`}
                                         >
                                           {result.statusLabel}
                                         </span>

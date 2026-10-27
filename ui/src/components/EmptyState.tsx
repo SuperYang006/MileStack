@@ -91,7 +91,7 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
         <div className="flex items-center gap-2 text-zinc-400">
           {tag && (
             <span
-              className={`text-[10px] uppercase px-1.5 py-0.2 rounded border font-mono ${styles.tag}`}
+              className={`text-[10px] uppercase px-1.5 py-px rounded border font-mono ${styles.tag}`}
             >
               {tag}
             </span>

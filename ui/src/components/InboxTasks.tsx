@@ -231,7 +231,7 @@ export const InboxTasks: React.FC<InboxTasksProps> = ({
 
                       <div className="mt-1 flex items-center flex-wrap gap-1.5">
                         <span
-                          className={`inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-mono shrink-0 ${
+                          className={`inline-flex items-center px-1.5 py-px rounded text-[10px] font-mono shrink-0 ${
                             task.riskLevel === "low"
                               ? "bg-emerald-950/60 border border-emerald-800/60 text-emerald-300"
                               : task.riskLevel === "high"
@@ -245,7 +245,7 @@ export const InboxTasks: React.FC<InboxTasksProps> = ({
                         {/* 只能标记为“可并行候选”，绝不误标为“当前可领取” */}
                         {detail.isInboxParallelCandidate && (
                           <span
-                            className="inline-flex items-center space-x-1 px-1.5 py-0.2 rounded text-[10px] font-mono bg-indigo-950/50 border border-indigo-900/60 text-indigo-300 shrink-0"
+                            className="inline-flex items-center space-x-1 px-1.5 py-px rounded text-[10px] font-mono bg-indigo-950/50 border border-indigo-900/60 text-indigo-300 shrink-0"
                             title="无未完成前置依赖，排入就绪队列后可并行执行"
                           >
                             <Zap className="w-2.5 h-2.5 text-indigo-400" />

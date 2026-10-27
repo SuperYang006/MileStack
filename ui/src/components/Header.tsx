@@ -91,7 +91,7 @@ export const Header: React.FC<HeaderProps> = ({
                 <Archive className="w-3.5 h-3.5 text-emerald-400" />
                 <span className="hidden sm:inline">归档</span>
                 {typeof completedCount === "number" && (
-                  <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-zinc-800 border border-zinc-700/60 text-emerald-400 font-medium">
+                  <span className="px-1.5 py-px rounded-full text-[10px] bg-zinc-800 border border-zinc-700/60 text-emerald-400 font-medium">
                     {completedCount}
                   </span>
                 )}

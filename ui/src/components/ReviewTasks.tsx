@@ -126,7 +126,7 @@ const ReviewTaskItem: React.FC<{
 
   const riskBadge = (
     <span
-      className={`inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-mono shrink-0 align-middle ${
+      className={`inline-flex items-center px-1.5 py-px rounded text-[10px] font-mono shrink-0 align-middle ${
         task.riskLevel === "low"
           ? "bg-emerald-950/60 border border-emerald-900 text-emerald-300"
           : task.riskLevel === "high"
