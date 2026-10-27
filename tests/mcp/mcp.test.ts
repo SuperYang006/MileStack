@@ -10,7 +10,10 @@ import {
   initializeProject,
   openProjectContext,
 } from "../../src/project/project-context.js";
-import { acceptanceCriteriaCreationCheck } from "../../src/core/agent-instructions.js";
+import {
+  acceptanceCriteriaCreationCheck,
+  taskCreationReadinessPrompt,
+} from "../../src/core/agent-instructions.js";
 import { createMcpServer } from "../../src/mcp/server.js";
 
 const temporaryProjects: string[] = [];
@@ -88,6 +91,18 @@ describe("MCP task tools", () => {
     expect(instructions).toContain("check the work against the repository root AGENTS.md");
     expect(instructions).toContain("severity does not permit a pass");
     expect(instructions).toContain("Task creation:");
+    expect(instructions).toContain(
+      "Before creating a task, confirm you can state what the developer will observe when it is done, what is explicitly out of scope, and how to verify it.",
+    );
+    expect(instructions).toContain("ask the developer instead of filling them in");
+    expect(instructions).toContain("Ask a small batch of targeted questions at once");
+    expect(instructions).toContain("give each a recommended default answer");
+    expect(instructions).toContain(
+      "do not re-ask what is already clear or can be discovered from code or documentation",
+    );
+    expect(instructions).toContain(
+      "record the unconfirmed point as an explicitly labeled assumption in the objective or acceptance criteria",
+    );
     expect(instructions).toContain("Inbox edits:");
     expect(instructions).toContain("edit_inbox_task");
     expect(instructions).toContain("pass the returned updatedAt as expectedUpdatedAt");
@@ -119,6 +134,10 @@ describe("MCP task tools", () => {
     const createTasksTool = listed.tools.find((tool) => tool.name === "create_tasks");
     expect(createTaskTool?.description).toContain(acceptanceCriteriaCreationCheck);
     expect(createTasksTool?.description).toContain(acceptanceCriteriaCreationCheck);
+    expect(createTaskTool?.description).toContain(taskCreationReadinessPrompt);
+    expect(createTasksTool?.description).toContain(taskCreationReadinessPrompt);
+    expect(createTaskTool?.description).toContain("observable outcome");
+    expect(createTasksTool?.description).toContain("ask the developer");
     expect(createTaskTool?.description).not.toContain("Before submitting");
     expect(createTasksTool?.description).not.toContain("Before submitting");
     expect(createTaskTool?.description).not.toContain("createPhoneBindingPage");
@@ -138,6 +157,9 @@ describe("MCP task tools", () => {
     expect(createTaskProperties?.dependencyIds?.description).toContain("Same-project task ids");
     expect(createTaskProperties?.riskLevel?.description).toContain("Risk level");
     expect(createTaskProperties?.sourceTaskId?.description).toContain("follow-up work");
+    expect(createTaskTool?.inputSchema.required ?? []).not.toContain("objective");
+    expect(createTaskProperties?.acceptanceCriteria).toMatchObject({ default: [] });
+    expect(createTaskProperties?.objective).not.toHaveProperty("default");
     const createTasksItems = (
       createTasksTool?.inputSchema as {
         properties?: {

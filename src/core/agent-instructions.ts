@@ -6,8 +6,9 @@ const taskClaimRule =
   "After reading the task details and confirming that its status is ready, call start_task and save the returned runId.";
 const taskClaimValidationRule =
   "start_task is the final atomic claim boundary: the server validates task status, developer-confirmed risk, completed dependencies, and concurrent claims. Do not expect get_task to expose runnable.";
-const taskCreationRule =
-  "Create inbox tasks only for independently verifiable outcomes. State a verifiable objective and acceptance criteria that each describe one independently checkable result as scenario, expected result, and verification. Preserve developer-confirmed examples and UI hierarchy, ordering, and state behavior as acceptance constraints. Include same-project dependencyIds and explain each dependency in the objective or acceptance criteria. State file or module ownership and exclusions only for planned parallel work, and do not copy the general workflow, review, risk, or Git rules into each task.";
+const taskCreationReadinessRule =
+  "Before creating a task, confirm you can state what the developer will observe when it is done, what is explicitly out of scope, and how to verify it. If unclear requirements prevent any of these, ask the developer instead of filling them in. Ask a small batch of targeted questions at once and give each a recommended default answer; do not re-ask what is already clear or can be discovered from code or documentation. If an answer is unavailable, record the unconfirmed point as an explicitly labeled assumption in the objective or acceptance criteria for inbox review instead of silently treating it as agreed.";
+const taskCreationRule = `${taskCreationReadinessRule} Create inbox tasks only for independently verifiable outcomes. State a verifiable objective and acceptance criteria that each describe one independently checkable result as scenario, expected result, and verification. Preserve developer-confirmed examples and UI hierarchy, ordering, and state behavior as acceptance constraints. Include same-project dependencyIds and explain each dependency in the objective or acceptance criteria. State file or module ownership and exclusions only for planned parallel work, and do not copy the general workflow, review, risk, or Git rules into each task.`;
 const inboxEditRule =
   "Use edit_inbox_task only to correct an inbox task definition. Call get_task first and pass the returned updatedAt as expectedUpdatedAt; the edit is rejected if the task changed since it was read, so call get_task again before retrying. This tool cannot change risk level or risk confirmation and cannot edit ready or later tasks. Use update_task for run-scoped progress instead.";
 const taskSubmissionRule =
@@ -25,6 +26,9 @@ const integrationRetryRule =
 
 export const acceptanceCriteriaCreationCheck =
   "When creating a task, check that each acceptance criterion describes one independently verifiable delivery result, has a corresponding verification, and does not smuggle in an unconfirmed implementation restriction.";
+
+export const taskCreationReadinessPrompt =
+  "Before creating a task, confirm you can state the observable outcome, explicit exclusions, and verification. If unclear requirements prevent that, ask the developer instead of filling it in.";
 
 export const projectAgentInstructionsPath = ".milestack/agent-instructions.md";
 
@@ -53,6 +57,7 @@ export function formatProjectAgentInstructions(version: string): string {
     "",
     "## Create well-scoped tasks",
     "",
+    `- ${taskCreationReadinessRule}`,
     "- Record newly discovered independent work with create_task or create_tasks. Agent-created tasks enter inbox for developer review and prioritization.",
     "- Every task must state a verifiable objective, complete acceptance criteria, and same-project dependencyIds.",
     "- Put the task-specific execution boundary in the objective or acceptance criteria: required verification commands and expected results, and the delivery form such as a local commit or review artifact. For planned parallel work, also define non-overlapping file or module ownership and explicitly excluded areas. Do not copy the general workflow, review, risk, or Git rules from this file into every task.",

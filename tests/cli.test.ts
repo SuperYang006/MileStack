@@ -179,6 +179,17 @@ describe("CLI entry point", () => {
     );
     expect(generatedInstructions).toContain("create_task");
     expect(generatedInstructions).toContain("create_tasks");
+    expect(generatedInstructions).toContain(
+      "Before creating a task, confirm you can state what the developer will observe when it is done, what is explicitly out of scope, and how to verify it.",
+    );
+    expect(
+      generatedInstructions.match(/Before creating a task, confirm you can state/gu),
+    ).toHaveLength(1);
+    expect(generatedInstructions).toContain("Ask a small batch of targeted questions at once");
+    expect(generatedInstructions).toContain("give each a recommended default answer");
+    expect(generatedInstructions).toContain(
+      "record the unconfirmed point as an explicitly labeled assumption in the objective or acceptance criteria",
+    );
     expect(generatedInstructions).toContain("a verifiable objective, complete acceptance criteria");
     expect(generatedInstructions).toContain("dependencyIds");
     expect(generatedInstructions).toContain(
@@ -484,6 +495,12 @@ describe("CLI entry point", () => {
     }
     expect(integrationInstructions).toContain("Run milestack init in every local checkout");
     expect(mcpInstructions).toContain("Task creation:");
+    expect(mcpInstructions).toContain(
+      "Before creating a task, confirm you can state what the developer will observe when it is done",
+    );
+    expect(mcpInstructions).toContain("ask the developer instead of filling them in");
+    expect(mcpInstructions).toContain("give each a recommended default answer");
+    expect(mcpInstructions).toContain("explicitly labeled assumption");
     expect(mcpInstructions).toContain("Inbox edits:");
     expect(mcpInstructions).toContain("edit_inbox_task");
     expect(mcpInstructions).toContain("pass the returned updatedAt as expectedUpdatedAt");

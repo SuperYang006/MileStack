@@ -146,7 +146,7 @@ milestack serve --project "$PWD" --port 7332
 
 ### Coding-agent responsibilities
 
-1. After the requirements and solution are agreed, turn the discussion into concrete, verifiable MileStack inbox tasks without inventing unconfirmed scope.
+1. After the requirements and solution are agreed, turn the discussion into concrete, verifiable MileStack inbox tasks without inventing unconfirmed scope. Before creating a task, confirm you can state the observable outcome, explicit exclusions, and verification. If anything is unclear, ask a small batch of targeted questions with recommended defaults, and record unanswered points as labeled assumptions in the task.
 2. As an implementation agent, load a developer-provided task ID directly. If no task ID is provided, query project status, select the first task in `next` with `runnable = true`, then call `start_task` to establish execution ownership.
 3. Record meaningful milestones, the current step, the next step, or a blocker—rather than every command and file edit.
 4. Create another inbox task when independent follow-up work is discovered during implementation.

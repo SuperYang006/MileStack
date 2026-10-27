@@ -14,6 +14,7 @@ import { DomainError } from "../core/errors.js";
 import {
   acceptanceCriteriaCreationCheck,
   formatMcpInstructions,
+  taskCreationReadinessPrompt,
 } from "../core/agent-instructions.js";
 import { runtimeVersion } from "../server/runtime-version.js";
 import {
@@ -100,13 +101,13 @@ const toolDefinitions: Tool[] = [
   {
     name: "create_task",
     description:
-      `Record one newly discovered task in the project's inbox. Optionally include the model label. Agent-created tasks are not ready until a developer confirms and orders them. ${acceptanceCriteriaCreationCheck}`,
+      `Record one newly discovered task in the project's inbox. Optionally include the model label. Agent-created tasks are not ready until a developer confirms and orders them. ${taskCreationReadinessPrompt} ${acceptanceCriteriaCreationCheck}`,
     inputSchema: toJSONSchema(agentCreateTaskSchema) as Tool["inputSchema"],
   },
   {
     name: "create_tasks",
     description:
-      `Record several newly discovered inbox tasks atomically, optionally including model labels. If one input is invalid, the complete batch is rolled back. ${acceptanceCriteriaCreationCheck}`,
+      `Record several newly discovered inbox tasks atomically, optionally including model labels. If one input is invalid, the complete batch is rolled back. ${taskCreationReadinessPrompt} ${acceptanceCriteriaCreationCheck}`,
     inputSchema: toJSONSchema(agentCreateTasksSchema) as Tool["inputSchema"],
   },
   {
