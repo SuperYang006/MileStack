@@ -614,7 +614,8 @@ MileStack 应提供一段可加入项目 `AGENTS.md` 或其他 AI 指令文件�
 - 执行中发现的新工作通过 create_task 记录到 inbox，不要写入新的任务文档。
 - 无法继续或需要其他 AI 接手时调用 release_task，并写明交接信息。
 - 只有在验收条件满足且验证完成后调用 `submit_for_review`，并为每条验收标准按 `get_task` 返回的标准标识记录满足、不满足或无法验证及实际证据；低风险审核通过也只有在本地集成检查通过后才自动完成，中高风险还需开发者批准。若已验收但集成待确认，使用最新审核 ID 调用 `check_task_integration` 重试。
-- 只有开发者明确提供待审核任务的 `taskId` 后，审核 Agent 才调用 `start_review` 保存 `reviewRunId`；不得自行选择待审核任务。提交 `complete_review` 时必须携带该凭证和验证命令结果；新发现必须写明触发条件、可观察影响和证据，复审上一轮退回的提交时必须关闭上一轮每条发现。
+- 审核入口：只有开发者明确提供待审核任务的 `taskId` 后，审核 Agent 才调用 `get_task` 确认 `phase=review`，再调用 `start_review` 保存 `reviewRunId`；不得自行选择待审核任务。审核提交的精确 commit，逐条独立验证验收条件，上一轮被退回时逐条关闭发现，最后用 `approve_review`、`request_changes` 或 `complete_review` 收尾后停止。提交 `complete_review` 时必须携带该凭证和验证命令结果。
+- 审查维度：不得直接采信提交方记录的 `criteriaResults`，必须独立复现关键验证；检查 diff 是否超出任务边界；检查是否违反项目根 `AGENTS.md`。新发现必须写明触发条件、可观察影响和证据，并记录严重程度；严重程度不构成通过依据：存在未满足或无法验证的验收条件，或未修复、部分修复的上一轮发现时，审核不得通过。
 - 不得自行修改或降低任务风险等级；发现问题时使用结构化 finding 记录问题和修改建议。
 ```
 

@@ -182,9 +182,10 @@ describe("CLI entry point", () => {
     expect(generatedInstructions).toContain("a verifiable objective, complete acceptance criteria");
     expect(generatedInstructions).toContain("dependencyIds");
     expect(generatedInstructions).toContain(
-      "files or modules owned by the task, explicitly excluded areas",
+      "For planned parallel work, also define non-overlapping file or module ownership and explicitly excluded areas",
     );
-    expect(generatedInstructions).toContain("non-overlapping file or module ownership");
+    expect(generatedInstructions).not.toContain("Explain why each dependency must finish first");
+    expect(generatedInstructions).not.toContain("Before submitting");
     expect(generatedInstructions).toContain(
       "Do not copy the general workflow, review, risk, or Git rules",
     );
@@ -232,10 +233,10 @@ describe("CLI entry point", () => {
       "A simple task may state the same in one sentence without the three labels.",
     );
     expect(generatedInstructions).toContain(
-      "Include only developer-confirmed requirements, existing contracts, necessary architecture or safety boundaries, and file or module ownership plus exclusions needed for parallel tasks.",
+      "Include only developer-confirmed requirements, existing contracts, and necessary architecture or safety boundaries.",
     );
     expect(generatedInstructions).toContain(
-      "Do not write unconfirmed implementation suggestions as acceptance criteria.",
+      "Distinguish acceptance constraints from implementation suggestions: do not write unconfirmed implementation suggestions as acceptance criteria; omit unconfirmed implementation ideas or label them explicitly as non-binding.",
     );
     expect(generatedInstructions).toContain("createPhoneBindingPage");
     expect(generatedInstructions).toContain("domain/phone-binding.js");
@@ -250,10 +251,7 @@ describe("CLI entry point", () => {
     expect(generatedInstructions).toContain("Expected result: it is a native Page.");
     expect(generatedInstructions).toContain("inspect the registered page type");
     expect(generatedInstructions).toContain(
-      "- Distinguish acceptance constraints from implementation suggestions. Put only confirmed constraints in the objective and acceptance criteria; omit unconfirmed implementation ideas or label them explicitly as non-binding.",
-    );
-    expect(generatedInstructions).toContain(
-      "- Treat developer-confirmed UI layouts, field order, workflows, state behavior, and API/protocol fields as mandatory acceptance constraints. Do not lock down unconfirmed file lists, private function boundaries, internal JSON nesting, matching algorithms, or test fixture names.",
+      "- Treat developer-confirmed UI layouts, field order, workflows, state behavior, and API/protocol fields as mandatory acceptance constraints; do not downgrade them because they are concrete.",
     );
     expect(generatedInstructions.indexOf("## Create well-scoped tasks")).toBeLessThan(
       generatedInstructions.indexOf("## Preserve concrete task constraints"),
@@ -479,6 +477,7 @@ describe("CLI entry point", () => {
       expect(prompt).not.toMatch(/[\u3400-\u9fff]/u);
     }
     expect(integrationInstructions).toContain("Run milestack init in every local checkout");
+    expect(mcpInstructions).toContain("Task creation:");
     expect(mcpInstructions).toContain("Task discovery:");
     expect(mcpInstructions).toContain("Known task:");
     expect(mcpInstructions).toContain("start_task is the final atomic claim boundary");
@@ -491,10 +490,15 @@ describe("CLI entry point", () => {
     expect(mcpInstructions).toContain(
       "do not spawn a subagent, new session, or any other reviewer context",
     );
+    expect(mcpInstructions).toContain("Review entry:");
     expect(mcpInstructions).toContain(
-      "Review starts only after the developer sends that task ID to an independent review agent",
+      "Review starts only when the developer sends the task ID to an independent review agent",
     );
     expect(mcpInstructions).not.toContain("A reviewer must then call start_review");
+    expect(mcpInstructions).toContain("Review dimensions:");
+    expect(mcpInstructions).toContain(
+      "Do not accept the submitter's criteriaResults as review evidence",
+    );
     expect(mcpInstructions).toContain("Accepted task awaiting local integration:");
     expect(mcpInstructions).toContain("check_task_integration");
     expect(knownTaskInstructions).toContain(`Call get_task directly with taskId \`${taskId}\``);

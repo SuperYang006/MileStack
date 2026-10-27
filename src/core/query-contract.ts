@@ -387,13 +387,31 @@ export const createTaskInputSchema = z
   .object({
     projectId: identifierSchema,
     title: z.string().trim().min(1),
-    objective: z.string().trim().min(1).optional(),
-    acceptanceCriteria: z.array(z.string().trim().min(1)).default([]),
-    dependencyIds: dependencyIdsSchema,
+    objective: z
+      .string()
+      .trim()
+      .min(1)
+      .optional()
+      .describe("Verifiable outcome and scope of the task."),
+    acceptanceCriteria: z
+      .array(z.string().trim().min(1))
+      .default([])
+      .describe(
+        "One independently verifiable result per criterion, written as scenario, expected result, and verification.",
+      ),
+    dependencyIds: dependencyIdsSchema.describe(
+      "Same-project task ids that must finish before this task can run; explain each dependency in the objective or acceptance criteria.",
+    ),
     status: z.enum(["inbox", "ready"]).optional(),
     queuePosition: z.number().int().nonnegative().optional(),
-    sourceTaskId: identifierSchema.optional(),
-    riskLevel: riskLevelSchema.optional(),
+    sourceTaskId: identifierSchema
+      .optional()
+      .describe("Existing task id when this task records follow-up work discovered there."),
+    riskLevel: riskLevelSchema
+      .optional()
+      .describe(
+        "Risk level that determines whether a passed review completes automatically or waits for developer approval.",
+      ),
     createdBy: z.enum(["developer", "agent"]),
     actorLabel: z.string().trim().min(1).optional(),
   })

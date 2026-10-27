@@ -6,13 +6,23 @@ const taskClaimRule =
   "After reading the task details and confirming that its status is ready, call start_task and save the returned runId.";
 const taskClaimValidationRule =
   "start_task is the final atomic claim boundary: the server validates task status, developer-confirmed risk, completed dependencies, and concurrent claims. Do not expect get_task to expose runnable.";
-const taskCompletionRule =
-  "After the acceptance criteria and required verification pass, call submit_for_review with an exact 40-character commit SHA and exactly one delivery result per acceptance criterion, filed under the criterion id returned by get_task (met, not_met, or unverifiable; met requires at least one recorded command and result). Submission moves the task to in_review and invalidates the execution runId. The implementation agent stops after a successful submit_for_review: do not call start_review, approve_review, request_changes, or complete_review, and do not spawn a subagent, new session, or any other reviewer context to review the task you just submitted. Review starts only after the developer sends that task ID to an independent review agent, which then calls start_review and concludes the review with approve_review, request_changes, or complete_review using the returned reviewRunId. Required local Git integration is checked against the fixed review commit and the developer-confirmed local target branch. A low-risk task may complete automatically only after that check; medium- and high-risk tasks require developer approval and the same integration gate.";
+const taskCreationRule =
+  "Create inbox tasks only for independently verifiable outcomes. State a verifiable objective and acceptance criteria that each describe one independently checkable result as scenario, expected result, and verification. Preserve developer-confirmed examples and UI hierarchy, ordering, and state behavior as acceptance constraints. Include same-project dependencyIds and explain each dependency in the objective or acceptance criteria. State file or module ownership and exclusions only for planned parallel work, and do not copy the general workflow, review, risk, or Git rules into each task.";
+const taskSubmissionRule =
+  "After the acceptance criteria and required verification pass, call submit_for_review with an exact 40-character commit SHA and exactly one delivery result per acceptance criterion, filed under the criterion id returned by get_task (met, not_met, or unverifiable; met requires at least one recorded command and result). Submission moves the task to in_review and invalidates the execution runId.";
+const implementationStopRule =
+  "The implementation agent stops after a successful submit_for_review: do not call start_review, approve_review, request_changes, or complete_review, and do not spawn a subagent, new session, or any other reviewer context to review the task you just submitted.";
+const reviewEntryRule =
+  "Review starts only when the developer sends the task ID to an independent review agent. Call get_task with that taskId and confirm phase=review, then call start_review and save the returned reviewRunId before inspecting the submitted artifact. Review the exact commit recorded in the latest submission, verify every acceptance criterion independently, and record a closure for every finding from a changes-requested previous round. Conclude with approve_review, request_changes, or complete_review using the reviewRunId, then stop.";
+const reviewDimensionRule =
+  "Do not accept the submitter's criteriaResults as review evidence: independently reproduce the key verification for each acceptance criterion. Inspect the reviewed diff for changes outside the task objective and acceptance criteria, and check the work against the repository root AGENTS.md. Record each finding with a low, medium, or high severity for developer triage, but severity does not permit a pass: a review cannot pass while any submitted criterion is not_met or unverifiable or any previous finding remains not_fixed or partially_fixed.";
+const integrationRule =
+  "Required local Git integration is checked against the fixed review commit and the developer-confirmed local target branch. A low-risk task may complete automatically only after that check; medium- and high-risk tasks require developer approval and the same integration gate.";
 const integrationRetryRule =
   "For a task that is already accepted and still waiting for local integration, call check_task_integration with its latest review id after the developer has completed any authorized local merge. This is a separate integration retry, not a continuation of the implementation agent's work after submission.";
 
-export const acceptanceCriteriaPreSubmissionCheck =
-  "Before submitting, check that each acceptance criterion describes a delivery result, has a corresponding verification, and does not smuggle in an unconfirmed implementation restriction.";
+export const acceptanceCriteriaCreationCheck =
+  "When creating a task, check that each acceptance criterion describes one independently verifiable delivery result, has a corresponding verification, and does not smuggle in an unconfirmed implementation restriction.";
 
 export const projectAgentInstructionsPath = ".milestack/agent-instructions.md";
 
@@ -42,9 +52,8 @@ export function formatProjectAgentInstructions(version: string): string {
     "## Create well-scoped tasks",
     "",
     "- Record newly discovered independent work with create_task or create_tasks. Agent-created tasks enter inbox for developer review and prioritization.",
-    "- Every task must state a verifiable objective, complete acceptance criteria, and same-project dependencyIds. Explain why each dependency must finish first.",
-    "- Put the task-specific execution boundary in the objective or acceptance criteria: files or modules owned by the task, explicitly excluded areas, required verification commands and expected results, and the delivery form such as a local commit or review artifact.",
-    "- For planned parallel work, define non-overlapping file or module ownership in each task. Do not copy the general workflow, review, risk, or Git rules from this file into every task.",
+    "- Every task must state a verifiable objective, complete acceptance criteria, and same-project dependencyIds.",
+    "- Put the task-specific execution boundary in the objective or acceptance criteria: required verification commands and expected results, and the delivery form such as a local commit or review artifact. For planned parallel work, also define non-overlapping file or module ownership and explicitly excluded areas. Do not copy the general workflow, review, risk, or Git rules from this file into every task.",
     "",
     "## Preserve concrete task constraints",
     "",
@@ -64,13 +73,12 @@ export function formatProjectAgentInstructions(version: string): string {
     "- Make task definitions concrete about observable behavior, developer-confirmed examples, external contracts, architectural boundaries, compatibility requirements, and verification outcomes.",
     "- Do not invent or prescribe internal file lists, private functions, helper types, algorithms, test fixture names, or implementation steps unless the developer confirmed them, an existing public contract requires them, or they are necessary for architecture or safety.",
     "- Write every acceptance criterion by default as scenario, expected result, and verification, with one independently checkable result per criterion. Scenario is the trigger or starting condition; expected result is the observable behavior, deliverable, or confirmed structural requirement; verification is how to obtain evidence. A simple task may state the same in one sentence without the three labels.",
-    "- Include only developer-confirmed requirements, existing contracts, necessary architecture or safety boundaries, and file or module ownership plus exclusions needed for parallel tasks. Do not write unconfirmed implementation suggestions as acceptance criteria.",
+    "- Include only developer-confirmed requirements, existing contracts, and necessary architecture or safety boundaries. Distinguish acceptance constraints from implementation suggestions: do not write unconfirmed implementation suggestions as acceptance criteria; omit unconfirmed implementation ideas or label them explicitly as non-binding.",
     "- Example of an unconfirmed implementation suggestion that must not become a criterion: “Create `createPhoneBindingPage` in `domain/phone-binding.js`.” State the confirmed observable result instead.",
     "- Example of a behavior criterion: “Scenario: a verification code has been sent. Expected result: resend is unavailable during the countdown and available after it ends. Verification: a page behavior test controls time and checks the send button state.”",
     "- Example of a confirmed structural requirement: when the developer explicitly requires a native Page, keep it in the criterion, for example “Scenario: the page is opened. Expected result: it is a native Page. Verification: inspect the registered page type.”",
-    "- Distinguish acceptance constraints from implementation suggestions. Put only confirmed constraints in the objective and acceptance criteria; omit unconfirmed implementation ideas or label them explicitly as non-binding.",
-    "- Treat developer-confirmed UI layouts, field order, workflows, state behavior, and API/protocol fields as mandatory acceptance constraints. Do not lock down unconfirmed file lists, private function boundaries, internal JSON nesting, matching algorithms, or test fixture names.",
-    `- ${acceptanceCriteriaPreSubmissionCheck}`,
+    "- Treat developer-confirmed UI layouts, field order, workflows, state behavior, and API/protocol fields as mandatory acceptance constraints; do not downgrade them because they are concrete.",
+    `- ${acceptanceCriteriaCreationCheck}`,
     "",
     "## Discover, claim, and execute work",
     "",
@@ -140,13 +148,17 @@ export function formatAgentIntegrationInstructions(): string {
 
 export function formatMcpInstructions(): string {
   return [
+    `Task creation: ${taskCreationRule} Record newly discovered independent work with create_task or create_tasks; agent-created work enters inbox for developer review and prioritization.`,
     `Task discovery: ${taskDiscoveryRule}`,
     `Known task: ${knownTaskRule}`,
     `Claiming: ${taskClaimRule} ${taskClaimValidationRule}`,
-    `Submission and review: ${taskCompletionRule}`,
+    `Submission: ${taskSubmissionRule}`,
+    `Implementation stop: ${implementationStopRule}`,
+    `Review entry: ${reviewEntryRule}`,
+    `Review dimensions: ${reviewDimensionRule}`,
+    `Review outcome: ${integrationRule}`,
     `Accepted task awaiting local integration: ${integrationRetryRule}`,
-    "Record newly discovered independent work with create_task or create_tasks; agent-created work enters inbox.",
-  ].join(" ");
+  ].join("\n");
 }
 
 export function formatKnownTaskBriefInstructions(taskId: string): string {

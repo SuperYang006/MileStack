@@ -42,7 +42,7 @@ A typical project moves through a simple loop:
 3. The developer reviews the AI-created inbox tasks and confirms their risk, dependencies, and order.
 4. With a task ID, the implementation agent loads that task directly. Without one, it queries project status, selects the first task in `next` with `runnable = true`, and calls `start_task` to establish execution ownership.
 5. The implementation agent records milestones, blockers, and handoff context, then submits a fixed Git commit.
-6. The developer sends the task ID to an independent review agent, which calls `start_review` to establish review ownership and inspect the artifact.
+6. The developer sends the task ID to an independent review agent, which calls `start_review` to establish review ownership, independently reproduces key verification, and checks the submit boundary and project `AGENTS.md`.
 7. The review result is stored in MileStack, and the dashboard and the next assigned agent session immediately see the updated state.
 
 ## Quick start

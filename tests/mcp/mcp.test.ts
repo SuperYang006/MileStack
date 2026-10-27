@@ -10,7 +10,7 @@ import {
   initializeProject,
   openProjectContext,
 } from "../../src/project/project-context.js";
-import { acceptanceCriteriaPreSubmissionCheck } from "../../src/core/agent-instructions.js";
+import { acceptanceCriteriaCreationCheck } from "../../src/core/agent-instructions.js";
 import { createMcpServer } from "../../src/mcp/server.js";
 
 const temporaryProjects: string[] = [];
@@ -66,6 +66,28 @@ describe("MCP task tools", () => {
       "After reading the task details and confirming that its status is ready, call start_task",
     );
     expect(instructions).toContain("Do not expect get_task to expose runnable");
+    expect(instructions).toContain("Review entry:");
+    expect(instructions).toContain("confirm phase=review");
+    expect(instructions).toContain("call start_review and save the returned reviewRunId");
+    expect(instructions).toContain("Review the exact commit recorded in the latest submission");
+    expect(instructions).toContain("verify every acceptance criterion independently");
+    expect(instructions).toContain(
+      "record a closure for every finding from a changes-requested previous round",
+    );
+    expect(instructions).toContain(
+      "Conclude with approve_review, request_changes, or complete_review using the reviewRunId, then stop.",
+    );
+    expect(instructions).toContain("Implementation stop:");
+    expect(instructions).toContain("Review dimensions:");
+    expect(instructions).toContain(
+      "Do not accept the submitter's criteriaResults as review evidence",
+    );
+    expect(instructions).toContain(
+      "Inspect the reviewed diff for changes outside the task objective and acceptance criteria",
+    );
+    expect(instructions).toContain("check the work against the repository root AGENTS.md");
+    expect(instructions).toContain("severity does not permit a pass");
+    expect(instructions).toContain("Task creation:");
     expect(instructions).not.toMatch(/[\u3400-\u9fff]/u);
 
     const listed = await client.listTools();
@@ -89,10 +111,50 @@ describe("MCP task tools", () => {
     expect(toolNames).not.toContain("finish_task");
     const createTaskTool = listed.tools.find((tool) => tool.name === "create_task");
     const createTasksTool = listed.tools.find((tool) => tool.name === "create_tasks");
-    expect(createTaskTool?.description).toContain(acceptanceCriteriaPreSubmissionCheck);
-    expect(createTasksTool?.description).toContain(acceptanceCriteriaPreSubmissionCheck);
+    expect(createTaskTool?.description).toContain(acceptanceCriteriaCreationCheck);
+    expect(createTasksTool?.description).toContain(acceptanceCriteriaCreationCheck);
+    expect(createTaskTool?.description).not.toContain("Before submitting");
+    expect(createTasksTool?.description).not.toContain("Before submitting");
     expect(createTaskTool?.description).not.toContain("createPhoneBindingPage");
     expect(createTasksTool?.description).not.toContain("createPhoneBindingPage");
+    const createTaskProperties = (
+      createTaskTool?.inputSchema as {
+        properties?: Record<string, { description?: string }>;
+      }
+    ).properties;
+    expect(createTaskProperties?.objective?.description).toContain("Verifiable outcome");
+    expect(createTaskProperties?.acceptanceCriteria?.description).toContain(
+      "One independently verifiable result per criterion",
+    );
+    expect(createTaskProperties?.acceptanceCriteria?.description).toContain(
+      "scenario, expected result, and verification",
+    );
+    expect(createTaskProperties?.dependencyIds?.description).toContain("Same-project task ids");
+    expect(createTaskProperties?.riskLevel?.description).toContain("Risk level");
+    expect(createTaskProperties?.sourceTaskId?.description).toContain("follow-up work");
+    const createTasksItems = (
+      createTasksTool?.inputSchema as {
+        properties?: {
+          tasks?: {
+            items?: { properties?: Record<string, { description?: string }> };
+          };
+        };
+      }
+    ).properties?.tasks?.items?.properties;
+    expect(createTasksItems?.objective?.description).toContain("Verifiable outcome");
+    expect(createTasksItems?.acceptanceCriteria?.description).toContain(
+      "scenario, expected result, and verification",
+    );
+    expect(createTasksItems?.dependencyIds?.description).toContain("Same-project task ids");
+    expect(createTasksItems?.riskLevel?.description).toContain("Risk level");
+    expect(createTasksItems?.sourceTaskId?.description).toContain("follow-up work");
+    const startReviewTool = listed.tools.find((tool) => tool.name === "start_review");
+    expect(startReviewTool?.description).toContain("confirm phase=review");
+    expect(startReviewTool?.description).toContain(
+      "Do not accept the submitter's criteriaResults as evidence",
+    );
+    expect(startReviewTool?.description).toContain("repository root AGENTS.md");
+    expect(startReviewTool?.description).toContain("severity does not permit a pass");
     const approveReviewTool = listed.tools.find((tool) => tool.name === "approve_review");
     const requestChangesTool = listed.tools.find((tool) => tool.name === "request_changes");
     const getTaskTool = listed.tools.find((tool) => tool.name === "get_task");

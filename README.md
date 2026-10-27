@@ -42,7 +42,7 @@ flowchart LR
 3. 开发者检查 AI 创建的草稿任务，确认风险、依赖和执行顺序。
 4. 有任务 ID 时，实施 Agent 直接读取指定任务；没有任务 ID 时，它先查询项目状态，选择 `next` 中第一个 `runnable = true` 的任务，再通过 `start_task` 建立本轮执行权。
 5. 实施 Agent 记录阶段成果、阻塞和交接上下文，并以固定 Git commit 提交。
-6. 开发者将任务 ID 发送给独立审核 Agent；审核 Agent 通过 `start_review` 建立审核权并检查制品。
+6. 开发者将任务 ID 发送给独立审核 Agent；审核 Agent 通过 `start_review` 建立审核权，独立复现关键验证，并检查提交边界与项目 `AGENTS.md`。
 7. 审核结果进入 MileStack，页面和下一个被分派的 Agent 会话随即看到最新状态。
 
 ## 三分钟开始使用

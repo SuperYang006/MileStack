@@ -151,7 +151,7 @@ milestack serve --project "$PWD" --port 7332
 3. Record meaningful milestones, the current step, the next step, or a blocker—rather than every command and file edit.
 4. Create another inbox task when independent follow-up work is discovered during implementation.
 5. Submit a fixed 40-character Git commit and leave a clear completion summary.
-6. As a review agent, first receive a task ID from the developer, then call `start_review` to establish review ownership; do not select a pending review yourself.
+6. As a review agent, first receive a task ID from the developer, then call `start_review` to establish review ownership; do not select a pending review yourself. Confirm `phase=review` with `get_task`, review the exact submitted commit, independently reproduce the key verification instead of trusting the submitter's recorded evidence, check the diff against the task boundary and the root `AGENTS.md`, close every finding from a previous changes-requested round, and conclude with one review decision tool.
 
 The ready queue expresses developer preference. Dependencies determine whether a ready task is runnable. If several tasks are runnable, they may be worked on in parallel only when each writing agent has an isolated branch and worktree.
 
@@ -168,6 +168,8 @@ flowchart LR
 ```
 
 An implementation agent prioritizes a developer-provided task. If no task ID is provided, it selects the first runnable task in queue order. Review work is still assigned by sending the task ID to an independent review agent. `start_task` and `start_review` establish concurrency-safe, short-lived credentials. Submitting invalidates the execution credential. Returning work for changes invalidates the old execution and review credentials, so rework must establish new execution ownership before a new review round.
+
+The MCP server instructions and the `start_review` tool description carry the review entry flow and review dimensions, so an agent connected only through MCP can review without reading `.milestack/agent-instructions.md`. A reviewer must independently reproduce key verification rather than trusting the submitter's recorded criteria results, inspect the diff for work outside the task boundary, and check the result against the root `AGENTS.md`. Finding severity supports triage; it does not permit a pass while a submitted criterion is not met or unverifiable, or a previous finding remains not fixed or partially fixed.
 
 | Risk | After an independent AI review passes |
 | --- | --- |
