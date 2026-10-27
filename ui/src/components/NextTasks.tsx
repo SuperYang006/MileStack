@@ -20,6 +20,7 @@ import {
   computeTaskDependencyDetail,
   type DependencyItem,
 } from "../utils/dependencyGraph";
+import { isReworkTask, reworkTasksFor } from "../utils/rework";
 
 interface NextTasksProps {
   tasks: TaskSummary[];
@@ -43,6 +44,17 @@ export const NextTasks: React.FC<NextTasksProps> = ({
   const [expandedDepsTaskIds, setExpandedDepsTaskIds] = useState<Record<string, boolean>>({});
 
   const { runnableCount, isParallelizable } = computeReadyQueueStats(tasks, allTasks);
+  const reworkTasks = reworkTasksFor(tasks);
+
+  const scrollToFirstRework = () => {
+    const firstReworkTask = reworkTasks[0];
+    if (!firstReworkTask) {
+      return;
+    }
+    document
+      .getElementById(`ready-task-${firstReworkTask.id}`)
+      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+  };
 
   const toggleExpandDeps = (taskId: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -54,12 +66,23 @@ export const NextTasks: React.FC<NextTasksProps> = ({
 
   return (
     <section className="rounded-lg border border-zinc-800 bg-zinc-900/50 backdrop-blur-xs overflow-hidden lg:h-full lg:min-h-0 lg:flex lg:flex-col">
-      <div className="px-4 py-2.5 border-b border-zinc-800/80 flex items-center justify-between shrink-0">
-        <div className="flex items-center space-x-2">
-          <span className="w-2 h-2 rounded-full bg-indigo-400" />
+      <div className="px-4 py-2.5 border-b border-zinc-800/80 flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5 shrink-0">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
+          <span className="w-2 h-2 rounded-full bg-indigo-400 shrink-0" />
           <h2 className="text-xs font-mono font-bold tracking-wider text-zinc-200 uppercase">
             就绪队列 ({tasks.length})
           </h2>
+          {reworkTasks.length > 0 && (
+            <button
+              type="button"
+              onClick={scrollToFirstRework}
+              className="inline-flex items-center space-x-1 px-1.5 py-0.5 rounded text-[10px] font-mono shrink-0 bg-rose-950/60 border border-rose-800/60 text-rose-300 hover:border-rose-600/70 hover:text-rose-200 transition-colors"
+              title="定位到第一个待返工任务"
+            >
+              <RotateCcw className="w-2.5 h-2.5" />
+              <span>{reworkTasks.length} 个待返工</span>
+            </button>
+          )}
         </div>
 
         {/* 显著显示当前可领取 / 可并行数量 */}
@@ -100,6 +123,13 @@ export const NextTasks: React.FC<NextTasksProps> = ({
 
               const detail = computeTaskDependencyDetail(task, allTasks);
               const isRunnable = detail.isRunnable;
+              const reworkReview = isReworkTask(task) ? task.latestReview : null;
+              const reworkDetail = reworkReview
+                ? reworkReview.summary?.trim() ||
+                  (reworkReview.findingsCount > 0
+                    ? `${reworkReview.findingsCount} 条 finding`
+                    : `第 ${reworkReview.reviewRound} 轮评审要求修改`)
+                : null;
 
               const isDepsExpanded = !!expandedDepsTaskIds[task.id];
               const visibleDeps = isDepsExpanded
@@ -110,10 +140,11 @@ export const NextTasks: React.FC<NextTasksProps> = ({
               return (
                 <div
                   key={task.id}
-                  className="group flex items-start justify-between p-2.5 rounded-md bg-zinc-950/60 border border-zinc-800 hover:border-zinc-600 transition-colors gap-3 lg:grid lg:grid-cols-[2.75rem_minmax(0,7rem)_minmax(0,1fr)_auto] lg:items-start lg:gap-x-3"
+                  id={`ready-task-${task.id}`}
+                  className="group grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2 gap-y-2 p-2.5 rounded-md bg-zinc-950/60 border border-zinc-800 hover:border-zinc-600 transition-colors lg:grid-cols-[2.75rem_minmax(0,7rem)_minmax(0,1fr)_auto] lg:gap-x-3"
                 >
                   {/* Reorder and Index */}
-                  <div className="flex items-center space-x-2 shrink-0 pt-0.5">
+                  <div className="flex items-center space-x-2 shrink-0 pt-0.5 lg:col-start-1 lg:row-start-1">
                     <div className="flex flex-col opacity-20 group-hover:opacity-100 transition-opacity">
                       <button
                         onClick={() => onReorder(task.id, "up")}
@@ -143,8 +174,12 @@ export const NextTasks: React.FC<NextTasksProps> = ({
                     className="flex flex-1 min-w-0 items-start gap-2 cursor-pointer lg:contents"
                     onClick={() => onSelectTask(task.id)}
                   >
-                    <TaskIdBadge taskId={task.id} variant="muted" className="lg:w-full" />
-                    <div className="min-w-0 flex-1">
+                    <TaskIdBadge
+                      taskId={task.id}
+                      variant="muted"
+                      className="w-28 lg:col-start-2 lg:row-start-1 lg:w-full"
+                    />
+                    <div className="min-w-0 flex-1 lg:col-start-3 lg:row-start-1">
                       <div className="flex items-start space-x-2 min-w-0">
                         {/* Status indicator dot */}
                         <span
@@ -242,8 +277,23 @@ export const NextTasks: React.FC<NextTasksProps> = ({
                     </div>
                   </div>
 
+                  {reworkReview && reworkDetail && (
+                    <div className="col-span-2 flex min-w-0 items-center gap-1.5 text-[10px] font-mono lg:col-span-4 lg:col-start-1 lg:row-start-2">
+                      <span className="inline-flex shrink-0 items-center space-x-0.5 px-1.5 py-0.2 rounded border border-rose-800/60 bg-rose-950/50 text-rose-300">
+                        <RotateCcw className="w-2.5 h-2.5" />
+                        <span>退回 第 {reworkReview.reviewRound} 轮</span>
+                      </span>
+                      <span
+                        className="min-w-0 flex-1 truncate text-rose-200/70"
+                        title={reworkDetail}
+                      >
+                        {reworkDetail}
+                      </span>
+                    </div>
+                  )}
+
                   {/* Action buttons */}
-                  <div className="flex items-center space-x-1.5 shrink-0 pt-0.5">
+                  <div className="col-span-2 flex items-center justify-end space-x-1.5 shrink-0 pt-0.5 lg:col-span-1 lg:col-start-4 lg:row-start-1">
                     <button
                       onClick={(e) => {
                         e.stopPropagation();

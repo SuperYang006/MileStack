@@ -155,6 +155,8 @@ milestack serve --project "$PWD" --port 7332
 
 The ready queue expresses developer preference. Dependencies determine whether a ready task is runnable. If several tasks are runnable, they may be worked on in parallel only when each writing agent has an isolated branch and worktree.
 
+A task returned by a changes-requested review moves back to the top of the ready queue. It shows a `退回 第 N 轮` badge with the latest review summary or finding count, and the queue header shows a clickable `N 个待返工` count that scrolls to the first returned task.
+
 ## Task and review lifecycle
 
 ```mermaid
