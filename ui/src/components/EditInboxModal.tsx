@@ -207,7 +207,7 @@ export const EditInboxModal: React.FC<EditInboxModalProps> = ({
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="简要概括任务目标..."
-                className="w-full px-3 py-2 bg-zinc-900 border border-zinc-750 rounded text-zinc-100 placeholder-zinc-600 focus:outline-hidden focus:border-cyan-500 transition-colors"
+                className="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded text-zinc-100 placeholder-zinc-600 focus:outline-hidden focus:border-cyan-500 transition-colors"
               />
             </div>
 
@@ -225,7 +225,7 @@ export const EditInboxModal: React.FC<EditInboxModalProps> = ({
                   resizeLongTextArea(e.currentTarget);
                 }}
                 placeholder="详细描述该任务希望达成的状态或背景..."
-                className="w-full px-3 py-2 bg-zinc-900 border border-zinc-750 rounded text-zinc-100 placeholder-zinc-600 focus:outline-hidden focus:border-cyan-500 transition-colors resize-none leading-relaxed"
+                className="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded text-zinc-100 placeholder-zinc-600 focus:outline-hidden focus:border-cyan-500 transition-colors resize-none leading-relaxed"
               />
             </div>
 
@@ -244,7 +244,7 @@ export const EditInboxModal: React.FC<EditInboxModalProps> = ({
                   resizeLongTextArea(e.currentTarget);
                 }}
                 placeholder="- 代码通过类型检查与单元测试&#10;- 完成功能验收..."
-                className="w-full px-3 py-2 bg-zinc-900 border border-zinc-750 rounded text-zinc-100 placeholder-zinc-600 focus:outline-hidden focus:border-cyan-500 transition-colors resize-none leading-relaxed font-mono"
+                className="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded text-zinc-100 placeholder-zinc-600 focus:outline-hidden focus:border-cyan-500 transition-colors resize-none leading-relaxed font-mono"
               />
               <p className="mt-1 text-[10px] text-zinc-500 leading-relaxed">
                 {acceptanceCriteriaPreSubmissionReminder}
@@ -262,7 +262,7 @@ export const EditInboxModal: React.FC<EditInboxModalProps> = ({
                 value={dependencyIdsText}
                 onChange={(e) => setDependencyIdsText(e.target.value)}
                 placeholder="task-001, task-002..."
-                className="w-full px-3 py-2 bg-zinc-900 border border-zinc-750 rounded text-zinc-100 placeholder-zinc-600 focus:outline-hidden focus:border-cyan-500 transition-colors"
+                className="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded text-zinc-100 placeholder-zinc-600 focus:outline-hidden focus:border-cyan-500 transition-colors"
               />
             </div>
 

@@ -294,7 +294,7 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({
               className={`px-3.5 py-1.5 text-xs rounded transition-all ${
                 isValid && !isSubmitting
                   ? `${themeConfig.confirmButtonClass} cursor-pointer`
-                  : "bg-zinc-800 text-zinc-500 border border-zinc-750 opacity-40 cursor-not-allowed"
+                  : "bg-zinc-800 text-zinc-500 border border-zinc-700 opacity-40 cursor-not-allowed"
               }`}
             >
               {isSubmitting ? "正在处理..." : effectiveConfirmLabel}

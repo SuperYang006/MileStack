@@ -128,10 +128,10 @@ const ReviewTaskItem: React.FC<{
     <span
       className={`inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-mono shrink-0 align-middle ${
         task.riskLevel === "low"
-          ? "bg-emerald-950/60 border border-emerald-850 text-emerald-300"
+          ? "bg-emerald-950/60 border border-emerald-900 text-emerald-300"
           : task.riskLevel === "high"
           ? "bg-rose-950/60 border border-rose-900 text-rose-300 font-bold"
-          : "bg-amber-950/60 border border-amber-850 text-amber-300"
+          : "bg-amber-950/60 border border-amber-900 text-amber-300"
       }`}
       title={`风险等级: ${task.riskLevel || "medium"}`}
     >
