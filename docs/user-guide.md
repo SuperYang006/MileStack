@@ -132,6 +132,44 @@ The server listens on the local loopback interface by default. To use another po
 milestack serve --project "$PWD" --port 7332
 ```
 
+## Core concepts
+
+### What MileStack records
+
+- **The database is the source of truth.** Tasks, current progress, next steps, blockers, and completion live in the MileStack database instead of scattered `TODO.md`, `PLAN.md`, or handoff files.
+- **Projects come first, not agents.** An agent is a participant in one task run. MileStack keeps no stable agent identity, capability profile, or performance statistics; an optional actor label is only shown in the dashboard.
+- **Semantic progress, not raw activity.** Agents record milestones, the current step, the next step, and blockers. MileStack does not record commands, tool calls, file edits, or reasoning.
+- **Current state and history are separate.** Each task keeps one authoritative current snapshot for quick reading, plus an immutable event history for audit and handoff.
+- **Local-first.** All data stays in the project's `.milestack/` directory. No account, cloud service, or remote database is involved.
+
+### Task states
+
+| State | Meaning |
+| --- | --- |
+| `inbox` | Recorded but not yet confirmed by the developer; not part of the execution queue. |
+| `ready` | Confirmed and queued. It becomes runnable once all dependencies are completed. |
+| `running` | Claimed by one agent run and in progress. |
+| `in_review` | A fixed commit has been submitted and is waiting for review, developer approval, or the local integration check. |
+| `completed` | The risk-specific acceptance requirements and the local integration requirement are both satisfied. |
+
+Only a developer moves work from `inbox` to `ready`. When an agent cannot continue, it records the blocker, the required action, and a handoff note on the running task with `update_task`, then stops; the task stays `running` and keeps its ownership. After the blocker is resolved, the same run can continue, or a developer can release the task from the dashboard, which returns it to `ready` for another agent. See [Task and review lifecycle](#task-and-review-lifecycle) for the review path.
+
+### Execution ownership
+
+- `start_task` claims a task atomically. When several agents try to claim the same task, exactly one succeeds.
+- A claim is rejected while the task's risk is unconfirmed or any dependency is incomplete. Agents cannot confirm or lower a task's risk.
+- A successful claim returns a `runId`. Progress updates and submission must carry it, so a late update from an earlier run cannot change the task.
+- Releasing or submitting a task invalidates its `runId`. Rework after a changes-requested review or a reopen requires a new `start_task`.
+- Review uses its own `reviewRunId` from `start_review`. Each new submission opens a new review round, and conclusions from earlier rounds no longer decide the task.
+
+### What MileStack does not do
+
+- Track Git diffs, shell commands, file changes, token usage, or model cost.
+- Plan, prioritize, split, or schedule work automatically, or start agents on its own.
+- Manage agent identities, permissions, or performance profiles.
+- Provide cloud accounts, team permissions, remote sync, or a multi-project workspace.
+- Import existing task documents automatically.
+
 ## Day-to-day workflow
 
 ### Developer responsibilities
