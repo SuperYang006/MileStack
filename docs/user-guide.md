@@ -245,7 +245,7 @@ If you currently have 0.1.0 installed, the first upgrade cannot use `milestack u
 - global: `npm install -g milestack@latest`;
 - project-local: install `milestack@latest` in the project root that declares the dependency. For example, run `npm install --save-dev milestack@latest` in an npm project or `pnpm update milestack --latest` in a pnpm project.
 
-After 0.2.0 or a later version is installed, `milestack update` can handle later upgrades. If you already have 0.2.0 installed, `milestack update` upgrades to 0.2.1.
+After 0.2.0 or a later version is installed, `milestack update` can handle later upgrades. If you already have 0.2.0 or a later version installed, `milestack update` upgrades to 0.2.2.
 
 After upgrading, open a new terminal and restart the MCP client and `milestack serve` so they load the new version. Keep the existing database; no deletion is needed. The program applies forward migrations to non-empty databases and creates a backup before migrating.
 

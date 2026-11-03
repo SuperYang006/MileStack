@@ -245,7 +245,7 @@ milestack --version
 - 全局安装：`npm install -g milestack@latest`；
 - 项目内安装：在声明了该依赖的项目根目录安装 `milestack@latest`，例如 npm 项目执行 `npm install --save-dev milestack@latest`，pnpm 项目执行 `pnpm update milestack --latest`。
 
-装上 0.2.0 或更高版本之后，才可以使用 `milestack update` 继续升级。已经安装 0.2.0 的用户可以直接用 `milestack update` 升级到 0.2.1。
+装上 0.2.0 或更高版本之后，才可以使用 `milestack update` 继续升级。已经安装 0.2.0 或更高版本的用户可以直接用 `milestack update` 升级到 0.2.2。
 
 升级后请新开一个终端，并重启 MCP 客户端和 `milestack serve`，确保它们加载新版本。已有数据库会保留，不需要删除；程序会对非空数据库执行前向迁移，并在迁移前创建备份。
 
