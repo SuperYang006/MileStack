@@ -32,6 +32,7 @@ import {
   runUpdate,
   type UpdateDependencies,
 } from "./update.js";
+import { createStyler, shouldEnableColor } from "./styler.js";
 
 export const helpText = `Usage: milestack <command> [options]
 
@@ -215,29 +216,6 @@ function ensureGitignoreEntry(projectRoot: string): void {
 
   const prefix = existing.length > 0 && !existing.endsWith("\n") ? "\n" : "";
   writeFileSync(gitignorePath, `${existing}${prefix}.milestack/\n`);
-}
-
-function shouldEnableColor(): boolean {
-  if (process.env.NO_COLOR && process.env.NO_COLOR !== "") {
-    return false;
-  }
-  return true;
-}
-
-function createStyler(enableColor: boolean) {
-  const wrap = (code: string) => (text: string) => (enableColor ? `\x1b[${code}m${text}\x1b[0m` : text);
-  return {
-    bold: wrap("1"),
-    cyan: wrap("36"),
-    green: wrap("32"),
-    yellow: wrap("33"),
-    red: wrap("31"),
-    dim: wrap("90"),
-    boldGreen: wrap("1;32"),
-    boldYellow: wrap("1;33"),
-    boldCyan: wrap("1;36"),
-    boldRed: wrap("1;31"),
-  };
 }
 
 function formatTask(task: TaskSummary, styler: ReturnType<typeof createStyler>): string {
@@ -629,7 +607,7 @@ export async function runCli(
       return 0;
     }
     if (parsed.command === "update") {
-      return runUpdate(
+      return await runUpdate(
         { projectPath: parsed.projectPath, check: parsed.check === true },
         output,
         updateDependencies,

@@ -241,6 +241,21 @@ Both print one line to standard output: the current version and the realpath of 
 - After a successful install, `update` asks the newly installed version to regenerate the files, then confirms the generated file carries the new version before reporting it refreshed. If that fails, or the new CLI cannot be located, it says the file was not updated and asks you to run `milestack update` once more.
 - `--check` only reports the current version, latest version, and generated-file status; it does not install or write files.
 
+`update` prints a checklist of steps as it works. In a terminal, the running step shows a spinner and elapsed time that refresh in place; finished steps show their result and duration, and steps not started yet show `○`:
+
+```text
+ MileStack update  0.2.2 → 0.2.3
+
+  ✔ Detect install method   npm global install      0.3s
+  ✔ Query latest version    0.2.3 available         1.1s
+  ⠼ Install milestack@0.2.3                         23s
+  ○ Refresh generated files
+
+ ✓ Upgraded to 0.2.3 · restart MCP clients and milestack serve
+```
+
+(The tool prints its step labels in Chinese; the lines above are translated.) When a query or install fails, the failed step is marked `✖` with the last 20 lines of the package manager's output and the command to run by hand, and no later step runs. When output is redirected to a file or pipe, or `NO_COLOR` is set, it prints plain text lines without animation or colors. Upgrade arrows and the "Upgraded to" summary appear only when an install actually ran.
+
 If you currently have 0.1.0 installed, the first upgrade cannot use `milestack update`. Install 0.2.0 or a later version with the original installation method first:
 
 - global: `npm install -g milestack@latest`;
