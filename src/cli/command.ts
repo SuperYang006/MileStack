@@ -3,7 +3,6 @@ import path from "node:path";
 
 import { runMcp } from "../mcp/server.js";
 import { runtimeVersion } from "../server/runtime-version.js";
-import { startHttpServer } from "../server/server.js";
 import {
   formatAgentIntegrationInstructions,
   formatProjectAgentInstructions,
@@ -20,6 +19,7 @@ import {
 } from "../project/project-context.js";
 import { resolveEntryPath } from "./entry-path.js";
 import { defaultOutput, type CliOutput } from "./output.js";
+import { runServe } from "./serve.js";
 import {
   configureProjectMcpClients,
   projectMcpClientDisplayNames,
@@ -614,21 +614,7 @@ export async function runCli(
       );
     }
     if (parsed.command === "serve") {
-      const { app, url } = await startHttpServer({
-        projectRoot: parsed.projectPath,
-        port: parsed.port ?? 7331,
-      });
-      output.writeStdout(`MileStack HTTP service running at ${url}\n`);
-      await new Promise<void>((resolve) => {
-        const handleSignal = () => {
-          process.off("SIGINT", handleSignal);
-          process.off("SIGTERM", handleSignal);
-          app.close().finally(resolve);
-        };
-        process.on("SIGINT", handleSignal);
-        process.on("SIGTERM", handleSignal);
-      });
-      return 0;
+      return await runServe(parsed.projectPath, parsed.port ?? 7331, output);
     }
     if (parsed.discover) {
       await runMcp({ discover: true });

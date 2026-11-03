@@ -1,6 +1,8 @@
 import { realpathSync } from "node:fs";
 import path from "node:path";
 
+export { isInsideDirectory } from "../project/path-containment.js";
+
 /**
  * Absolute path of the running CLI entry (`process.argv[1]`) with symlinks
  * resolved, so a global bin link reports the real installed script.
@@ -15,15 +17,4 @@ export function resolveEntryPath(): string {
   } catch {
     return path.resolve(entry);
   }
-}
-
-/** True when `candidatePath` is strictly inside `directory` (not the directory itself). */
-export function isInsideDirectory(candidatePath: string, directory: string): boolean {
-  const relative = path.relative(directory, candidatePath);
-  return (
-    relative !== "" &&
-    !path.isAbsolute(relative) &&
-    relative !== ".." &&
-    !relative.startsWith(`..${path.sep}`)
-  );
 }

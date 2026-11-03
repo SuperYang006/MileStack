@@ -27,10 +27,16 @@ export interface ProjectSummary {
   goal: string | null;
 }
 
+export interface RuntimeUpdateInfo {
+  latestVersion: string;
+  command: string;
+}
+
 export interface RuntimeHealth {
   status: string;
   timestamp: string;
   version: string | null;
+  update: RuntimeUpdateInfo | null;
 }
 
 export interface WaitingForTask {

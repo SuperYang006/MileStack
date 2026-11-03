@@ -33,6 +33,11 @@ import {
   checkTaskIntegrationInputSchema,
 } from "../core/query-contract.js";
 import type { ReviewFindingInput, VerificationEvidence } from "../core/review-model.js";
+import {
+  startVersionCheck,
+  type VersionCheckDependencies,
+  type VersionCheckHandle,
+} from "../update/version-check.js";
 import { runtimeVersion } from "./runtime-version.js";
 
 export type HttpServerOptions = {
@@ -40,6 +45,8 @@ export type HttpServerOptions = {
   port?: number | undefined;
   host?: string | undefined;
   staticDir?: string | undefined;
+  // Left unset, no registry access happens (for example in focused API tests).
+  versionCheck?: VersionCheckDependencies | undefined;
 };
 
 function resolveDefaultStaticPath(): string {
@@ -58,7 +65,13 @@ function resolveDefaultStaticPath(): string {
 
 export async function createHttpServer(
   options: HttpServerOptions = {},
-): Promise<{ app: FastifyInstance; context: ProjectContext; port: number; host: string }> {
+): Promise<{
+  app: FastifyInstance;
+  context: ProjectContext;
+  port: number;
+  host: string;
+  versionCheck: VersionCheckHandle | null;
+}> {
   const rootPath = resolveProjectRoot(options.projectRoot);
 
   const staticPath = options.staticDir
@@ -84,7 +97,7 @@ export async function createHttpServer(
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   });
 
-  // Serve static UI assets.
+  // Serve the static UI assets.
   await app.register(fastifyStatic, {
     root: staticPath,
     prefix: "/",
@@ -92,9 +105,25 @@ export async function createHttpServer(
 
   // --- API Routes ---
 
+  // A single best-effort check started with the server. It deliberately runs
+  // without being awaited: a slow registry can never delay listening or an API
+  // response, and every failure is represented as null update information.
+  const versionCheck = options.versionCheck
+    ? startVersionCheck(options.versionCheck)
+    : null;
+
   // Health check
   app.get("/api/health", async () => {
-    return { status: "ok", timestamp: new Date().toISOString(), version: runtimeVersion };
+    const checked = versionCheck?.result() ?? null;
+    return {
+      status: "ok",
+      timestamp: new Date().toISOString(),
+      version: runtimeVersion,
+      update:
+        checked?.status === "available"
+          ? { latestVersion: checked.latestVersion, command: checked.command }
+          : null,
+    };
   });
 
   // Project Info
@@ -702,16 +731,17 @@ export async function createHttpServer(
   const port = options.port ?? 7331;
   const host = options.host ?? "127.0.0.1";
 
-  return { app, context, port, host };
+  return { app, context, port, host, versionCheck };
 }
 
 export async function startHttpServer(options: HttpServerOptions = {}): Promise<{
   app: FastifyInstance;
   context: ProjectContext;
   url: string;
+  versionCheck: VersionCheckHandle | null;
 }> {
-  const { app, context, port, host } = await createHttpServer(options);
+  const { app, context, port, host, versionCheck } = await createHttpServer(options);
   await app.listen({ port, host });
   const url = `http://${host}:${port}`;
-  return { app, context, url };
+  return { app, context, url, versionCheck };
 }

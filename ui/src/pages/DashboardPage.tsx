@@ -385,6 +385,7 @@ export const DashboardPage: React.FC = () => {
         project={visibleStatus.project}
         isBackendConnected={!isServiceDisconnected}
         runtimeVersion={isServiceDisconnected ? null : runtimeHealth?.version ?? null}
+        runtimeUpdate={isServiceDisconnected ? null : runtimeHealth?.update ?? null}
         onRefresh={() => {
           forceFullStatusRef.current = true;
           void refetch();

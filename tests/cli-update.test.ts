@@ -18,8 +18,8 @@ import {
   pnpmExecutable,
   type CommandInvocation,
   type CommandResult,
-  type UpdateDependencies,
-} from "../src/cli/update.js";
+} from "../src/update/command-runner.js";
+import type { UpdateDependencies } from "../src/cli/update.js";
 import { detectStepDisplay, formatElapsed, type StepDisplay } from "../src/cli/step-progress.js";
 import {
   formatProjectAgentInstructions,

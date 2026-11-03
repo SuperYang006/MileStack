@@ -9,7 +9,9 @@ import type {
   TaskStatus,
   RiskLevel,
   RuntimeHealth,
+  RuntimeUpdateInfo,
 } from "../types.js";
+import { isSemverVersion } from "../runtime-version.js";
 
 /** Shown wherever a transport failure reaches the user, so a dead service never
  *  looks like a rejected request or like an empty project. */
@@ -66,6 +68,23 @@ async function sendVoid(path: string, options: RequestOptions = {}): Promise<voi
   if (!res.ok) throw await toRequestError(res);
 }
 
+/** Older servers do not send an update object; invalid shapes are ignored too. */
+function parseRuntimeUpdate(value: unknown): RuntimeUpdateInfo | null {
+  if (typeof value !== "object" || value === null) {
+    return null;
+  }
+  const latestVersion =
+    "latestVersion" in value ? (value as { latestVersion?: unknown }).latestVersion : undefined;
+  const command = "command" in value ? (value as { command?: unknown }).command : undefined;
+  if (typeof latestVersion !== "string" || !isSemverVersion(latestVersion)) {
+    return null;
+  }
+  if (typeof command !== "string" || command.trim().length === 0) {
+    return null;
+  }
+  return { latestVersion, command };
+}
+
 export const apiClient = {
   // A reachable health endpoint means the service is online. The version is
   // reported separately so an older build without it still shows as online.
@@ -81,6 +100,7 @@ export const apiClient = {
         status: typeof body.status === "string" ? body.status : "ok",
         timestamp: typeof body.timestamp === "string" ? body.timestamp : "",
         version: typeof body.version === "string" && body.version.length > 0 ? body.version : null,
+        update: parseRuntimeUpdate(body.update),
       };
     } catch {
       return null;

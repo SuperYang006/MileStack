@@ -279,6 +279,8 @@ Both print one line to standard output: the current version and the realpath of 
 - After a successful install, `update` asks the newly installed version to regenerate the files, then confirms the generated file carries the new version before reporting it refreshed. If that fails, or the new CLI cannot be located, it says the file was not updated and asks you to run `milestack update` once more.
 - `--check` only reports the current version, latest version, and generated-file status; it does not install or write files.
 
+`milestack serve` checks the npm registry once at startup. When a newer version is available, it prints one line in the terminal and shows `有新版本 <version>` with the upgrade command beside the running version in the Web UI header. The header only shows the command; it has no install button or endpoint. The check never delays listening, the access URL, or API responses, and it runs only once: a failed, slow, or offline query stays silent and the running process does not recheck later. Upgrade by running the command that was shown, then restart `milestack serve` and MCP clients so they load the new version.
+
 `update` prints a checklist of steps as it works. In a terminal, the running step shows a spinner and elapsed time that refresh in place; finished steps show their result and duration, and steps not started yet show `○`:
 
 ```text
@@ -323,4 +325,4 @@ For AGY, run `milestack status --discover` from the project directory and make s
 
 ### The Web UI still shows an older version
 
-Stop and restart `milestack serve` after upgrading. The running process never contacts the npm registry or changes its displayed version automatically.
+Stop and restart `milestack serve` after upgrading. The running process checks the npm registry once at startup, never rechecks later, and never changes its displayed version automatically.

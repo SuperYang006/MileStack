@@ -94,6 +94,7 @@ describe("UI API client", () => {
       status: "ok",
       timestamp: "2026-10-13T00:00:00.000Z",
       version: null,
+      update: null,
     });
 
     respondWith({ status: "ok", timestamp: "2026-10-13T00:00:00.000Z", version: "" });
@@ -109,6 +110,45 @@ describe("UI API client", () => {
       version: "1.2.3-rc.1+build.7",
     });
     expect(isSemverVersion("1.2.3-rc.1+build.7")).toBe(true);
+  });
+
+  it("reads update information only when it is a valid version and command", async () => {
+    const respondWith = (update: unknown): void => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn<typeof fetch>().mockResolvedValue(
+          new Response(
+            JSON.stringify({
+              status: "ok",
+              timestamp: "2026-10-13T00:00:00.000Z",
+              version: "0.2.2",
+              update,
+            }),
+            {
+              status: 200,
+              headers: { "Content-Type": "application/json" },
+            },
+          ),
+        ),
+      );
+    };
+
+    respondWith({ latestVersion: "0.3.0", command: "milestack update" });
+    await expect(apiClient.getRuntimeHealth()).resolves.toMatchObject({
+      update: { latestVersion: "0.3.0", command: "milestack update" },
+    });
+
+    for (const invalid of [
+      undefined,
+      null,
+      {},
+      { latestVersion: "unknown", command: "milestack update" },
+      { latestVersion: "0.3.0", command: "" },
+      { latestVersion: "0.3.0" },
+    ]) {
+      respondWith(invalid);
+      await expect(apiClient.getRuntimeHealth()).resolves.toMatchObject({ update: null });
+    }
   });
 
   it("reports no runtime health when the endpoint is unreachable or not successful", async () => {

@@ -1,13 +1,14 @@
 import React from "react";
 import { Plus, RefreshCw, Archive } from "lucide-react";
 import { Logo } from "./Logo";
-import type { ProjectSummary } from "../types";
+import type { ProjectSummary, RuntimeUpdateInfo } from "../types";
 import { isSemverVersion } from "../runtime-version";
 
 interface HeaderProps {
   project: ProjectSummary;
   isBackendConnected: boolean;
   runtimeVersion?: string | null;
+  runtimeUpdate?: RuntimeUpdateInfo | null;
   onRefresh: () => void;
   onOpenCreateModal: () => void;
   onOpenArchive?: () => void;
@@ -19,6 +20,7 @@ export const Header: React.FC<HeaderProps> = ({
   project,
   isBackendConnected,
   runtimeVersion,
+  runtimeUpdate,
   onRefresh,
   onOpenCreateModal,
   onOpenArchive,
@@ -26,6 +28,12 @@ export const Header: React.FC<HeaderProps> = ({
   isRefreshing = false,
 }) => {
   const showRuntimeIdentity = isBackendConnected && isSemverVersion(runtimeVersion);
+  const showUpdate =
+    showRuntimeIdentity &&
+    runtimeUpdate !== null &&
+    runtimeUpdate !== undefined &&
+    isSemverVersion(runtimeUpdate.latestVersion) &&
+    runtimeUpdate.command.trim().length > 0;
 
   return (
     <header className="bg-zinc-950/80 backdrop-blur-md border-b border-zinc-800/80 sticky top-0 z-30">
@@ -59,12 +67,30 @@ export const Header: React.FC<HeaderProps> = ({
                 button labels first, and this group wraps to its own row, then wraps
                 its own items, if needed. */}
             {showRuntimeIdentity && (
-              <span
-                className="font-mono text-[11px] tracking-tight text-zinc-600 select-none whitespace-nowrap"
-                title={`MileStack 运行版本 v${runtimeVersion}`}
-              >
-                MileStack · v{runtimeVersion}
-              </span>
+              <div className="flex min-w-0 max-w-full flex-wrap items-center gap-x-2 gap-y-1">
+                <span
+                  className="font-mono text-[11px] tracking-tight text-zinc-600 select-none whitespace-nowrap"
+                  title={`MileStack 运行版本 v${runtimeVersion}`}
+                >
+                  MileStack · v{runtimeVersion}
+                </span>
+                {showUpdate && (
+                  <>
+                    <span
+                      className="font-mono text-[11px] font-medium tracking-tight text-amber-300 select-none whitespace-nowrap"
+                      title={`新版本 ${runtimeUpdate.latestVersion} 可用`}
+                    >
+                      有新版本 {runtimeUpdate.latestVersion}
+                    </span>
+                    <code
+                      className="rounded border border-amber-900/60 bg-amber-950/40 px-1.5 py-0.5 font-mono text-[11px] text-amber-200/90 whitespace-nowrap"
+                      title={`运行 ${runtimeUpdate.command} 升级`}
+                    >
+                      {runtimeUpdate.command}
+                    </code>
+                  </>
+                )}
+              </div>
             )}
 
             {/* Connection Status indicator */}

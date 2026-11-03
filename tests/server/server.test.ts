@@ -38,6 +38,7 @@ describe("HTTP API Server", () => {
     expect(body.status).toBe("ok");
     expect(body.timestamp).toBeDefined();
     expect(body.version).toBe(packageVersion);
+    expect(body.update).toBeNull();
   });
 
   it("returns project summary on GET /api/project", async () => {
