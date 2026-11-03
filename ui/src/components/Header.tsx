@@ -1,5 +1,5 @@
 import React from "react";
-import { Plus, RefreshCw, Archive } from "lucide-react";
+import { Plus, RefreshCw, Archive, ArrowUp } from "lucide-react";
 import { Logo } from "./Logo";
 import type { ProjectSummary, RuntimeUpdateInfo } from "../types";
 import { isSemverVersion } from "../runtime-version";
@@ -27,6 +27,7 @@ export const Header: React.FC<HeaderProps> = ({
   completedCount,
   isRefreshing = false,
 }) => {
+  const updateHintId = React.useId();
   const showRuntimeIdentity = isBackendConnected && isSemverVersion(runtimeVersion);
   const showUpdate =
     showRuntimeIdentity &&
@@ -67,7 +68,7 @@ export const Header: React.FC<HeaderProps> = ({
                 button labels first, and this group wraps to its own row, then wraps
                 its own items, if needed. */}
             {showRuntimeIdentity && (
-              <div className="flex min-w-0 max-w-full flex-wrap items-center gap-x-2 gap-y-1">
+              <div className="relative flex min-w-0 max-w-full flex-wrap items-center gap-x-2 gap-y-1">
                 <span
                   className="font-mono text-[11px] tracking-tight text-zinc-600 select-none whitespace-nowrap"
                   title={`MileStack 运行版本 v${runtimeVersion}`}
@@ -77,17 +78,29 @@ export const Header: React.FC<HeaderProps> = ({
                 {showUpdate && (
                   <>
                     <span
-                      className="font-mono text-[11px] font-medium tracking-tight text-amber-300 select-none whitespace-nowrap"
+                      className="inline-flex items-center gap-0.5 font-mono text-[11px] font-medium tracking-tight text-emerald-400 select-none whitespace-nowrap"
                       title={`新版本 ${runtimeUpdate.latestVersion} 可用`}
+                      aria-label={`新版本 ${runtimeUpdate.latestVersion} 可用`}
                     >
-                      有新版本 {runtimeUpdate.latestVersion}
+                      <ArrowUp className="w-3 h-3 shrink-0" aria-hidden="true" />
+                      {runtimeUpdate.latestVersion}
                     </span>
-                    <code
-                      className="rounded border border-amber-900/60 bg-amber-950/40 px-1.5 py-0.5 font-mono text-[11px] text-amber-200/90 whitespace-nowrap"
-                      title={`运行 ${runtimeUpdate.command} 升级`}
-                    >
-                      {runtimeUpdate.command}
-                    </code>
+                    <span className="group/update-command inline-flex">
+                      <code
+                        className="rounded border border-amber-900/60 bg-amber-950/40 px-1.5 py-0.5 font-mono text-[11px] text-amber-200/90 whitespace-nowrap focus-visible:outline-2 focus-visible:outline-emerald-400"
+                        tabIndex={0}
+                        aria-describedby={updateHintId}
+                      >
+                        {runtimeUpdate.command}
+                      </code>
+                      <span
+                        id={updateHintId}
+                        role="tooltip"
+                        className="pointer-events-none invisible absolute right-0 top-full z-50 mt-1.5 max-w-full rounded border border-zinc-700 bg-zinc-900 px-2.5 py-1.5 text-xs leading-relaxed text-zinc-200 shadow-lg group-hover/update-command:visible group-focus-within/update-command:visible"
+                      >
+                        请复制到终端进行更新
+                      </span>
+                    </span>
                   </>
                 )}
               </div>
