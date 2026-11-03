@@ -10,6 +10,7 @@ import {
 } from "../../src/cli/serve.js";
 import type {
   CommandInvocation,
+  CommandResult,
   CommandRunner,
 } from "../../src/update/command-runner.js";
 import { startVersionCheck } from "../../src/update/version-check.js";
@@ -266,6 +267,55 @@ describe("milestack serve version hint", () => {
       expect(capture.stderr).toEqual([]);
     });
   }
+
+  it("drops a late update hint once shutdown has started", async () => {
+    const { prefix, entryPath } = createNpmGlobalEntry();
+    let resolveView: (result: CommandResult) => void = () => {};
+    let markViewStarted: () => void = () => {};
+    const viewStarted = new Promise<void>((resolve) => {
+      markViewStarted = resolve;
+    });
+    const runCommand: CommandRunner = async (invocation) => {
+      if (invocation.args[0] === "prefix") {
+        return { status: 0, stdout: `${prefix}\n`, stderr: "" };
+      }
+      if (invocation.args[0] === "view") {
+        markViewStarted();
+        return new Promise<CommandResult>((resolve) => {
+          resolveView = resolve;
+        });
+      }
+      return { status: 1, stdout: "", stderr: "unexpected command" };
+    };
+    const capture = outputCapture();
+
+    const dependencies: ServeDependencies = {
+      versionCheck: {
+        currentVersion,
+        resolveEntryPath: () => entryPath,
+        runCommand,
+      },
+      startServer: async (options): Promise<ServeServer> => ({
+        app: { close: async () => {} },
+        url: "http://127.0.0.1:7331",
+        versionCheck: options.versionCheck
+          ? startVersionCheck(options.versionCheck)
+          : null,
+      }),
+      waitForShutdown: async (server, beginShutdown) => {
+        await viewStarted;
+        beginShutdown();
+        resolveView({ status: 0, stdout: "9.9.9\n", stderr: "" });
+        await server.versionCheck?.done;
+      },
+    };
+
+    await runServe(undefined, 7331, capture.output, dependencies);
+
+    expect(capture.stdout.join("")).toBe(
+      "MileStack HTTP service running at http://127.0.0.1:7331\n",
+    );
+  });
 
   it("does not query the registry when the running version is unknown", async () => {
     const { prefix, entryPath } = createNpmGlobalEntry();

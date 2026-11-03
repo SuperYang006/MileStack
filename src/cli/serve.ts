@@ -20,14 +20,15 @@ export type ServeServer = {
 export type ServeDependencies = {
   startServer: (options: HttpServerOptions) => Promise<ServeServer>;
   versionCheck: VersionCheckDependencies;
-  waitForShutdown: (server: ServeServer) => Promise<void>;
+  waitForShutdown: (server: ServeServer, beginShutdown: () => void) => Promise<void>;
 };
 
-function waitForSignals(): Promise<void> {
+function waitForSignals(_server: ServeServer, beginShutdown: () => void): Promise<void> {
   return new Promise((resolve) => {
     const handleSignal = () => {
       process.off("SIGINT", handleSignal);
       process.off("SIGTERM", handleSignal);
+      beginShutdown();
       resolve();
     };
     process.on("SIGINT", handleSignal);
@@ -70,8 +71,21 @@ export async function runServe(
   });
   output.writeStdout(`MileStack HTTP service running at ${server.url}\n`);
 
-  if (server.versionCheck !== null) {
-    void server.versionCheck.done.then((result) => {
+  const versionCheck = server.versionCheck;
+  let shuttingDown = false;
+  const beginShutdown = () => {
+    if (shuttingDown) {
+      return;
+    }
+    shuttingDown = true;
+    versionCheck?.cancel();
+  };
+
+  if (versionCheck !== null) {
+    void versionCheck.done.then((result) => {
+      if (shuttingDown) {
+        return;
+      }
       const hint = formatVersionCheckHint(result);
       if (hint !== null) {
         output.writeStdout(`${hint}\n`);
@@ -80,8 +94,9 @@ export async function runServe(
   }
 
   try {
-    await dependencies.waitForShutdown(server);
+    await dependencies.waitForShutdown(server, beginShutdown);
   } finally {
+    beginShutdown();
     await server.app.close();
   }
   return 0;

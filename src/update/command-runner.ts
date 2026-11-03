@@ -11,6 +11,8 @@ export type CommandInvocation = {
   command: string;
   args: readonly string[];
   cwd?: string | undefined;
+  // Aborts a long-running query when the owner is shutting down.
+  signal?: AbortSignal | undefined;
 };
 
 export type CommandRunner = (invocation: CommandInvocation) => Promise<CommandResult>;
@@ -50,17 +52,33 @@ export function failureOutputLines(result: CommandResult): string[] {
 export function defaultRunCommand(invocation: CommandInvocation): Promise<CommandResult> {
   const isQuery = invocation.args[0] === "prefix" || invocation.args[0] === "view";
   const timeoutMs = isQuery ? queryTimeoutMs : installTimeoutMs;
+  const signal = invocation.signal;
+  if (signal?.aborted) {
+    return Promise.resolve({
+      status: null,
+      stdout: "",
+      stderr: "",
+      error: new Error("命令已取消"),
+    });
+  }
   return new Promise((resolve) => {
     let stdout = "";
     let stderr = "";
     let failure: Error | undefined;
     let settled = false;
+    let timer: NodeJS.Timeout | undefined;
+    let abortHandler: (() => void) | undefined;
     const settle = (status: number | null) => {
       if (settled) {
         return;
       }
       settled = true;
-      clearTimeout(timer);
+      if (timer !== undefined) {
+        clearTimeout(timer);
+      }
+      if (abortHandler !== undefined) {
+        signal?.removeEventListener("abort", abortHandler);
+      }
       resolve({ status, stdout, stderr, ...(failure ? { error: failure } : {}) });
     };
     const keepTail = (current: string, chunk: Buffer) =>
@@ -71,10 +89,22 @@ export function defaultRunCommand(invocation: CommandInvocation): Promise<Comman
       stdio: ["ignore", "pipe", "pipe"],
       windowsHide: true,
     });
-    const timer = setTimeout(() => {
+    abortHandler = () => {
+      failure = new Error("命令已取消");
+      child.kill("SIGKILL");
+      child.stdout.destroy();
+      child.stderr.destroy();
+      settle(null);
+    };
+    timer = setTimeout(() => {
       failure = new Error(`命令超过 ${timeoutMs / 1000} 秒未结束，已终止`);
       child.kill();
     }, timeoutMs);
+    if (signal?.aborted) {
+      abortHandler();
+    } else {
+      signal?.addEventListener("abort", abortHandler, { once: true });
+    }
     child.stdout.on("data", (chunk: Buffer) => {
       stdout = keepTail(stdout, chunk);
     });

@@ -146,10 +146,12 @@ function detectPackageManager(projectRoot: string): PackageManager | undefined {
 export async function classifyEntry(
   entryPath: string,
   runCommand: CommandRunner,
+  signal?: AbortSignal,
 ): Promise<EntryLocation> {
   const prefixResult = await runCommand({
     command: npmExecutable(process.platform),
     args: ["prefix", "--global"],
+    ...(signal !== undefined ? { signal } : {}),
   });
   if (prefixResult.status === 0 && !prefixResult.error) {
     const globalPrefix = prefixResult.stdout.trim();

@@ -28,6 +28,7 @@ export type VersionCheckResult =
 export type VersionCheckHandle = {
   done: Promise<VersionCheckResult>;
   result: () => VersionCheckResult | null;
+  cancel: () => void;
 };
 
 type Semver = {
@@ -115,8 +116,13 @@ type LatestVersionQuery = { version: string } | { error: string; outputLines: st
 async function queryLatestVersion(
   command: string,
   runCommand: CommandRunner,
+  signal?: AbortSignal,
 ): Promise<LatestVersionQuery> {
-  const result = await runCommand({ command, args: ["view", "milestack", "version"] });
+  const result = await runCommand({
+    command,
+    args: ["view", "milestack", "version"],
+    ...(signal !== undefined ? { signal } : {}),
+  });
   if (result.status !== 0 || result.error) {
     return { error: "查询失败", outputLines: failureOutputLines(result) };
   }
@@ -141,8 +147,9 @@ export async function evaluateLatest(
   command: string,
   runCommand: CommandRunner,
   currentVersion: string,
+  signal?: AbortSignal,
 ): Promise<LatestEvaluation> {
-  const latest = await queryLatestVersion(command, runCommand);
+  const latest = await queryLatestVersion(command, runCommand, signal);
   if ("error" in latest) {
     return { kind: "error", detail: latest.error, outputLines: latest.outputLines };
   }
@@ -170,13 +177,17 @@ export async function evaluateLatest(
 // changes command behavior or output.
 export async function checkForUpdate(
   dependencies: VersionCheckDependencies,
+  signal?: AbortSignal,
 ): Promise<VersionCheckResult> {
-  if (parseSemver(dependencies.currentVersion) === undefined) {
+  if (signal?.aborted || parseSemver(dependencies.currentVersion) === undefined) {
     return { status: "unavailable" };
   }
   try {
     const entryPath = dependencies.resolveEntryPath();
-    const location = await classifyEntry(entryPath, dependencies.runCommand);
+    const location = await classifyEntry(entryPath, dependencies.runCommand, signal);
+    if (signal?.aborted) {
+      return { status: "unavailable" };
+    }
     const guidance = upgradeGuidance(location);
     if (guidance.command === null) {
       return { status: "unavailable" };
@@ -185,6 +196,7 @@ export async function checkForUpdate(
       latestVersionExecutable(location, process.platform),
       dependencies.runCommand,
       dependencies.currentVersion,
+      signal,
     );
     if (evaluation.kind === "error") {
       return { status: "unavailable" };
@@ -205,14 +217,22 @@ export async function checkForUpdate(
 }
 
 // Starts the check without awaiting it so a slow registry can never delay the
-// caller. `result()` stays null until the check settles.
+// caller. `result()` stays null until the check settles, and cancel() aborts
+// the in-flight package-manager command without recording a late result.
 export function startVersionCheck(
   dependencies: VersionCheckDependencies,
 ): VersionCheckHandle {
   let result: VersionCheckResult | null = null;
-  const done = checkForUpdate(dependencies).then((checked) => {
-    result = checked;
+  const controller = new AbortController();
+  const done = checkForUpdate(dependencies, controller.signal).then((checked) => {
+    if (!controller.signal.aborted) {
+      result = checked;
+    }
     return checked;
   });
-  return { done, result: () => result };
+  return {
+    done,
+    result: () => result,
+    cancel: () => controller.abort(),
+  };
 }
