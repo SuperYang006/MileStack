@@ -1,5 +1,13 @@
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -243,6 +251,11 @@ type CommandFakeOptions = {
   queryError?: string | undefined;
   installFails?: boolean;
   installError?: string | undefined;
+  // Runs when the installer succeeds, to put the new version on disk.
+  onInstall?: () => void;
+  // What the newly installed CLI writes when asked to refresh. Left unset, the
+  // refresh child does nothing, as if it failed.
+  childWrites?: { instructionsPath: string; version: string };
 };
 
 type CommandFake = {
@@ -270,9 +283,22 @@ function createCommandFake(options: CommandFakeOptions): CommandFake {
         : { status: 0, stdout: `${options.latest}\n`, stderr: "" };
     }
     if (subcommand === "install" || subcommand === "update") {
-      return options.installFails === true
-        ? { status: 1, stdout: "", stderr: options.installError ?? "install failed" }
-        : { status: 0, stdout: "updated 1 package\n", stderr: "" };
+      if (options.installFails === true) {
+        return { status: 1, stdout: "", stderr: options.installError ?? "install failed" };
+      }
+      options.onInstall?.();
+      return { status: 0, stdout: "updated 1 package\n", stderr: "" };
+    }
+    if (invocation.command === process.execPath) {
+      if (options.childWrites === undefined) {
+        return { status: 1, stdout: "", stderr: "refresh child failed" };
+      }
+      writeFileSync(
+        options.childWrites.instructionsPath,
+        formatProjectAgentInstructions(options.childWrites.version),
+        "utf8",
+      );
+      return { status: 0, stdout: "", stderr: "" };
     }
     return {
       status: 1,
@@ -284,6 +310,21 @@ function createCommandFake(options: CommandFakeOptions): CommandFake {
     calls,
     dependencies: (entryPath: string) => ({ resolveEntryPath: () => entryPath, runCommand }),
   };
+}
+
+function writeInstalledPackage(packageRoot: string, version: string): string {
+  const entryPath = path.join(packageRoot, "dist", "index.js");
+  writeFileAt(entryPath);
+  writeFileSync(
+    path.join(packageRoot, "package.json"),
+    JSON.stringify({ name: "milestack", version, bin: { milestack: "dist/index.js" } }),
+    "utf8",
+  );
+  return entryPath;
+}
+
+function refreshCalls(fake: CommandFake): CommandInvocation[] {
+  return fake.calls.filter((call) => call.command === process.execPath);
 }
 
 function installerCalls(fake: CommandFake): CommandInvocation[] {
@@ -306,7 +347,13 @@ describe("milestack update: npm global self-update", () => {
     writeFileSync(rootAgentsPath, "# Existing project instructions\n", "utf8");
     writeFileSync(clientConfigPath, '{"mcp":{"other":{"command":"keep"}}}\n', "utf8");
     writeFileSync(gitignorePath, "dist/\n", "utf8");
-    const fake = createCommandFake({ globalPrefix: prefix, latest: "9.9.9" });
+    const packageRoot = path.join(prefix, "lib", "node_modules", "milestack");
+    const fake = createCommandFake({
+      globalPrefix: prefix,
+      latest: "9.9.9",
+      onInstall: () => writeInstalledPackage(packageRoot, "9.9.9"),
+      childWrites: { instructionsPath, version: "9.9.9" },
+    });
     const capture = outputCapture();
 
     const exitCode = await runCli(
@@ -330,9 +377,13 @@ describe("milestack update: npm global self-update", () => {
     expect(installerCalls(fake)).toEqual([
       { command: "npm", args: ["install", "--global", "milestack@latest"] },
     ]);
-    expect(readFileSync(instructionsPath, "utf8")).toBe(
-      formatProjectAgentInstructions(runtimeVersion),
-    );
+    expect(refreshCalls(fake)).toEqual([
+      {
+        command: process.execPath,
+        args: [realpathSync(entryPath), "update", "--project", projectRoot],
+      },
+    ]);
+    expect(readFileSync(instructionsPath, "utf8")).toBe(formatProjectAgentInstructions("9.9.9"));
     expect(readFileSync(rootAgentsPath, "utf8")).toBe("# Existing project instructions\n");
     expect(readFileSync(clientConfigPath, "utf8")).toBe('{"mcp":{"other":{"command":"keep"}}}\n');
     expect(readFileSync(gitignorePath, "utf8")).toBe("dist/\n");
@@ -429,12 +480,15 @@ describe("milestack update: npm global self-update", () => {
     }
   });
 
-  it("reports both the install result and the refresh failure when writing fails", async () => {
+  it("does not report a refresh when the new CLI fails to refresh", async () => {
     const { prefix, entryPath } = createNpmGlobalEntry();
     const { projectRoot, instructionsPath } = createInitializedProject();
-    rmSync(instructionsPath);
-    mkdirSync(instructionsPath);
-    const fake = createCommandFake({ globalPrefix: prefix, latest: "9.9.9" });
+    const packageRoot = path.join(prefix, "lib", "node_modules", "milestack");
+    const fake = createCommandFake({
+      globalPrefix: prefix,
+      latest: "9.9.9",
+      onInstall: () => writeInstalledPackage(packageRoot, "9.9.9"),
+    });
     const capture = outputCapture();
 
     const exitCode = await runCli(
@@ -446,7 +500,30 @@ describe("milestack update: npm global self-update", () => {
     expect(exitCode).toBe(1);
     const stdout = capture.stdout.join("");
     expect(stdout).toContain("升级完成");
-    expect(stdout).toContain("刷新生成文件失败");
+    expect(stdout).not.toContain("已刷新");
+    expect(stdout).toContain("请再运行一次 milestack update");
+    expect(readFileSync(instructionsPath, "utf8")).toBe(staleGeneratedContent);
+  });
+
+  it("does not report a refresh when the new CLI cannot be located after install", async () => {
+    const { prefix, entryPath } = createNpmGlobalEntry();
+    const { projectRoot, instructionsPath } = createInitializedProject();
+    const fake = createCommandFake({ globalPrefix: prefix, latest: "9.9.9" });
+    const capture = outputCapture();
+
+    const exitCode = await runCli(
+      ["update", "--project", projectRoot],
+      capture.output,
+      fake.dependencies(entryPath),
+    );
+
+    expect(exitCode).toBe(1);
+    const stdout = capture.stdout.join("");
+    expect(stdout).toContain("无法确定新安装的 CLI");
+    expect(stdout).not.toContain("已刷新");
+    expect(stdout).toContain("请再运行一次 milestack update");
+    expect(refreshCalls(fake)).toEqual([]);
+    expect(readFileSync(instructionsPath, "utf8")).toBe(staleGeneratedContent);
   });
 
   it("writes the running CLI version into the generated header", async () => {
@@ -721,7 +798,12 @@ describe("milestack update: project-local dependency", () => {
     const { instructionsPath } = initializeProjectDirectory(fixture.projectRoot);
     const lockfilePath = path.join(fixture.projectRoot, "package-lock.json");
     const lockfileContent = readFileSync(lockfilePath, "utf8");
-    const fake = createCommandFake({ latest: "9.9.9" });
+    const fake = createCommandFake({
+      latest: "9.9.9",
+      onInstall: () =>
+        writeInstalledPackage(path.join(fixture.projectRoot, "node_modules", "milestack"), "9.9.9"),
+      childWrites: { instructionsPath, version: "9.9.9" },
+    });
     const capture = outputCapture();
 
     const exitCode = await runCli(
@@ -751,15 +833,29 @@ describe("milestack update: project-local dependency", () => {
       devDependencies: { milestack: "^0.1.0" },
     });
     expect(readFileSync(lockfilePath, "utf8")).toBe(lockfileContent);
-    expect(readFileSync(instructionsPath, "utf8")).toBe(
-      formatProjectAgentInstructions(runtimeVersion),
-    );
+    expect(readFileSync(instructionsPath, "utf8")).toBe(formatProjectAgentInstructions("9.9.9"));
   });
 
   it("upgrades a pnpm project dependency from the virtual store entry", async () => {
     const fixture = createPnpmProjectLocalEntry();
-    initializeProjectDirectory(fixture.projectRoot);
-    const fake = createCommandFake({ latest: "9.9.9" });
+    const { instructionsPath } = initializeProjectDirectory(fixture.projectRoot);
+    // pnpm installs the new version at a different real path than the old one.
+    const newPackageRoot = path.join(
+      fixture.projectRoot,
+      "node_modules",
+      ".pnpm",
+      "milestack@9.9.9",
+      "node_modules",
+      "milestack",
+    );
+    const fake = createCommandFake({
+      latest: "9.9.9",
+      onInstall: () => {
+        writeInstalledPackage(newPackageRoot, "9.9.9");
+        symlinkSync(newPackageRoot, path.join(fixture.projectRoot, "node_modules", "milestack"));
+      },
+      childWrites: { instructionsPath, version: "9.9.9" },
+    });
     const capture = outputCapture();
 
     const exitCode = await runCli(
@@ -782,6 +878,18 @@ describe("milestack update: project-local dependency", () => {
     ]);
     expect(readFileSync(fixture.packageJsonPath, "utf8")).toBe(fixture.packageJsonContent);
     expect(existsSync(path.join(fixture.projectRoot, "package-lock.json"))).toBe(false);
+    expect(refreshCalls(fake)).toEqual([
+      {
+        command: process.execPath,
+        args: [
+          realpathSync(path.join(newPackageRoot, "dist", "index.js")),
+          "update",
+          "--project",
+          fixture.projectRoot,
+        ],
+      },
+    ]);
+    expect(readFileSync(instructionsPath, "utf8")).toBe(formatProjectAgentInstructions("9.9.9"));
   });
 
   it("reports an already-latest project dependency without installing", async () => {

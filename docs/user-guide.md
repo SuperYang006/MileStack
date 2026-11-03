@@ -238,6 +238,7 @@ Both print one line to standard output: the current version and the realpath of 
 
 - A project-local upgrade runs the fixed package-manager command only in the project root that declares the dependency; it never installs another global copy.
 - Source checkouts and entries linked back to a source checkout with `pnpm link --global` keep the existing rule: run `pnpm build` in that repository. `update` does not treat them as installed packages.
+- After a successful install, `update` asks the newly installed version to regenerate the files, then confirms the generated file carries the new version before reporting it refreshed. If that fails, or the new CLI cannot be located, it says the file was not updated and asks you to run `milestack update` once more.
 - `--check` only reports the current version, latest version, and generated-file status; it does not install or write files.
 
 If you currently have 0.1.0 installed, the first upgrade cannot use `milestack update`. Install 0.2.0 or a later version with the original installation method first:
@@ -246,6 +247,8 @@ If you currently have 0.1.0 installed, the first upgrade cannot use `milestack u
 - project-local: install `milestack@latest` in the project root that declares the dependency. For example, run `npm install --save-dev milestack@latest` in an npm project or `pnpm update milestack --latest` in a pnpm project.
 
 After 0.2.0 or a later version is installed, `milestack update` can handle later upgrades. If you already have 0.2.0 or a later version installed, `milestack update` upgrades to 0.2.2.
+
+Versions 0.2.2 and earlier refresh the generated files with their own old code after installing, so when upgrading from 0.2.2 or earlier, the file still carries the old version after `update` reports success. After that upgrade finishes, run `milestack update` once more in every initialized project.
 
 After upgrading, open a new terminal and restart the MCP client and `milestack serve` so they load the new version. Keep the existing database; no deletion is needed. The program applies forward migrations to non-empty databases and creates a backup before migrating.
 

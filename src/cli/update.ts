@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import {
@@ -407,7 +407,73 @@ type ReportSection = {
   failed: boolean;
 };
 
-function refreshProjectSection(target: ProjectRefreshTarget): ReportSection {
+// The CLI that the installer just put on disk. The running process still holds
+// the code of the version it was started from, so it must not generate files
+// for the new version itself.
+type InstalledCli = { entryPath: string; version: string };
+
+type CliSection = ReportSection & {
+  // Set once the installer succeeded; installedCli is undefined when the new
+  // CLI could not be located afterwards.
+  upgrade?: { installedCli: InstalledCli | undefined };
+};
+
+function readInstalledCli(packageRoot: string): InstalledCli | undefined {
+  try {
+    const manifest: unknown = JSON.parse(
+      readFileSync(path.join(packageRoot, "package.json"), "utf8"),
+    );
+    if (!isRecord(manifest) || manifest["name"] !== "milestack") {
+      return undefined;
+    }
+    const version = manifest["version"];
+    const bin = manifest["bin"];
+    const binPath = typeof bin === "string" ? bin : isRecord(bin) ? bin["milestack"] : undefined;
+    if (typeof version !== "string" || parseSemver(version) === undefined) {
+      return undefined;
+    }
+    if (typeof binPath !== "string") {
+      return undefined;
+    }
+    return { entryPath: realpathSync(path.join(packageRoot, binPath)), version };
+  } catch {
+    return undefined;
+  }
+}
+
+// An npm global install replaces the package in place, but pnpm may put the new
+// version at a different real path, so the entry is resolved again from the
+// project's node_modules instead of reusing the old entry path.
+function locateInstalledCli(location: EntryLocation, entryPath: string): InstalledCli | undefined {
+  if (location.kind === "npm-global") {
+    const packageRoot = findPackageRoot(path.dirname(entryPath));
+    return packageRoot === undefined ? undefined : readInstalledCli(packageRoot.packageRoot);
+  }
+  if (location.kind === "project-local") {
+    try {
+      return readInstalledCli(
+        realpathSync(path.join(location.projectRoot, "node_modules", "milestack")),
+      );
+    } catch {
+      return undefined;
+    }
+  }
+  return undefined;
+}
+
+function generatedHeaderVersionLine(instructionsPath: string): string {
+  try {
+    return readFileSync(instructionsPath, "utf8").split("\n", 1)[0] ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function refreshProjectSection(
+  target: ProjectRefreshTarget,
+  upgrade: CliSection["upgrade"],
+  runCommand: CommandRunner,
+): ReportSection {
   if (target.kind === "uninitialized") {
     return {
       lines: [
@@ -415,6 +481,9 @@ function refreshProjectSection(target: ProjectRefreshTarget): ReportSection {
       ],
       failed: false,
     };
+  }
+  if (upgrade !== undefined) {
+    return refreshWithInstalledCli(target, upgrade.installedCli, runCommand);
   }
   try {
     writeFileSync(
@@ -430,6 +499,38 @@ function refreshProjectSection(target: ProjectRefreshTarget): ReportSection {
       failed: true,
     };
   }
+}
+
+// Asks the newly installed CLI to generate the files, then confirms from the
+// file itself that it carries the new version before reporting success.
+function refreshWithInstalledCli(
+  target: Extract<ProjectRefreshTarget, { kind: "initialized" }>,
+  installedCli: InstalledCli | undefined,
+  runCommand: CommandRunner,
+): ReportSection {
+  const rerun = "生成文件未更新到新版本，请再运行一次 milestack update。";
+  if (installedCli === undefined) {
+    return { lines: [`  ✗ 无法确定新安装的 CLI；${rerun}`], failed: true };
+  }
+  const result = runCommand({
+    command: process.execPath,
+    args: [installedCli.entryPath, "update", "--project", target.projectRoot],
+  });
+  if (
+    !generatedHeaderVersionLine(target.instructionsPath).includes(
+      `version: ${installedCli.version}. -->`,
+    )
+  ) {
+    const detail = result.status === 0 && !result.error ? "" : `（${commandFailureDetail(result)}）`;
+    return {
+      lines: [`  ✗ 用新版本 ${installedCli.version} 刷新生成文件失败${detail}；${rerun}`],
+      failed: true,
+    };
+  }
+  return {
+    lines: [`  ✓ 已刷新 ${target.instructionsPath}（由新版本 ${installedCli.version} 生成）`],
+    failed: false,
+  };
 }
 
 function checkProjectSection(target: ProjectRefreshTarget): ReportSection {
@@ -468,7 +569,7 @@ function cliUpdateSection(
   entryPath: string,
   options: UpdateOptions,
   runCommand: CommandRunner,
-): ReportSection {
+): CliSection {
   const lines: string[] = [];
 
   if (location.kind === "npm-global") {
@@ -506,7 +607,11 @@ function cliUpdateSection(
     }
     lines.push(`  ✓ 升级完成：${runtimeVersion} -> ${evaluation.latest}`);
     lines.push("  提醒：请新开终端后运行 milestack -v 确认版本，并重启 MCP 客户端和 serve。");
-    return { lines, failed: false };
+    return {
+      lines,
+      failed: false,
+      upgrade: { installedCli: locateInstalledCli(location, entryPath) },
+    };
   }
 
   if (location.kind === "project-local") {
@@ -556,7 +661,11 @@ function cliUpdateSection(
     lines.push(
       "  说明：本次只升级项目内依赖；若 MCP 配置使用全局命令 milestack，其版本不会改变。",
     );
-    return { lines, failed: false };
+    return {
+      lines,
+      failed: false,
+      upgrade: { installedCli: locateInstalledCli(location, entryPath) },
+    };
   }
 
   lines.push(`  当前版本：${runtimeVersion}`);
@@ -608,7 +717,7 @@ export function runUpdate(
   const cli = cliUpdateSection(location, entryPath, options, dependencies.runCommand);
   const project = options.check
     ? checkProjectSection(target)
-    : refreshProjectSection(target);
+    : refreshProjectSection(target, cli.upgrade, dependencies.runCommand);
 
   const lines = [
     options.check ? "MileStack update --check（不安装、不写文件）" : "MileStack update",
