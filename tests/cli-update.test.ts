@@ -20,6 +20,7 @@ import {
   type CommandResult,
   type UpdateDependencies,
 } from "../src/cli/update.js";
+import { detectStepDisplay, formatElapsed, type StepDisplay } from "../src/cli/step-progress.js";
 import {
   formatProjectAgentInstructions,
   projectAgentInstructionsPath,
@@ -245,12 +246,27 @@ function createPnpmProjectLocalEntry(): ProjectLocalFixture {
   };
 }
 
+// Plain output with a frozen clock, so step lines are deterministic.
+const plainDisplay: StepDisplay = {
+  interactive: false,
+  color: false,
+  now: () => 0,
+  tickMs: 10,
+  columns: () => 80,
+};
+
 type CommandFakeOptions = {
   globalPrefix?: string | undefined;
   latest?: string | undefined;
   queryError?: string | undefined;
   installFails?: boolean;
   installError?: string | undefined;
+  // Holds the installer open, then reports (before succeeding or failing) so a
+  // test can look at what was already printed.
+  queryDelayMs?: number;
+  onQueryDelayElapsed?: () => void;
+  installDelayMs?: number;
+  onInstallDelayElapsed?: () => void;
   // Runs when the installer succeeds, to put the new version on disk.
   onInstall?: () => void;
   // What the newly installed CLI writes when asked to refresh. Left unset, the
@@ -260,12 +276,12 @@ type CommandFakeOptions = {
 
 type CommandFake = {
   calls: CommandInvocation[];
-  dependencies: (entryPath: string) => UpdateDependencies;
+  dependencies: (entryPath: string, display?: StepDisplay) => UpdateDependencies;
 };
 
 function createCommandFake(options: CommandFakeOptions): CommandFake {
   const calls: CommandInvocation[] = [];
-  const runCommand = (invocation: CommandInvocation): CommandResult => {
+  const runCommand = async (invocation: CommandInvocation): Promise<CommandResult> => {
     calls.push({
       command: invocation.command,
       args: [...invocation.args],
@@ -278,11 +294,19 @@ function createCommandFake(options: CommandFakeOptions): CommandFake {
         : { status: 0, stdout: `${options.globalPrefix}\n`, stderr: "" };
     }
     if (subcommand === "view") {
+      if (options.queryDelayMs !== undefined) {
+        await new Promise((resolve) => setTimeout(resolve, options.queryDelayMs));
+        options.onQueryDelayElapsed?.();
+      }
       return options.latest === undefined
         ? { status: 1, stdout: "", stderr: options.queryError ?? "network error" }
         : { status: 0, stdout: `${options.latest}\n`, stderr: "" };
     }
     if (subcommand === "install" || subcommand === "update") {
+      if (options.installDelayMs !== undefined) {
+        await new Promise((resolve) => setTimeout(resolve, options.installDelayMs));
+        options.onInstallDelayElapsed?.();
+      }
       if (options.installFails === true) {
         return { status: 1, stdout: "", stderr: options.installError ?? "install failed" };
       }
@@ -308,7 +332,11 @@ function createCommandFake(options: CommandFakeOptions): CommandFake {
   };
   return {
     calls,
-    dependencies: (entryPath: string) => ({ resolveEntryPath: () => entryPath, runCommand }),
+    dependencies: (entryPath: string, display: StepDisplay = plainDisplay) => ({
+      resolveEntryPath: () => entryPath,
+      runCommand,
+      display,
+    }),
   };
 }
 
@@ -364,14 +392,21 @@ describe("milestack update: npm global self-update", () => {
 
     expect(exitCode).toBe(0);
     const stdout = capture.stdout.join("");
-    expect(stdout).toContain(`当前版本：${runtimeVersion}`);
-    expect(stdout).toContain("最新版本：9.9.9");
-    expect(stdout).toContain("npm install --global milestack@latest");
-    expect(stdout).toContain(`升级完成：${runtimeVersion} -> 9.9.9`);
+    expect(stdout).toContain(`MileStack update  ${runtimeVersion} → 9.9.9`);
+    expect(stdout).toContain("✔ 检测安装方式");
+    expect(stdout).toContain("npm 全局安装");
+    expect(stdout).toContain(`入口：${entryPath}`);
+    expect(stdout).toContain("✔ 查询最新版本");
+    expect(stdout).toContain("9.9.9 可用");
+    expect(stdout).toContain("✔ 安装 milestack@9.9.9");
+    expect(stdout).toContain("执行：npm install --global milestack@latest");
+    expect(stdout).toContain("✔ 刷新项目生成文件");
+    expect(stdout).toContain(`${instructionsPath}（由新版本 9.9.9 生成）`);
+    expect(stdout).toContain("✓ 已升级到 9.9.9 · 请重启 MCP 客户端和 milestack serve");
     expect(stdout).toContain("milestack -v");
-    expect(stdout).toContain("MCP");
-    expect(stdout).toContain("serve");
-    expect(stdout).toContain(`已刷新 ${instructionsPath}`);
+    expect(stdout.indexOf("检测安装方式")).toBeLessThan(stdout.indexOf("查询最新版本"));
+    expect(stdout.indexOf("查询最新版本")).toBeLessThan(stdout.indexOf("安装 milestack@9.9.9"));
+    expect(stdout.indexOf("安装 milestack@9.9.9")).toBeLessThan(stdout.indexOf("刷新项目生成文件"));
     expect(capture.stderr).toEqual([]);
 
     expect(installerCalls(fake)).toEqual([
@@ -410,7 +445,7 @@ describe("milestack update: npm global self-update", () => {
     );
   });
 
-  it("keeps the installed package unchanged when the install command fails", async () => {
+  it("keeps the installed package unchanged and stops when the install command fails", async () => {
     const { prefix, entryPath } = createNpmGlobalEntry();
     const { projectRoot, instructionsPath } = createInitializedProject();
     const fake = createCommandFake({
@@ -429,14 +464,16 @@ describe("milestack update: npm global self-update", () => {
 
     expect(exitCode).toBe(1);
     const stdout = capture.stdout.join("");
-    expect(stdout).toContain("安装失败：EACCES permission denied");
-    expect(stdout).toContain(`已刷新 ${instructionsPath}`);
-    expect(readFileSync(instructionsPath, "utf8")).toBe(
-      formatProjectAgentInstructions(runtimeVersion),
-    );
+    expect(stdout).toContain("✖ 安装 milestack@9.9.9");
+    expect(stdout).toContain("EACCES permission denied");
+    expect(stdout).toContain("手动执行：npm install --global milestack@latest");
+    expect(stdout).not.toContain("刷新项目生成文件");
+    expect(stdout).not.toContain("已升级到");
+    expect(refreshCalls(fake)).toEqual([]);
+    expect(readFileSync(instructionsPath, "utf8")).toBe(staleGeneratedContent);
   });
 
-  it("reports a registry query failure without installing and still refreshes", async () => {
+  it("reports a registry query failure without installing or refreshing", async () => {
     const { prefix, entryPath } = createNpmGlobalEntry();
     const { projectRoot, instructionsPath } = createInitializedProject();
     const fake = createCommandFake({
@@ -453,12 +490,12 @@ describe("milestack update: npm global self-update", () => {
 
     expect(exitCode).toBe(1);
     const stdout = capture.stdout.join("");
-    expect(stdout).toContain("查询最新版本失败：ENOTFOUND registry.npmjs.org");
+    expect(stdout).toContain("✖ 查询最新版本");
+    expect(stdout).toContain("ENOTFOUND registry.npmjs.org");
+    expect(stdout).toContain("手动执行：npm view milestack version");
+    expect(stdout).not.toContain("刷新项目生成文件");
     expect(installerCalls(fake)).toEqual([]);
-    expect(stdout).toContain(`已刷新 ${instructionsPath}`);
-    expect(readFileSync(instructionsPath, "utf8")).toBe(
-      formatProjectAgentInstructions(runtimeVersion),
-    );
+    expect(readFileSync(instructionsPath, "utf8")).toBe(staleGeneratedContent);
   });
 
   it("skips the project refresh for uninitialized directories without creating .milestack", async () => {
@@ -499,8 +536,10 @@ describe("milestack update: npm global self-update", () => {
 
     expect(exitCode).toBe(1);
     const stdout = capture.stdout.join("");
-    expect(stdout).toContain("升级完成");
+    expect(stdout).toContain("已安装 9.9.9，但项目生成文件未刷新");
+    expect(stdout).not.toContain("已升级到");
     expect(stdout).not.toContain("已刷新");
+    expect(stdout).toContain("refresh child failed");
     expect(stdout).toContain("请再运行一次 milestack update");
     expect(readFileSync(instructionsPath, "utf8")).toBe(staleGeneratedContent);
   });
@@ -593,9 +632,9 @@ describe("milestack update --check", () => {
 
     expect(exitCode).toBe(0);
     const stdout = capture.stdout.join("");
-    expect(stdout).toContain(`当前版本：${runtimeVersion}`);
-    expect(stdout).toContain("最新版本：9.9.9");
-    expect(stdout).toContain("--check 未执行安装");
+    expect(stdout).toContain(`MileStack update --check（不安装、不写文件）  ${runtimeVersion}`);
+    expect(stdout).not.toContain("→");
+    expect(stdout).toContain("9.9.9 可用；--check 未执行安装");
     expect(stdout).toContain("生成文件与当前 CLI 的完整生成结果不一致");
     expect(installerCalls(fake)).toEqual([]);
     expect(readFileSync(instructionsPath, "utf8")).toBe(before);
@@ -633,7 +672,8 @@ describe("milestack update --check", () => {
     );
 
     expect(exitCode).toBe(1);
-    expect(capture.stdout.join("")).toContain("查询最新版本失败：EHOSTUNREACH");
+    expect(capture.stdout.join("")).toContain("✖ 查询最新版本");
+    expect(capture.stdout.join("")).toContain("EHOSTUNREACH");
     expect(installerCalls(fake)).toEqual([]);
     expect(readFileSync(instructionsPath, "utf8")).toBe(staleGeneratedContent);
   });
@@ -838,12 +878,11 @@ describe("milestack update: project-local dependency", () => {
 
     expect(exitCode).toBe(0);
     const stdout = capture.stdout.join("");
-    expect(stdout).toContain(`当前版本：${runtimeVersion}`);
-    expect(stdout).toContain("最新版本：9.9.9");
-    expect(stdout).toContain(
-      `执行：npm install milestack@latest（目录：${fixture.projectRoot}）`,
-    );
-    expect(stdout).toContain(`升级完成：${runtimeVersion} -> 9.9.9`);
+    expect(stdout).toContain(`MileStack update  ${runtimeVersion} → 9.9.9`);
+    expect(stdout).toContain("项目内安装（npm）");
+    expect(stdout).toContain(`项目：${fixture.projectRoot}`);
+    expect(stdout).toContain(`执行：cd ${fixture.projectRoot} && npm install milestack@latest`);
+    expect(stdout).toContain("✓ 已升级到 9.9.9 · 请重启 MCP 客户端和 milestack serve");
     expect(stdout).toContain("./node_modules/.bin/milestack -v");
     expect(stdout).toContain("全局命令 milestack");
     expect(stdout).toContain("serve");
@@ -891,9 +930,9 @@ describe("milestack update: project-local dependency", () => {
     expect(exitCode).toBe(0);
     const stdout = capture.stdout.join("");
     expect(stdout).toContain(
-      `执行：pnpm update milestack --latest（目录：${fixture.projectRoot}）`,
+      `执行：cd ${fixture.projectRoot} && pnpm update milestack --latest`,
     );
-    expect(stdout).toContain(`升级完成：${runtimeVersion} -> 9.9.9`);
+    expect(stdout).toContain("✓ 已升级到 9.9.9");
     expect(installerCalls(fake)).toEqual([
       { command: "pnpm", args: ["update", "milestack", "--latest"], cwd: fixture.projectRoot },
     ]);
@@ -956,9 +995,9 @@ describe("milestack update: project-local dependency", () => {
 
     expect(exitCode).toBe(0);
     const stdout = capture.stdout.join("");
-    expect(stdout).toContain(`当前版本：${runtimeVersion}`);
-    expect(stdout).toContain("最新版本：9.9.9");
-    expect(stdout).toContain("--check 未执行安装");
+    expect(stdout).toContain(`MileStack update --check（不安装、不写文件）  ${runtimeVersion}`);
+    expect(stdout).not.toContain("→");
+    expect(stdout).toContain("9.9.9 可用；--check 未执行安装");
     expect(stdout).toContain("生成文件与当前 CLI 的完整生成结果不一致");
     expect(installerCalls(fake)).toEqual([]);
     expect(readFileSync(fixture.packageJsonPath, "utf8")).toBe(fixture.packageJsonContent);
@@ -982,7 +1021,8 @@ describe("milestack update: project-local dependency", () => {
     );
 
     expect(exitCode).toBe(1);
-    expect(capture.stdout.join("")).toContain("查询最新版本失败：ENETUNREACH");
+    expect(capture.stdout.join("")).toContain("✖ 查询最新版本");
+    expect(capture.stdout.join("")).toContain("ENETUNREACH");
     expect(installerCalls(fake)).toEqual([]);
     expect(readFileSync(fixture.packageJsonPath, "utf8")).toBe(fixture.packageJsonContent);
   });
@@ -1014,7 +1054,7 @@ describe("milestack update: project-local dependency", () => {
     }
   });
 
-  it("reports a project-local registry query failure without installing and still refreshes", async () => {
+  it("reports a project-local registry query failure without installing or refreshing", async () => {
     const fixture = createNpmProjectLocalEntry({
       dependencyField: "dependencies",
       lockfileNames: ["package-lock.json"],
@@ -1031,16 +1071,16 @@ describe("milestack update: project-local dependency", () => {
 
     expect(exitCode).toBe(1);
     const stdout = capture.stdout.join("");
-    expect(stdout).toContain("查询最新版本失败：ENOTFOUND registry.npmjs.org");
-    expect(stdout).toContain(`已刷新 ${instructionsPath}`);
+    expect(stdout).toContain("✖ 查询最新版本");
+    expect(stdout).toContain("ENOTFOUND registry.npmjs.org");
+    expect(stdout).toContain("手动执行：npm view milestack version");
+    expect(stdout).not.toContain("刷新项目生成文件");
     expect(installerCalls(fake)).toEqual([]);
     expect(readFileSync(fixture.packageJsonPath, "utf8")).toBe(fixture.packageJsonContent);
-    expect(readFileSync(instructionsPath, "utf8")).toBe(
-      formatProjectAgentInstructions(runtimeVersion),
-    );
+    expect(readFileSync(instructionsPath, "utf8")).toBe(staleGeneratedContent);
   });
 
-  it("keeps the project manifest untouched and still refreshes when the install fails", async () => {
+  it("keeps the project manifest untouched and stops when the install fails", async () => {
     const fixture = createNpmProjectLocalEntry({
       dependencyField: "dependencies",
       lockfileNames: ["package-lock.json"],
@@ -1061,15 +1101,323 @@ describe("milestack update: project-local dependency", () => {
 
     expect(exitCode).toBe(1);
     const stdout = capture.stdout.join("");
-    expect(stdout).toContain("安装失败：EACCES permission denied");
-    expect(stdout).toContain(`已刷新 ${instructionsPath}`);
+    expect(stdout).toContain("✖ 安装 milestack@9.9.9");
+    expect(stdout).toContain("EACCES permission denied");
+    expect(stdout).toContain(`手动执行：cd ${fixture.projectRoot} && npm install milestack@latest`);
+    expect(stdout).not.toContain("刷新项目生成文件");
     expect(installerCalls(fake)).toEqual([
       { command: "npm", args: ["install", "milestack@latest"], cwd: fixture.projectRoot },
     ]);
     expect(readFileSync(fixture.packageJsonPath, "utf8")).toBe(fixture.packageJsonContent);
-    expect(readFileSync(instructionsPath, "utf8")).toBe(
-      formatProjectAgentInstructions(runtimeVersion),
+    expect(readFileSync(instructionsPath, "utf8")).toBe(staleGeneratedContent);
+  });
+});
+
+describe("milestack update: step display", () => {
+  const interactiveDisplay: StepDisplay = {
+    interactive: true,
+    color: true,
+    now: Date.now,
+    tickMs: 10,
+    columns: () => 100,
+  };
+  // eslint-disable-next-line no-control-regex
+  const colorSequence = /\x1b\[[0-9;]*m/;
+
+  function upgradeFixture(fakeOptions: Partial<CommandFakeOptions>) {
+    const { prefix, entryPath } = createNpmGlobalEntry();
+    const { projectRoot, instructionsPath } = createInitializedProject();
+    const packageRoot = path.join(prefix, "lib", "node_modules", "milestack");
+    const fake = createCommandFake({
+      globalPrefix: prefix,
+      latest: "9.9.9",
+      onInstall: () => writeInstalledPackage(packageRoot, "9.9.9"),
+      childWrites: { instructionsPath, version: "9.9.9" },
+      ...fakeOptions,
+    });
+    return { fake, entryPath, projectRoot };
+  }
+
+  it("keeps redrawing the running step while the installer is busy, in the specified colors", async () => {
+    const capture = outputCapture();
+    let framesBeforeInstallEnds = 0;
+    const { fake, entryPath, projectRoot } = upgradeFixture({
+      installDelayMs: 150,
+      onInstallDelayElapsed: () => {
+        framesBeforeInstallEnds = capture.stdout.length;
+      },
+    });
+
+    const exitCode = await runCli(
+      ["update", "--project", projectRoot],
+      capture.output,
+      fake.dependencies(entryPath, interactiveDisplay),
     );
+
+    expect(exitCode).toBe(0);
+    const beforeInstallEnds = capture.stdout.slice(0, framesBeforeInstallEnds).join("");
+    // Several spinner frames, each redrawn in place, and finished steps already shown.
+    const spinnerFrames = beforeInstallEnds.match(/\x1b\[36m[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]\x1b\[0m/g) ?? [];
+    expect(spinnerFrames.length).toBeGreaterThanOrEqual(3);
+    expect(new Set(spinnerFrames).size).toBeGreaterThan(1);
+    expect(beforeInstallEnds).toContain("\x1b[1A\r\x1b[J");
+    expect(beforeInstallEnds).toContain("\x1b[32m✔\x1b[0m 检测安装方式");
+    expect(beforeInstallEnds).toContain("\x1b[32m✔\x1b[0m 查询最新版本");
+    expect(beforeInstallEnds).toContain("\x1b[90m○\x1b[0m \x1b[90m刷新项目生成文件\x1b[0m");
+    expect(beforeInstallEnds).not.toContain("已升级到");
+
+    const stdout = capture.stdout.join("");
+    expect(stdout).toContain("\x1b[?25l");
+    expect(stdout).toContain(`MileStack update  ${runtimeVersion} → 9.9.9`);
+    expect(stdout).toContain("\x1b[32m✔\x1b[0m 安装 milestack@9.9.9");
+    expect(stdout).toContain("\x1b[32m✔\x1b[0m 刷新项目生成文件");
+    expect(stdout.lastIndexOf("\x1b[?25h")).toBeGreaterThan(stdout.lastIndexOf("\x1b[?25l"));
+    // The final redraw leaves each step exactly once in the settled output.
+    const settled = stdout.split("\x1b[J").at(-1) ?? "";
+    expect(settled).toContain("已升级到 9.9.9 · 请重启 MCP 客户端和 milestack serve");
+  });
+
+  it("shows a failed step in red with only the last 20 output lines and the manual command", async () => {
+    const outputLines = Array.from({ length: 25 }, (_, index) => `npm line ${index + 1}`);
+    const { fake, entryPath, projectRoot } = upgradeFixture({
+      installFails: true,
+      installError: outputLines.join("\n"),
+    });
+    const capture = outputCapture();
+
+    const exitCode = await runCli(
+      ["update", "--project", projectRoot],
+      capture.output,
+      fake.dependencies(entryPath, interactiveDisplay),
+    );
+
+    expect(exitCode).toBe(1);
+    const stdout = capture.stdout.join("");
+    expect(stdout).toContain("\x1b[31m✖\x1b[0m 安装 milestack@9.9.9");
+    expect(stdout).not.toContain("npm line 5\n");
+    expect(stdout).toContain("npm line 6");
+    expect(stdout).toContain("npm line 25");
+    expect(stdout).toContain("手动执行：npm install --global milestack@latest");
+    expect(refreshCalls(fake)).toEqual([]);
+  });
+
+  it("limits a failing query to the last 20 lines in plain output as well", async () => {
+    const { prefix, entryPath } = createNpmGlobalEntry();
+    const fake = createCommandFake({
+      globalPrefix: prefix,
+      queryError: Array.from({ length: 30 }, (_, index) => `query line ${index + 1}`).join("\n"),
+    });
+    const capture = outputCapture();
+
+    const exitCode = await runCli(
+      ["update", "--project", createUninitializedProject()],
+      capture.output,
+      fake.dependencies(entryPath),
+    );
+
+    expect(exitCode).toBe(1);
+    const stdout = capture.stdout.join("");
+    expect(stdout).not.toContain("query line 10\n");
+    expect(stdout).toContain("query line 11");
+    expect(stdout).toContain("query line 30");
+    expect(stdout).toContain("手动执行：npm view milestack version");
+  });
+
+  it("prints plain text without escape sequences when output is not a terminal", async () => {
+    for (const fakeOptions of [{}, { installFails: true }, { latest: runtimeVersion }]) {
+      const { fake, entryPath, projectRoot } = upgradeFixture(fakeOptions);
+      const capture = outputCapture();
+
+      await runCli(
+        ["update", "--project", projectRoot],
+        capture.output,
+        fake.dependencies(entryPath),
+      );
+
+      const stdout = capture.stdout.join("");
+      expect(stdout).toContain("✔ 检测安装方式");
+      expect(stdout).not.toContain("\x1b");
+      expect(stdout).not.toMatch(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏○]/);
+    }
+  });
+
+  it("keeps cursor control but emits no color when color is off", async () => {
+    const { fake, entryPath, projectRoot } = upgradeFixture({ installDelayMs: 40 });
+    const capture = outputCapture();
+
+    await runCli(
+      ["update", "--project", projectRoot],
+      capture.output,
+      fake.dependencies(entryPath, { ...interactiveDisplay, color: false }),
+    );
+
+    const stdout = capture.stdout.join("");
+    expect(stdout).toContain("\x1b[?25l");
+    expect(stdout).not.toMatch(colorSequence);
+    expect(stdout).toContain("✔ 安装 milestack@9.9.9");
+  });
+
+  it("prints finished steps while the version query is still running in plain mode", async () => {
+    const capture = outputCapture();
+    let printedDuringQuery = "";
+    const { fake, entryPath, projectRoot } = upgradeFixture({
+      queryDelayMs: 40,
+      onQueryDelayElapsed: () => {
+        printedDuringQuery = capture.stdout.join("");
+      },
+    });
+
+    await runCli(
+      ["update", "--project", projectRoot],
+      capture.output,
+      fake.dependencies(entryPath),
+    );
+
+    expect(printedDuringQuery).toContain(`MileStack update  ${runtimeVersion}`);
+    expect(printedDuringQuery).toContain("✔ 检测安装方式");
+    expect(printedDuringQuery).not.toContain("→");
+    const stdout = capture.stdout.join("");
+    // The comparison is added once the query result is known.
+    expect(stdout).toContain(`MileStack update  ${runtimeVersion} → 9.9.9`);
+    expect(stdout.indexOf("查询最新版本")).toBeLessThan(stdout.indexOf("→"));
+    expect(stdout.indexOf("→")).toBeLessThan(stdout.indexOf("安装 milestack@9.9.9"));
+  });
+
+  // Replays terminal output on a screen of fixed width: wide characters take
+  // two cells, a full row wraps, and cursor-up / erase work on screen rows.
+  function replayOnScreen(chunks: readonly string[], columns: number): string[] {
+    const screen: string[][] = [[]];
+    let row = 0;
+    let column = 0;
+    const text = chunks.join("");
+    let index = 0;
+    while (index < text.length) {
+      const control = /^\x1b\[([0-9;?]*)([A-Za-z])/.exec(text.slice(index));
+      if (control !== null) {
+        index += control[0].length;
+        if (control[2] === "A") {
+          row = Math.max(0, row - Number(control[1] || 1));
+        } else if (control[2] === "J") {
+          screen[row] = (screen[row] ?? []).slice(0, column);
+          screen.length = row + 1;
+        }
+        continue;
+      }
+      const character = String.fromCodePoint(text.codePointAt(index) ?? 0);
+      index += character.length;
+      if (character === "\r") {
+        column = 0;
+      } else if (character === "\n") {
+        row += 1;
+        column = 0;
+        screen[row] ??= [];
+      } else {
+        const width = /[\u1100-\u115f\u2e80-\ua4cf\uac00-\ud7a3\uff00-\uff60]/.test(character) ? 2 : 1;
+        if (column + width > columns) {
+          row += 1;
+          column = 0;
+          screen[row] ??= [];
+        }
+        const cells = (screen[row] ??= []);
+        cells[column] = character;
+        column += width;
+      }
+    }
+    return screen.map((cells) => cells.filter((cell) => cell !== undefined).join("").trimEnd());
+  }
+
+  it("redraws in place on a narrow terminal even when the entry path is long", async () => {
+    const columns = 40;
+    const capture = outputCapture();
+    const { fake, entryPath, projectRoot } = upgradeFixture({
+      queryDelayMs: 60,
+      installDelayMs: 120,
+    });
+
+    await runCli(
+      ["update", "--project", projectRoot],
+      capture.output,
+      fake.dependencies(entryPath, {
+        ...interactiveDisplay,
+        color: false,
+        columns: () => columns,
+      }),
+    );
+
+    expect(entryPath.length + "入口：".length).toBeGreaterThan(columns);
+    const screen = replayOnScreen(capture.stdout, columns);
+    expect(screen.filter((line) => line.includes("MileStack update"))).toHaveLength(1);
+    expect(screen.filter((line) => line.includes("安装 milestack@9.9.9"))).toHaveLength(1);
+    expect(screen.filter((line) => line.includes("检测安装方式"))).toHaveLength(1);
+    expect(screen.join("\n")).toContain("已升级到 9.9.9");
+  });
+
+  it("keeps the running time visible on narrow terminals", async () => {
+    for (const columns of [40, 50]) {
+      const capture = outputCapture();
+      const { fake, entryPath, projectRoot } = upgradeFixture({ installDelayMs: 150 });
+
+      await runCli(
+        ["update", "--project", projectRoot],
+        capture.output,
+        fake.dependencies(entryPath, {
+          ...interactiveDisplay,
+          color: false,
+          columns: () => columns,
+        }),
+      );
+
+      const frames = capture.stdout.join("").match(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] 安装[^\n]*/g) ?? [];
+      expect(frames.length).toBeGreaterThanOrEqual(3);
+      for (const frame of frames) {
+        expect(frame).toMatch(/\d+(\.\d)?s$/);
+        expect(frame.length).toBeLessThan(columns);
+      }
+    }
+  });
+
+  it("follows a terminal that becomes narrower while a step is running", async () => {
+    let columns = 100;
+    const capture = outputCapture();
+    const { fake, entryPath, projectRoot } = upgradeFixture({
+      installDelayMs: 100,
+    });
+    const shrink = setTimeout(() => {
+      columns = 30;
+    }, 40);
+
+    await runCli(
+      ["update", "--project", projectRoot],
+      capture.output,
+      fake.dependencies(entryPath, { ...interactiveDisplay, color: false, columns: () => columns }),
+    );
+    clearTimeout(shrink);
+
+    const stdout = capture.stdout.join("");
+    // Frames drawn at 100 columns are erased by their reflowed height at 30.
+    const eraseRows = [...stdout.matchAll(/\x1b\[(\d+)A\r\x1b\[J/g)].map((match) => Number(match[1]));
+    expect(Math.max(...eraseRows)).toBeGreaterThan(Math.min(...eraseRows.slice(-3)));
+    expect(stdout).toContain("已升级到 9.9.9");
+  });
+
+  it("derives interactivity and color from the terminal and NO_COLOR", () => {
+    expect(detectStepDisplay({}, false)).toMatchObject({ interactive: false, color: false });
+    expect(detectStepDisplay({}, true)).toMatchObject({ interactive: true, color: true });
+    expect(detectStepDisplay({ NO_COLOR: "1" }, true)).toMatchObject({
+      interactive: true,
+      color: false,
+    });
+    expect(detectStepDisplay({ NO_COLOR: "" }, true)).toMatchObject({ color: true });
+    expect(detectStepDisplay({ TERM: "dumb" }, true)).toMatchObject({
+      interactive: false,
+      color: false,
+    });
+  });
+
+  it("formats elapsed time compactly", () => {
+    expect(formatElapsed(300)).toBe("0.3s");
+    expect(formatElapsed(23_400)).toBe("23s");
+    expect(formatElapsed(61_000)).toBe("1m01s");
   });
 });
 

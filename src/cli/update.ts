@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { existsSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
@@ -11,6 +11,7 @@ import { resolveProjectRoot } from "../project/project-context.js";
 import { runtimeVersion } from "../server/runtime-version.js";
 import { isInsideDirectory, resolveEntryPath } from "./entry-path.js";
 import type { CliOutput } from "./output.js";
+import { createStepReporter, detectStepDisplay, type Step, type StepDisplay, type StepReporter } from "./step-progress.js";
 
 export type CommandResult = {
   status: number | null;
@@ -25,11 +26,13 @@ export type CommandInvocation = {
   cwd?: string | undefined;
 };
 
-export type CommandRunner = (invocation: CommandInvocation) => CommandResult;
+export type CommandRunner = (invocation: CommandInvocation) => Promise<CommandResult>;
 
 export type UpdateDependencies = {
   resolveEntryPath: () => string;
   runCommand: CommandRunner;
+  // Left unset, taken from the terminal that stdout is attached to.
+  display?: StepDisplay;
 };
 
 export type UpdateOptions = {
@@ -39,7 +42,7 @@ export type UpdateOptions = {
 
 const queryTimeoutMs = 60_000;
 const installTimeoutMs = 300_000;
-const maxCommandOutputBytes = 16 * 1024 * 1024;
+const maxCommandOutputChars = 1024 * 1024;
 
 export function npmExecutable(platform: NodeJS.Platform): string {
   return platform === "win32" ? "npm.cmd" : "npm";
@@ -49,21 +52,48 @@ export function pnpmExecutable(platform: NodeJS.Platform): string {
   return platform === "win32" ? "pnpm.cmd" : "pnpm";
 }
 
-function defaultRunCommand(invocation: CommandInvocation): CommandResult {
+// Runs without blocking the event loop so the progress display keeps redrawing
+// while the package manager works.
+function defaultRunCommand(invocation: CommandInvocation): Promise<CommandResult> {
   const isQuery = invocation.args[0] === "prefix" || invocation.args[0] === "view";
-  const result = spawnSync(invocation.command, [...invocation.args], {
-    ...(invocation.cwd !== undefined ? { cwd: invocation.cwd } : {}),
-    encoding: "utf8",
-    timeout: isQuery ? queryTimeoutMs : installTimeoutMs,
-    maxBuffer: maxCommandOutputBytes,
-    windowsHide: true,
+  const timeoutMs = isQuery ? queryTimeoutMs : installTimeoutMs;
+  return new Promise((resolve) => {
+    let stdout = "";
+    let stderr = "";
+    let failure: Error | undefined;
+    let settled = false;
+    const settle = (status: number | null) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      resolve({ status, stdout, stderr, ...(failure ? { error: failure } : {}) });
+    };
+    const keepTail = (current: string, chunk: Buffer) =>
+      (current + chunk.toString("utf8")).slice(-maxCommandOutputChars);
+
+    const child = spawn(invocation.command, [...invocation.args], {
+      ...(invocation.cwd !== undefined ? { cwd: invocation.cwd } : {}),
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
+    });
+    const timer = setTimeout(() => {
+      failure = new Error(`命令超过 ${timeoutMs / 1000} 秒未结束，已终止`);
+      child.kill();
+    }, timeoutMs);
+    child.stdout.on("data", (chunk: Buffer) => {
+      stdout = keepTail(stdout, chunk);
+    });
+    child.stderr.on("data", (chunk: Buffer) => {
+      stderr = keepTail(stderr, chunk);
+    });
+    child.on("error", (error) => {
+      failure = error;
+      settle(null);
+    });
+    child.on("close", (status) => settle(status));
   });
-  return {
-    status: result.status,
-    stdout: result.stdout ?? "",
-    stderr: result.stderr ?? "",
-    ...(result.error ? { error: result.error } : {}),
-  };
 }
 
 export const defaultUpdateDependencies: UpdateDependencies = {
@@ -199,8 +229,8 @@ function detectPackageManager(projectRoot: string): PackageManager | undefined {
   return hasNpmLock ? "npm" : "pnpm";
 }
 
-function classifyEntry(entryPath: string, runCommand: CommandRunner): EntryLocation {
-  const prefixResult = runCommand({
+async function classifyEntry(entryPath: string, runCommand: CommandRunner): Promise<EntryLocation> {
+  const prefixResult = await runCommand({
     command: npmExecutable(process.platform),
     args: ["prefix", "--global"],
   });
@@ -320,45 +350,67 @@ function compareSemver(left: string, right: string): number | undefined {
   return 0;
 }
 
-function commandFailureDetail(result: CommandResult): string {
+const failureOutputLineLimit = 20;
+
+// The package manager's own words, last lines first-class: the cause of a
+// failure is almost always at the end.
+function failureOutputLines(result: CommandResult): string[] {
   if (result.error?.message !== undefined) {
-    return result.error.message;
+    return [result.error.message];
   }
-  const stderr = result.stderr.trim();
-  return stderr.length > 0 ? stderr : `退出码 ${result.status ?? "unknown"}`;
+  const lines = `${result.stdout}\n${result.stderr}`
+    .split(/\r?\n/)
+    .map((line) => line.trimEnd())
+    .filter((line) => line.trim() !== "");
+  if (lines.length === 0) {
+    return [`退出码 ${result.status ?? "unknown"}`];
+  }
+  return lines.slice(-failureOutputLineLimit);
 }
 
-type LatestVersionQuery = { version: string } | { error: string };
+type LatestVersionQuery = { version: string } | { error: string; outputLines: string[] };
 
-function queryLatestVersion(command: string, runCommand: CommandRunner): LatestVersionQuery {
-  const result = runCommand({ command, args: ["view", "milestack", "version"] });
+async function queryLatestVersion(
+  command: string,
+  runCommand: CommandRunner,
+): Promise<LatestVersionQuery> {
+  const result = await runCommand({ command, args: ["view", "milestack", "version"] });
   if (result.status !== 0 || result.error) {
-    return { error: commandFailureDetail(result) };
+    return { error: "查询失败", outputLines: failureOutputLines(result) };
   }
   const matches = result.stdout.match(/\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?/g);
   const version = matches?.at(-1) ?? "";
   if (parseSemver(version) === undefined) {
-    return { error: `查询命令返回了无法解析的版本：'${result.stdout.trim()}'` };
+    return {
+      error: "返回了无法解析的版本",
+      outputLines: [`查询命令返回了无法解析的版本：'${result.stdout.trim()}'`],
+    };
   }
   return { version };
 }
 
 type LatestEvaluation =
-  | { kind: "error"; line: string }
+  | { kind: "error"; detail: string; outputLines: string[] }
   | { kind: "latest"; latest: string }
   | { kind: "update-available"; latest: string }
   | { kind: "not-newer"; latest: string };
 
-function evaluateLatest(command: string, runCommand: CommandRunner): LatestEvaluation {
-  const latest = queryLatestVersion(command, runCommand);
+async function evaluateLatest(
+  command: string,
+  runCommand: CommandRunner,
+): Promise<LatestEvaluation> {
+  const latest = await queryLatestVersion(command, runCommand);
   if ("error" in latest) {
-    return { kind: "error", line: `  ✗ 查询最新版本失败：${latest.error}` };
+    return { kind: "error", detail: latest.error, outputLines: latest.outputLines };
   }
   const comparison = compareSemver(latest.version, runtimeVersion);
   if (comparison === undefined) {
     return {
       kind: "error",
-      line: `  ✗ 无法比较当前版本与最新版本（当前：${runtimeVersion}，最新：${latest.version}）；未执行安装。`,
+      detail: "无法比较版本",
+      outputLines: [
+        `无法比较当前版本与最新版本（当前：${runtimeVersion}，最新：${latest.version}）；未执行安装。`,
+      ],
     };
   }
   if (comparison === 0) {
@@ -368,16 +420,6 @@ function evaluateLatest(command: string, runCommand: CommandRunner): LatestEvalu
     return { kind: "update-available", latest: latest.version };
   }
   return { kind: "not-newer", latest: latest.version };
-}
-
-type InstallResult = { ok: true } | { ok: false; error: string };
-
-function runInstaller(invocation: CommandInvocation, runCommand: CommandRunner): InstallResult {
-  const result = runCommand(invocation);
-  if (result.status === 0 && !result.error) {
-    return { ok: true };
-  }
-  return { ok: false, error: commandFailureDetail(result) };
 }
 
 type ProjectRefreshTarget =
@@ -402,21 +444,33 @@ function resolveRefreshTarget(projectPath: string | undefined): ProjectRefreshTa
   };
 }
 
-type ReportSection = {
-  lines: string[];
-  failed: boolean;
+// How one step ended. failsRun is separate from the glyph because a --check
+// mismatch is shown as a failure without changing the exit code.
+type StepOutcome = {
+  state: "done" | "failed" | "skipped";
+  detail: string;
+  notes: string[];
+  failsRun: boolean;
 };
+
+function recordOutcome(reporter: StepReporter, step: Step, outcome: StepOutcome): void {
+  if (outcome.state === "done") {
+    reporter.succeed(step, outcome.detail, outcome.notes);
+  } else if (outcome.state === "failed") {
+    reporter.fail(step, outcome.detail, outcome.notes);
+  } else {
+    reporter.skip(step, outcome.detail, outcome.notes);
+  }
+}
 
 // The CLI that the installer just put on disk. The running process still holds
 // the code of the version it was started from, so it must not generate files
 // for the new version itself.
 type InstalledCli = { entryPath: string; version: string };
 
-type CliSection = ReportSection & {
-  // Set once the installer succeeded; installedCli is undefined when the new
-  // CLI could not be located afterwards.
-  upgrade?: { installedCli: InstalledCli | undefined; latest: string };
-};
+// Set once the installer succeeded; installedCli is undefined when the new CLI
+// could not be located afterwards.
+type Upgrade = { installedCli: InstalledCli | undefined; latest: string };
 
 function readInstalledCli(packageRoot: string): InstalledCli | undefined {
   try {
@@ -469,18 +523,22 @@ function generatedHeaderVersionLine(instructionsPath: string): string {
   }
 }
 
-function refreshProjectSection(
+function skippedUninitialized(target: ProjectRefreshTarget): StepOutcome {
+  return {
+    state: "skipped",
+    detail: "跳过：项目未初始化",
+    notes: [`${target.projectRoot} 没有 .milestack/milestack.db，未创建 .milestack。`],
+    failsRun: false,
+  };
+}
+
+async function refreshProject(
   target: ProjectRefreshTarget,
-  upgrade: CliSection["upgrade"],
+  upgrade: Upgrade | undefined,
   runCommand: CommandRunner,
-): ReportSection {
+): Promise<StepOutcome> {
   if (target.kind === "uninitialized") {
-    return {
-      lines: [
-        `  跳过：${target.projectRoot} 未初始化（没有 .milestack/milestack.db），未创建 .milestack。`,
-      ],
-      failed: false,
-    };
+    return skippedUninitialized(target);
   }
   if (upgrade !== undefined) {
     return refreshWithInstalledCli(target, upgrade, runCommand);
@@ -491,252 +549,305 @@ function refreshProjectSection(
       formatProjectAgentInstructions(runtimeVersion),
       "utf8",
     );
-    return { lines: [`  ✓ 已刷新 ${target.instructionsPath}`], failed: false };
+    return { state: "done", detail: target.instructionsPath, notes: [], failsRun: false };
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     return {
-      lines: [`  ✗ 刷新生成文件失败：${detail}（${target.instructionsPath}）`],
-      failed: true,
+      state: "failed",
+      detail: "刷新生成文件失败",
+      notes: [`${detail}（${target.instructionsPath}）`],
+      failsRun: true,
     };
   }
 }
 
 // Asks the newly installed CLI to generate the files, then confirms from the
 // file itself that it carries the new version before reporting success.
-function refreshWithInstalledCli(
+async function refreshWithInstalledCli(
   target: Extract<ProjectRefreshTarget, { kind: "initialized" }>,
-  upgrade: NonNullable<CliSection["upgrade"]>,
+  upgrade: Upgrade,
   runCommand: CommandRunner,
-): ReportSection {
+): Promise<StepOutcome> {
   const { installedCli, latest } = upgrade;
   const rerun = "生成文件未更新到新版本，请再运行一次 milestack update。";
+  const failure = (detail: string, notes: string[]): StepOutcome => ({
+    state: "failed",
+    detail,
+    notes: [...notes, rerun],
+    failsRun: true,
+  });
   if (installedCli === undefined) {
-    return { lines: [`  ✗ 无法确定新安装的 CLI；${rerun}`], failed: true };
+    return failure("无法确定新安装的 CLI", []);
   }
   // The installer can exit 0 while the located package is still an older
   // version; never run that entry, and never accept its version as the result.
   if (installedCli.version !== latest) {
-    return {
-      lines: [
-        `  ✗ 安装后定位到的 CLI 版本是 ${installedCli.version}，不是 ${latest}；${rerun}`,
-      ],
-      failed: true,
-    };
+    return failure(`安装后定位到的 CLI 版本是 ${installedCli.version}，不是 ${latest}`, []);
   }
-  const result = runCommand({
+  const result = await runCommand({
     command: process.execPath,
     args: [installedCli.entryPath, "update", "--project", target.projectRoot],
   });
   if (!generatedHeaderVersionLine(target.instructionsPath).includes(`version: ${latest}. -->`)) {
-    const detail = result.status === 0 && !result.error ? "" : `（${commandFailureDetail(result)}）`;
-    return {
-      lines: [`  ✗ 用新版本 ${latest} 刷新生成文件失败${detail}；${rerun}`],
-      failed: true,
-    };
+    const succeeded = result.status === 0 && !result.error;
+    return failure(
+      `用新版本 ${latest} 刷新生成文件失败`,
+      succeeded ? [] : failureOutputLines(result),
+    );
   }
   return {
-    lines: [`  ✓ 已刷新 ${target.instructionsPath}（由新版本 ${latest} 生成）`],
-    failed: false,
+    state: "done",
+    detail: `${target.instructionsPath}（由新版本 ${latest} 生成）`,
+    notes: [],
+    failsRun: false,
   };
 }
 
-function checkProjectSection(target: ProjectRefreshTarget): ReportSection {
+function checkProject(target: ProjectRefreshTarget): StepOutcome {
   if (target.kind === "uninitialized") {
-    return {
-      lines: [
-        `  跳过：${target.projectRoot} 未初始化（没有 .milestack/milestack.db），未创建 .milestack。`,
-      ],
-      failed: false,
-    };
+    return skippedUninitialized(target);
   }
-
   let existing: string;
   try {
     existing = readFileSync(target.instructionsPath, "utf8");
   } catch {
     return {
-      lines: [`  ✗ 生成文件不存在，与当前 CLI 的完整生成结果不一致：${target.instructionsPath}`],
-      failed: false,
+      state: "failed",
+      detail: "生成文件不存在，与当前 CLI 的完整生成结果不一致",
+      notes: [target.instructionsPath],
+      failsRun: false,
     };
   }
   if (existing === formatProjectAgentInstructions(runtimeVersion)) {
     return {
-      lines: [`  ✓ 生成文件与当前 CLI 的完整生成结果一致：${target.instructionsPath}`],
-      failed: false,
+      state: "done",
+      detail: "生成文件与当前 CLI 的完整生成结果一致",
+      notes: [target.instructionsPath],
+      failsRun: false,
     };
   }
   return {
-    lines: [`  ✗ 生成文件与当前 CLI 的完整生成结果不一致：${target.instructionsPath}`],
-    failed: false,
+    state: "failed",
+    detail: "生成文件与当前 CLI 的完整生成结果不一致",
+    notes: [target.instructionsPath],
+    failsRun: false,
   };
 }
 
-function cliUpdateSection(
+function describeLocation(
   location: EntryLocation,
   entryPath: string,
-  options: UpdateOptions,
-  runCommand: CommandRunner,
-): CliSection {
-  const lines: string[] = [];
-
+): { detail: string; notes: string[] } {
+  const entry = `入口：${entryPath}`;
   if (location.kind === "npm-global") {
-    lines.push(`  当前版本：${runtimeVersion}`);
-    lines.push(`  入口：${entryPath}（npm 全局安装）`);
-    const evaluation = evaluateLatest(npmExecutable(process.platform), runCommand);
-    if (evaluation.kind === "error") {
-      lines.push(evaluation.line);
-      return { lines, failed: true };
-    }
-    lines.push(`  最新版本：${evaluation.latest}`);
-    if (evaluation.kind === "latest") {
-      lines.push("  ✓ 已是最新版本，未执行安装。");
-      return { lines, failed: false };
-    }
-    if (evaluation.kind === "not-newer") {
-      lines.push("  → registry 的最新版本不高于当前版本，未执行安装。");
-      return { lines, failed: false };
-    }
-    if (options.check) {
-      lines.push("  → 有可用更新；--check 未执行安装。");
-      return { lines, failed: false };
-    }
-    lines.push("  执行：npm install --global milestack@latest");
-    const install = runInstaller(
-      {
-        command: npmExecutable(process.platform),
-        args: ["install", "--global", "milestack@latest"],
-      },
-      runCommand,
-    );
-    if (!install.ok) {
-      lines.push(`  ✗ 安装失败：${install.error}`);
-      return { lines, failed: true };
-    }
-    lines.push(`  ✓ 升级完成：${runtimeVersion} -> ${evaluation.latest}`);
-    lines.push("  提醒：请新开终端后运行 milestack -v 确认版本，并重启 MCP 客户端和 serve。");
+    return { detail: "npm 全局安装", notes: [entry] };
+  }
+  if (location.kind === "project-local") {
     return {
-      lines,
-      failed: false,
-      upgrade: { installedCli: locateInstalledCli(location, entryPath), latest: evaluation.latest },
+      detail: `项目内安装（${location.packageManager}）`,
+      notes: [entry, `项目：${location.projectRoot}`],
     };
   }
+  if (location.kind === "project-local-ambiguous") {
+    return {
+      detail: "项目内安装（包管理器不明）",
+      notes: [entry, `项目：${location.projectRoot}`],
+    };
+  }
+  if (location.kind === "source-repo") {
+    return { detail: "源码仓库", notes: [entry] };
+  }
+  if (location.kind === "pnpm-global") {
+    return { detail: "pnpm 全局安装", notes: [entry] };
+  }
+  if (location.kind === "npx") {
+    return { detail: "npx 临时副本", notes: [entry] };
+  }
+  return { detail: "无法确认安装方式", notes: [entry] };
+}
 
+// Why no installer ran for an entry this command does not upgrade.
+function manualUpgradeReason(location: EntryLocation): string {
+  if (location.kind === "project-local-ambiguous") {
+    return "无法确定单一包管理器（需要且只需要 package-lock.json 或 pnpm-lock.yaml 之一）。";
+  }
+  if (location.kind === "source-repo") {
+    return `源码仓库入口（含 pnpm link --global）请在该仓库手动执行 pnpm build（仓库：${location.packageRoot}）。`;
+  }
+  if (location.kind === "pnpm-global") {
+    return "请沿用原来的 pnpm 方式自行升级；本命令不会改跑 npm。";
+  }
+  if (location.kind === "npx") {
+    return "如需全局安装，可手动执行 npm install --global milestack@latest（本次未执行）。";
+  }
+  return "无法确认当前入口的安装方式；请使用安装该 CLI 的包管理器升级，本命令不会静默改跑 npm。";
+}
+
+type Installer = {
+  executable: string;
+  installArgs: string[];
+  cwd?: string;
+  // What a developer can run by hand.
+  manualInstall: string;
+  manualQuery: string;
+  reminders: string[];
+};
+
+function installerFor(location: EntryLocation): Installer | undefined {
+  if (location.kind === "npm-global") {
+    const executable = npmExecutable(process.platform);
+    return {
+      executable,
+      installArgs: ["install", "--global", "milestack@latest"],
+      manualInstall: "npm install --global milestack@latest",
+      manualQuery: "npm view milestack version",
+      reminders: ["请新开终端后运行 milestack -v 确认版本。"],
+    };
+  }
   if (location.kind === "project-local") {
-    lines.push(`  当前版本：${runtimeVersion}`);
-    lines.push(`  入口：${entryPath}（项目内安装：${location.projectRoot}）`);
     const executable =
       location.packageManager === "npm"
         ? npmExecutable(process.platform)
         : pnpmExecutable(process.platform);
-    const evaluation = evaluateLatest(executable, runCommand);
-    if (evaluation.kind === "error") {
-      lines.push(evaluation.line);
-      return { lines, failed: true };
-    }
-    lines.push(`  最新版本：${evaluation.latest}`);
-    if (evaluation.kind === "latest") {
-      lines.push("  ✓ 已是最新版本，未执行安装。");
-      return { lines, failed: false };
-    }
-    if (evaluation.kind === "not-newer") {
-      lines.push("  → registry 的最新版本不高于当前版本，未执行安装。");
-      return { lines, failed: false };
-    }
-    if (options.check) {
-      lines.push("  → 有可用更新；--check 未执行安装。");
-      return { lines, failed: false };
-    }
     const installArgs =
       location.packageManager === "npm"
         ? ["install", "milestack@latest"]
         : ["update", "milestack", "--latest"];
-    lines.push(
-      `  执行：${location.packageManager} ${installArgs.join(" ")}（目录：${location.projectRoot}）`,
-    );
-    const install = runInstaller(
-      { command: executable, args: installArgs, cwd: location.projectRoot },
-      runCommand,
-    );
-    if (!install.ok) {
-      lines.push(`  ✗ 安装失败：${install.error}`);
-      return { lines, failed: true };
-    }
-    lines.push(`  ✓ 升级完成：${runtimeVersion} -> ${evaluation.latest}`);
-    lines.push(
-      "  提醒：请新开终端后运行 ./node_modules/.bin/milestack -v 确认版本，并重启 MCP 客户端和 serve。",
-    );
-    lines.push(
-      "  说明：本次只升级项目内依赖；若 MCP 配置使用全局命令 milestack，其版本不会改变。",
-    );
     return {
-      lines,
-      failed: false,
-      upgrade: { installedCli: locateInstalledCli(location, entryPath), latest: evaluation.latest },
+      executable,
+      installArgs,
+      cwd: location.projectRoot,
+      manualInstall: `cd ${location.projectRoot} && ${location.packageManager} ${installArgs.join(" ")}`,
+      manualQuery: `${location.packageManager} view milestack version`,
+      reminders: [
+        "请新开终端后运行 ./node_modules/.bin/milestack -v 确认版本。",
+        "本次只升级项目内依赖；若 MCP 配置使用全局命令 milestack，其版本不会改变。",
+      ],
     };
   }
-
-  lines.push(`  当前版本：${runtimeVersion}`);
-
-  if (location.kind === "project-local-ambiguous") {
-    lines.push(`  入口：${entryPath}（项目内安装：${location.projectRoot}）`);
-    lines.push(
-      "  未执行自动安装：无法确定单一包管理器（需要且只需要 package-lock.json 或 pnpm-lock.yaml 之一）。",
-    );
-    return { lines, failed: !options.check };
-  }
-  if (location.kind === "source-repo") {
-    lines.push(`  入口：${entryPath}（源码仓库内）`);
-    lines.push(
-      `  未执行自动安装：源码仓库入口（含 pnpm link --global）请在该仓库手动执行 pnpm build（仓库：${location.packageRoot}）。`,
-    );
-    return { lines, failed: !options.check };
-  }
-  if (location.kind === "pnpm-global") {
-    lines.push(`  入口：${entryPath}（pnpm 全局安装）`);
-    lines.push(
-      "  未执行自动安装：请沿用原来的 pnpm 方式自行升级；本命令不会改跑 npm。",
-    );
-    return { lines, failed: !options.check };
-  }
-  if (location.kind === "npx") {
-    lines.push(`  入口：${entryPath}（npx 临时副本）`);
-    lines.push(
-      "  未执行自动安装：如需全局安装，可手动执行 npm install --global milestack@latest（本次未执行）。",
-    );
-    return { lines, failed: !options.check };
-  }
-  lines.push(`  入口：${entryPath}`);
-  lines.push(
-    "  未执行自动安装：无法确认当前入口的安装方式；请使用安装该 CLI 的包管理器升级，本命令不会静默改跑 npm。",
-  );
-  return { lines, failed: !options.check };
+  return undefined;
 }
 
-export function runUpdate(
+function titleText(options: UpdateOptions, latest?: string): string {
+  const base = options.check ? "MileStack update --check（不安装、不写文件）" : "MileStack update";
+  return latest === undefined
+    ? `${base}  ${runtimeVersion}`
+    : `${base}  ${runtimeVersion} → ${latest}`;
+}
+
+export async function runUpdate(
   options: UpdateOptions,
   output: CliOutput,
   dependencies: UpdateDependencies = defaultUpdateDependencies,
-): number {
+): Promise<number> {
+  const reporter = createStepReporter(output, dependencies.display ?? detectStepDisplay());
+  try {
+    return await executeUpdate(options, reporter, dependencies);
+  } finally {
+    reporter.close();
+  }
+}
+
+async function executeUpdate(
+  options: UpdateOptions,
+  reporter: StepReporter,
+  dependencies: UpdateDependencies,
+): Promise<number> {
+  const { runCommand } = dependencies;
+  reporter.setTitle(titleText(options));
+
+  const detect = reporter.addStep("检测安装方式");
+  const refresh = reporter.addStep(options.check ? "检查项目生成文件" : "刷新项目生成文件");
+  reporter.start(detect);
   const entryPath = dependencies.resolveEntryPath();
-  const location = classifyEntry(entryPath, dependencies.runCommand);
+  const location = await classifyEntry(entryPath, runCommand);
+  const described = describeLocation(location, entryPath);
+  reporter.succeed(detect, described.detail, described.notes);
+
   const target = resolveRefreshTarget(options.projectPath);
+  let failed = false;
+  let upgrade: Upgrade | undefined;
+  let reminders: string[] = [];
 
-  const cli = cliUpdateSection(location, entryPath, options, dependencies.runCommand);
-  const project = options.check
-    ? checkProjectSection(target)
-    : refreshProjectSection(target, cli.upgrade, dependencies.runCommand);
+  const installer = installerFor(location);
+  if (installer === undefined) {
+    reporter.finalizeTitle();
+    const manual = reporter.addStep("升级 CLI", refresh);
+    const reason = manualUpgradeReason(location);
+    if (options.check) {
+      reporter.skip(manual, "未执行自动安装", [reason]);
+    } else {
+      reporter.fail(manual, "未执行自动安装", [reason]);
+      failed = true;
+    }
+  } else {
+    const query = reporter.addStep("查询最新版本", refresh);
+    reporter.start(query);
+    const evaluation = await evaluateLatest(installer.executable, runCommand);
+    if (evaluation.kind === "error") {
+      reporter.fail(query, evaluation.detail, [
+        ...evaluation.outputLines,
+        `手动执行：${installer.manualQuery}`,
+      ]);
+      reporter.discardPending();
+      return 1;
+    }
+    if (evaluation.kind === "latest") {
+      reporter.succeed(query, `${evaluation.latest} 已是最新版本，未执行安装`);
+      reporter.finalizeTitle();
+    } else if (evaluation.kind === "not-newer") {
+      reporter.succeed(
+        query,
+        `registry 的最新版本 ${evaluation.latest} 不高于当前版本，未执行安装`,
+      );
+      reporter.finalizeTitle();
+    } else if (options.check) {
+      reporter.succeed(query, `${evaluation.latest} 可用；--check 未执行安装`);
+      reporter.finalizeTitle();
+    } else {
+      reporter.succeed(query, `${evaluation.latest} 可用`);
+      reporter.setTitle(titleText(options, evaluation.latest), true);
+      const install = reporter.addStep(`安装 milestack@${evaluation.latest}`, refresh);
+      reporter.start(install);
+      const result = await runCommand({
+        command: installer.executable,
+        args: installer.installArgs,
+        ...(installer.cwd !== undefined ? { cwd: installer.cwd } : {}),
+      });
+      if (result.status !== 0 || result.error) {
+        reporter.fail(install, "安装失败", [
+          ...failureOutputLines(result),
+          `手动执行：${installer.manualInstall}`,
+        ]);
+        reporter.discardPending();
+        return 1;
+      }
+      reporter.succeed(install, "", [`执行：${installer.manualInstall}`]);
+      upgrade = {
+        installedCli: locateInstalledCli(location, entryPath),
+        latest: evaluation.latest,
+      };
+      reminders = installer.reminders;
+    }
+  }
 
-  const lines = [
-    options.check ? "MileStack update --check（不安装、不写文件）" : "MileStack update",
-    "",
-    "CLI 自更新：",
-    ...cli.lines,
-    "",
-    "项目生成文件：",
-    ...project.lines,
-    "",
-  ];
-  output.writeStdout(lines.join("\n"));
+  reporter.start(refresh);
+  const outcome = options.check
+    ? checkProject(target)
+    : await refreshProject(target, upgrade, runCommand);
+  recordOutcome(reporter, refresh, outcome);
+  failed = failed || outcome.failsRun;
 
-  return cli.failed || project.failed ? 1 : 0;
+  if (upgrade !== undefined) {
+    reporter.summary(
+      outcome.failsRun ? "failure" : "success",
+      [
+        outcome.failsRun
+          ? `已安装 ${upgrade.latest}，但项目生成文件未刷新 · 请重启 MCP 客户端和 milestack serve`
+          : `已升级到 ${upgrade.latest} · 请重启 MCP 客户端和 milestack serve`,
+        ...reminders,
+      ].join("\n"),
+    );
+  }
+  return failed ? 1 : 0;
 }
