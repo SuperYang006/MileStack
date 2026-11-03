@@ -1352,6 +1352,30 @@ describe("milestack update: step display", () => {
     expect(screen.join("\n")).toContain("已升级到 9.9.9");
   });
 
+  it("keeps the running time visible on narrow terminals", async () => {
+    for (const columns of [40, 50]) {
+      const capture = outputCapture();
+      const { fake, entryPath, projectRoot } = upgradeFixture({ installDelayMs: 150 });
+
+      await runCli(
+        ["update", "--project", projectRoot],
+        capture.output,
+        fake.dependencies(entryPath, {
+          ...interactiveDisplay,
+          color: false,
+          columns: () => columns,
+        }),
+      );
+
+      const frames = capture.stdout.join("").match(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] 安装[^\n]*/g) ?? [];
+      expect(frames.length).toBeGreaterThanOrEqual(3);
+      for (const frame of frames) {
+        expect(frame).toMatch(/\d+(\.\d)?s$/);
+        expect(frame.length).toBeLessThan(columns);
+      }
+    }
+  });
+
   it("follows a terminal that becomes narrower while a step is running", async () => {
     let columns = 100;
     const capture = outputCapture();

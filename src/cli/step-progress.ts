@@ -66,6 +66,24 @@ function displayWidth(text: string): number {
   return width;
 }
 
+// Plain (unstyled) text cut to at most `width` cells, ending in an ellipsis.
+function truncatePlain(text: string, width: number): string {
+  if (displayWidth(text) <= width) {
+    return text;
+  }
+  let result = "";
+  let used = 0;
+  for (const character of text) {
+    const characterWidth = displayWidth(character);
+    if (used + characterWidth > width - 1) {
+      break;
+    }
+    result += character;
+    used += characterWidth;
+  }
+  return `${result}…`;
+}
+
 const sgrSequence = /\x1b\[[0-9;]*m/g;
 
 function visibleWidth(line: string): number {
@@ -293,7 +311,7 @@ export class StepReporter {
       // count rows exactly; finished rows above are written in full.
       const live = this.rows
         .slice(this.committed)
-        .flatMap((row) => this.formatRow(row))
+        .flatMap((row) => this.formatRow(row, columns - 1))
         .map((line) => fitToWidth(line, columns - 1));
       chunk += live.map((line) => `${line}\n`).join("");
       this.liveWidths = live.map(visibleWidth);
@@ -303,7 +321,7 @@ export class StepReporter {
     }
   }
 
-  private formatRow(row: Row): string[] {
+  private formatRow(row: Row, limit?: number): string[] {
     if (row.kind === "title") {
       return [` ${this.styler.bold(row.text)}`, ""];
     }
@@ -321,10 +339,10 @@ export class StepReporter {
         glyph !== "" && index === 0 ? ` ${glyph} ${line}` : `   ${line}`,
       )];
     }
-    return this.formatStep(row.step);
+    return this.formatStep(row.step, limit);
   }
 
-  private formatStep(step: Step): string[] {
+  private formatStep(step: Step, limit?: number): string[] {
     const { styler } = this;
     const glyph =
       step.state === "pending"
@@ -336,15 +354,30 @@ export class StepReporter {
             : step.state === "failed"
               ? styler.red("✖")
               : styler.dim("–");
-    const label = step.state === "pending" ? styler.dim(step.label) : step.label;
-    const labelCell = label + " ".repeat(Math.max(0, labelWidth - displayWidth(step.label)));
-    let elapsed = "";
-    if (step.startedAt !== undefined) {
-      elapsed = styler.dim(formatElapsed((step.endedAt ?? this.display.now()) - step.startedAt));
-    }
+    const paint = (text: string) => (step.state === "pending" ? styler.dim(text) : text);
+    const elapsedText =
+      step.startedAt === undefined
+        ? ""
+        : formatElapsed((step.endedAt ?? this.display.now()) - step.startedAt);
+    const elapsed = elapsedText === "" ? "" : styler.dim(elapsedText);
     const detailGap = " ".repeat(Math.max(2, detailWidth - displayWidth(step.detail)));
-    const detailCell = elapsed === "" ? step.detail : `${step.detail}${detailGap}`;
-    const line = `  ${glyph} ${labelCell}${detailCell}${elapsed}`.trimEnd();
+    const labelPad = " ".repeat(Math.max(0, labelWidth - displayWidth(step.label)));
+    const roomy = `  ${glyph} ${paint(step.label)}${labelPad}${
+      elapsed === "" ? step.detail : `${step.detail}${detailGap}`
+    }${elapsed}`.trimEnd();
+    let line = roomy;
+    if (limit !== undefined && visibleWidth(roomy) > limit) {
+      // Narrow terminal: drop the column padding first, then shorten the
+      // detail, and only then the label, so the running time stays visible.
+      const fixed = 4 + displayWidth(elapsedText) + (elapsedText === "" ? 0 : 2);
+      const available = Math.max(2, limit - fixed);
+      const labelFits = displayWidth(step.label) <= available;
+      const label = labelFits ? step.label : truncatePlain(step.label, available);
+      const spare = available - displayWidth(label);
+      const detail =
+        step.detail !== "" && spare >= 4 ? `  ${truncatePlain(step.detail, spare - 2)}` : "";
+      line = `  ${glyph} ${paint(label)}${detail}${elapsed === "" ? "" : `  ${elapsed}`}`;
+    }
     const notes = step.notes.map((note) => `      ${styler.dim(note)}`);
     return [line, ...notes];
   }
