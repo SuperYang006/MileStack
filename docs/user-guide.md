@@ -254,7 +254,7 @@ Both print one line to standard output: the current version and the realpath of 
  ✓ Upgraded to 0.2.3 · restart MCP clients and milestack serve
 ```
 
-(The tool prints its step labels in Chinese; the lines above are translated.) When a query or install fails, the failed step is marked `✖` with the last 20 lines of the package manager's output and the command to run by hand, and no later step runs. When output is redirected to a file or pipe, or `NO_COLOR` is set, it prints plain text lines without animation or colors. Upgrade arrows and the "Upgraded to" summary appear only when an install actually ran.
+(The tool prints its step labels in Chinese; the lines above are translated.) When a query or install fails, the failed step is marked `✖` with the last 20 lines of the package manager's output and the command to run by hand, and no later step runs. When output is redirected to a file or pipe, it prints plain text lines without animation, cursor control, or colors, and shows each finished step right away. Setting `NO_COLOR` in a terminal only turns the colors off; the in-place spinner stays. Upgrade arrows and the "Upgraded to" summary appear only when an install actually ran.
 
 If you currently have 0.1.0 installed, the first upgrade cannot use `milestack update`. Install 0.2.0 or a later version with the original installation method first:
 

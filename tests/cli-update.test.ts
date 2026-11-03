@@ -247,7 +247,13 @@ function createPnpmProjectLocalEntry(): ProjectLocalFixture {
 }
 
 // Plain output with a frozen clock, so step lines are deterministic.
-const plainDisplay: StepDisplay = { interactive: false, color: false, now: () => 0, tickMs: 10 };
+const plainDisplay: StepDisplay = {
+  interactive: false,
+  color: false,
+  now: () => 0,
+  tickMs: 10,
+  columns: () => 80,
+};
 
 type CommandFakeOptions = {
   globalPrefix?: string | undefined;
@@ -257,6 +263,8 @@ type CommandFakeOptions = {
   installError?: string | undefined;
   // Holds the installer open, then reports (before succeeding or failing) so a
   // test can look at what was already printed.
+  queryDelayMs?: number;
+  onQueryDelayElapsed?: () => void;
   installDelayMs?: number;
   onInstallDelayElapsed?: () => void;
   // Runs when the installer succeeds, to put the new version on disk.
@@ -286,6 +294,10 @@ function createCommandFake(options: CommandFakeOptions): CommandFake {
         : { status: 0, stdout: `${options.globalPrefix}\n`, stderr: "" };
     }
     if (subcommand === "view") {
+      if (options.queryDelayMs !== undefined) {
+        await new Promise((resolve) => setTimeout(resolve, options.queryDelayMs));
+        options.onQueryDelayElapsed?.();
+      }
       return options.latest === undefined
         ? { status: 1, stdout: "", stderr: options.queryError ?? "network error" }
         : { status: 0, stdout: `${options.latest}\n`, stderr: "" };
@@ -1107,6 +1119,7 @@ describe("milestack update: step display", () => {
     color: true,
     now: Date.now,
     tickMs: 10,
+    columns: () => 100,
   };
   // eslint-disable-next-line no-control-regex
   const colorSequence = /\x1b\[[0-9;]*m/;
@@ -1242,6 +1255,125 @@ describe("milestack update: step display", () => {
     expect(stdout).toContain("\x1b[?25l");
     expect(stdout).not.toMatch(colorSequence);
     expect(stdout).toContain("✔ 安装 milestack@9.9.9");
+  });
+
+  it("prints finished steps while the version query is still running in plain mode", async () => {
+    const capture = outputCapture();
+    let printedDuringQuery = "";
+    const { fake, entryPath, projectRoot } = upgradeFixture({
+      queryDelayMs: 40,
+      onQueryDelayElapsed: () => {
+        printedDuringQuery = capture.stdout.join("");
+      },
+    });
+
+    await runCli(
+      ["update", "--project", projectRoot],
+      capture.output,
+      fake.dependencies(entryPath),
+    );
+
+    expect(printedDuringQuery).toContain(`MileStack update  ${runtimeVersion}`);
+    expect(printedDuringQuery).toContain("✔ 检测安装方式");
+    expect(printedDuringQuery).not.toContain("→");
+    const stdout = capture.stdout.join("");
+    // The comparison is added once the query result is known.
+    expect(stdout).toContain(`MileStack update  ${runtimeVersion} → 9.9.9`);
+    expect(stdout.indexOf("查询最新版本")).toBeLessThan(stdout.indexOf("→"));
+    expect(stdout.indexOf("→")).toBeLessThan(stdout.indexOf("安装 milestack@9.9.9"));
+  });
+
+  // Replays terminal output on a screen of fixed width: wide characters take
+  // two cells, a full row wraps, and cursor-up / erase work on screen rows.
+  function replayOnScreen(chunks: readonly string[], columns: number): string[] {
+    const screen: string[][] = [[]];
+    let row = 0;
+    let column = 0;
+    const text = chunks.join("");
+    let index = 0;
+    while (index < text.length) {
+      const control = /^\x1b\[([0-9;?]*)([A-Za-z])/.exec(text.slice(index));
+      if (control !== null) {
+        index += control[0].length;
+        if (control[2] === "A") {
+          row = Math.max(0, row - Number(control[1] || 1));
+        } else if (control[2] === "J") {
+          screen[row] = (screen[row] ?? []).slice(0, column);
+          screen.length = row + 1;
+        }
+        continue;
+      }
+      const character = String.fromCodePoint(text.codePointAt(index) ?? 0);
+      index += character.length;
+      if (character === "\r") {
+        column = 0;
+      } else if (character === "\n") {
+        row += 1;
+        column = 0;
+        screen[row] ??= [];
+      } else {
+        const width = /[\u1100-\u115f\u2e80-\ua4cf\uac00-\ud7a3\uff00-\uff60]/.test(character) ? 2 : 1;
+        if (column + width > columns) {
+          row += 1;
+          column = 0;
+          screen[row] ??= [];
+        }
+        const cells = (screen[row] ??= []);
+        cells[column] = character;
+        column += width;
+      }
+    }
+    return screen.map((cells) => cells.filter((cell) => cell !== undefined).join("").trimEnd());
+  }
+
+  it("redraws in place on a narrow terminal even when the entry path is long", async () => {
+    const columns = 40;
+    const capture = outputCapture();
+    const { fake, entryPath, projectRoot } = upgradeFixture({
+      queryDelayMs: 60,
+      installDelayMs: 120,
+    });
+
+    await runCli(
+      ["update", "--project", projectRoot],
+      capture.output,
+      fake.dependencies(entryPath, {
+        ...interactiveDisplay,
+        color: false,
+        columns: () => columns,
+      }),
+    );
+
+    expect(entryPath.length + "入口：".length).toBeGreaterThan(columns);
+    const screen = replayOnScreen(capture.stdout, columns);
+    expect(screen.filter((line) => line.includes("MileStack update"))).toHaveLength(1);
+    expect(screen.filter((line) => line.includes("安装 milestack@9.9.9"))).toHaveLength(1);
+    expect(screen.filter((line) => line.includes("检测安装方式"))).toHaveLength(1);
+    expect(screen.join("\n")).toContain("已升级到 9.9.9");
+  });
+
+  it("follows a terminal that becomes narrower while a step is running", async () => {
+    let columns = 100;
+    const capture = outputCapture();
+    const { fake, entryPath, projectRoot } = upgradeFixture({
+      installDelayMs: 100,
+    });
+    const shrink = setTimeout(() => {
+      columns = 30;
+    }, 40);
+
+    await runCli(
+      ["update", "--project", projectRoot],
+      capture.output,
+      fake.dependencies(entryPath, { ...interactiveDisplay, color: false, columns: () => columns }),
+    );
+    clearTimeout(shrink);
+
+    const stdout = capture.stdout.join("");
+    // Frames drawn at 100 columns are erased by their reflowed height at 30.
+    const eraseRows = [...stdout.matchAll(/\x1b\[(\d+)A\r\x1b\[J/g)].map((match) => Number(match[1]));
+    expect(Math.max(...eraseRows)).toBeGreaterThan(Math.min(...eraseRows.slice(-3)));
+    expect(stdout).toContain("已升级到 9.9.9");
   });
 
   it("derives interactivity and color from the terminal and NO_COLOR", () => {

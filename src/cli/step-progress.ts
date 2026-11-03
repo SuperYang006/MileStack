@@ -8,6 +8,8 @@ export type StepDisplay = {
   color: boolean;
   now: () => number;
   tickMs: number;
+  // Terminal width in cells, read at every redraw so a resize is followed.
+  columns: () => number;
 };
 
 export function detectStepDisplay(
@@ -16,7 +18,13 @@ export function detectStepDisplay(
 ): StepDisplay {
   const interactive = isTerminal && environment["TERM"] !== "dumb";
   const noColor = environment["NO_COLOR"] !== undefined && environment["NO_COLOR"] !== "";
-  return { interactive, color: interactive && !noColor, now: Date.now, tickMs: 100 };
+  return {
+    interactive,
+    color: interactive && !noColor,
+    now: Date.now,
+    tickMs: 100,
+    columns: () => process.stdout.columns || 80,
+  };
 }
 
 type StepState = "pending" | "running" | "done" | "failed" | "skipped";
@@ -33,7 +41,10 @@ export type Step = {
 type Row =
   | { kind: "title"; text: string; final: boolean }
   | { kind: "step"; step: Step }
-  | { kind: "text"; text: string; tone: "success" | "failure" | "plain" };
+  | { kind: "text"; text: string; tone: "success" | "failure" | "plain" }
+  // Plain mode cannot rewrite a title it already printed, so a changed title
+  // is appended where the output currently is.
+  | { kind: "retitle"; text: string };
 
 const spinnerFrames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 const labelWidth = 22;
@@ -55,6 +66,41 @@ function displayWidth(text: string): number {
   return width;
 }
 
+const sgrSequence = /\x1b\[[0-9;]*m/g;
+
+function visibleWidth(line: string): number {
+  return displayWidth(line.replace(sgrSequence, ""));
+}
+
+// Cuts a styled line to at most `limit` cells; color sequences cost nothing.
+function fitToWidth(line: string, limit: number): string {
+  if (visibleWidth(line) <= limit) {
+    return line;
+  }
+  let result = "";
+  let width = 0;
+  let index = 0;
+  while (index < line.length) {
+    sgrSequence.lastIndex = index;
+    const sequence = sgrSequence.exec(line);
+    if (sequence !== null && sequence.index === index) {
+      result += sequence[0];
+      index += sequence[0].length;
+      continue;
+    }
+    const character = String.fromCodePoint(line.codePointAt(index) ?? 0);
+    const characterWidth = displayWidth(character);
+    if (width + characterWidth > limit - 1) {
+      break;
+    }
+    result += character;
+    width += characterWidth;
+    index += character.length;
+  }
+  sgrSequence.lastIndex = 0;
+  return sgrSequence.test(result) ? `${result}…\x1b[0m` : `${result}…`;
+}
+
 export function formatElapsed(milliseconds: number): string {
   const seconds = Math.max(0, milliseconds) / 1000;
   if (seconds < 10) {
@@ -73,7 +119,9 @@ export class StepReporter {
   private readonly rows: Row[] = [];
   private readonly styler: ReturnType<typeof createStyler>;
   private committed = 0;
-  private liveLines = 0;
+  // Visible width of every line in the redrawn region, to know how many
+  // terminal rows it covers now.
+  private liveWidths: number[] = [];
   private frame = 0;
   private timer: NodeJS.Timeout | undefined;
   private readonly restoreCursor = () => {
@@ -89,11 +137,13 @@ export class StepReporter {
 
   setTitle(text: string, final = false): void {
     const existing = this.rows.find((row) => row.kind === "title");
-    if (existing?.kind === "title") {
+    if (existing?.kind !== "title") {
+      this.rows.unshift({ kind: "title", text, final });
+    } else if (this.display.interactive || !this.isFinal(existing)) {
       existing.text = text;
       existing.final = final;
-    } else {
-      this.rows.unshift({ kind: "title", text, final });
+    } else if (existing.text !== text) {
+      this.rows.splice(this.committed, 0, { kind: "retitle", text });
     }
     this.flush();
   }
@@ -210,9 +260,10 @@ export class StepReporter {
 
   private isFinal(row: Row): boolean {
     if (row.kind === "title") {
-      return row.final;
+      // Plain output cannot be rewritten, so it prints the title right away.
+      return row.final || !this.display.interactive;
     }
-    if (row.kind === "text") {
+    if (row.kind === "text" || row.kind === "retitle") {
       return true;
     }
     return row.step.state === "done" || row.step.state === "failed" || row.step.state === "skipped";
@@ -220,9 +271,14 @@ export class StepReporter {
 
   private flush(): void {
     let chunk = "";
-    if (this.liveLines > 0) {
-      chunk += `\x1b[${this.liveLines}A\r\x1b[J`;
-      this.liveLines = 0;
+    const columns = Math.max(2, this.display.columns());
+    if (this.liveWidths.length > 0) {
+      const rows = this.liveWidths.reduce(
+        (total, width) => total + Math.max(1, Math.ceil(width / columns)),
+        0,
+      );
+      chunk += `\x1b[${rows}A\r\x1b[J`;
+      this.liveWidths = [];
     }
     while (this.committed < this.rows.length) {
       const row = this.rows[this.committed];
@@ -233,11 +289,14 @@ export class StepReporter {
       this.committed += 1;
     }
     if (this.display.interactive) {
+      // Every redrawn line stays on one terminal row, so the next erase can
+      // count rows exactly; finished rows above are written in full.
       const live = this.rows
         .slice(this.committed)
-        .flatMap((row) => this.formatRow(row));
+        .flatMap((row) => this.formatRow(row))
+        .map((line) => fitToWidth(line, columns - 1));
       chunk += live.map((line) => `${line}\n`).join("");
-      this.liveLines = live.length;
+      this.liveWidths = live.map(visibleWidth);
     }
     if (chunk.length > 0) {
       this.output.writeStdout(chunk);
@@ -247,6 +306,9 @@ export class StepReporter {
   private formatRow(row: Row): string[] {
     if (row.kind === "title") {
       return [` ${this.styler.bold(row.text)}`, ""];
+    }
+    if (row.kind === "retitle") {
+      return ["", ` ${this.styler.bold(row.text)}`];
     }
     if (row.kind === "text") {
       const glyph =
