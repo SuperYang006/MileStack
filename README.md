@@ -95,9 +95,6 @@ Before working on tasks, read and follow `.milestack/agent-instructions.md`.
 
 - [用户指南](docs/user-guide.zh-CN.md)：安装方式、客户端接入、日常使用、数据位置和常见问题
 - [开发指南](docs/development.zh-CN.md)：源码构建、Web UI 开发、安装包测试、架构和验证方式
-- [产品需求](docs/requirements.md)
-- [技术方案](docs/technical-design.md)
-- [自举开发历史](docs/bootstrap-tasks.md)
 
 ## 许可证
 

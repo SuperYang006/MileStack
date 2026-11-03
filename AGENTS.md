@@ -6,17 +6,19 @@ Before working on tasks, read and follow .milestack/agent-instructions.md
 
 MileStack is a local-first project progress and task context database shared by developers and coding agents.
 
-Before changing code, read the relevant parts of:
+Before changing code, read the relevant parts of the following maintainer documents when
+they exist in your checkout. They live in `docs/internal/`, which is ignored by Git and
+not published; when they are absent, rely on this file, the code, and the public docs.
 
-- `docs/requirements.md` for product scope;
-- `docs/technical-design.md` for architecture and technology decisions;
+- `docs/internal/requirements.md` for product scope;
+- `docs/internal/technical-design.md` for architecture and technology decisions;
 
 Durable documentation is allowed and encouraged when it has lasting value, including
 product requirements, technical designs, architecture decisions, protocols, migration
 notes, and operation or user guides. Documents explicitly requested by the user are
 also allowed.
 
-`docs/bootstrap-tasks.md` is retained as implementation history for the self-bootstrap
+`docs/internal/bootstrap-tasks.md` is retained as implementation history for the self-bootstrap
 period. Do not use it as a current task list or maintain dynamic progress there; all
 current tasks, progress, blockers, next steps, and handoffs belong in MileStack.
 

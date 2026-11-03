@@ -95,9 +95,6 @@ MileStack's initialization flow currently supports Claude Code, Cursor, Grok, Co
 
 - [User guide](docs/user-guide.md) — installation choices, client setup, daily use, data location, and troubleshooting
 - [Development guide](docs/development.md) — source builds, Web UI development, package testing, architecture, and verification
-- [Product requirements](docs/requirements.md)
-- [Technical design](docs/technical-design.md)
-- [Bootstrap implementation history](docs/bootstrap-tasks.md)
 
 ## License
 

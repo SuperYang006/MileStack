@@ -23,7 +23,7 @@ HTTP -------/                                      \
 
 Task snapshot changes and `TaskEvent` appends happen in the same database transaction. CLI, MCP, and HTTP inputs reuse canonical operation schemas rather than implementing separate state transitions.
 
-See the [technical design](technical-design.md) for the complete V0 architecture and the root [AGENTS.md](../AGENTS.md) for repository rules.
+See the root [AGENTS.md](../AGENTS.md) for architecture boundaries and repository rules.
 
 ## Requirements
 

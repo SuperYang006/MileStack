@@ -23,7 +23,7 @@ HTTP -------/                                      \
 
 任务快照修改和 `TaskEvent` 追加在同一个数据库事务中完成。CLI、MCP 与 HTTP 输入复用同一套操作 Schema，不在适配器中重复实现状态流转。
 
-完整 V0 架构见[技术方案](technical-design.md)，仓库工作规则见根 [AGENTS.md](../AGENTS.md)。
+架构边界和仓库工作规则见根 [AGENTS.md](../AGENTS.md)。
 
 ## 环境要求
 

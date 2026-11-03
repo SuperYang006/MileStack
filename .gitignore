@@ -26,3 +26,6 @@ opencode.json
 .DS_Store
 .idea/
 .vscode/
+
+# Maintainer-only documents kept locally
+docs/internal/
