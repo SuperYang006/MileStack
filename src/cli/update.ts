@@ -415,7 +415,7 @@ type InstalledCli = { entryPath: string; version: string };
 type CliSection = ReportSection & {
   // Set once the installer succeeded; installedCli is undefined when the new
   // CLI could not be located afterwards.
-  upgrade?: { installedCli: InstalledCli | undefined };
+  upgrade?: { installedCli: InstalledCli | undefined; latest: string };
 };
 
 function readInstalledCli(packageRoot: string): InstalledCli | undefined {
@@ -483,7 +483,7 @@ function refreshProjectSection(
     };
   }
   if (upgrade !== undefined) {
-    return refreshWithInstalledCli(target, upgrade.installedCli, runCommand);
+    return refreshWithInstalledCli(target, upgrade, runCommand);
   }
   try {
     writeFileSync(
@@ -505,30 +505,37 @@ function refreshProjectSection(
 // file itself that it carries the new version before reporting success.
 function refreshWithInstalledCli(
   target: Extract<ProjectRefreshTarget, { kind: "initialized" }>,
-  installedCli: InstalledCli | undefined,
+  upgrade: NonNullable<CliSection["upgrade"]>,
   runCommand: CommandRunner,
 ): ReportSection {
+  const { installedCli, latest } = upgrade;
   const rerun = "生成文件未更新到新版本，请再运行一次 milestack update。";
   if (installedCli === undefined) {
     return { lines: [`  ✗ 无法确定新安装的 CLI；${rerun}`], failed: true };
+  }
+  // The installer can exit 0 while the located package is still an older
+  // version; never run that entry, and never accept its version as the result.
+  if (installedCli.version !== latest) {
+    return {
+      lines: [
+        `  ✗ 安装后定位到的 CLI 版本是 ${installedCli.version}，不是 ${latest}；${rerun}`,
+      ],
+      failed: true,
+    };
   }
   const result = runCommand({
     command: process.execPath,
     args: [installedCli.entryPath, "update", "--project", target.projectRoot],
   });
-  if (
-    !generatedHeaderVersionLine(target.instructionsPath).includes(
-      `version: ${installedCli.version}. -->`,
-    )
-  ) {
+  if (!generatedHeaderVersionLine(target.instructionsPath).includes(`version: ${latest}. -->`)) {
     const detail = result.status === 0 && !result.error ? "" : `（${commandFailureDetail(result)}）`;
     return {
-      lines: [`  ✗ 用新版本 ${installedCli.version} 刷新生成文件失败${detail}；${rerun}`],
+      lines: [`  ✗ 用新版本 ${latest} 刷新生成文件失败${detail}；${rerun}`],
       failed: true,
     };
   }
   return {
-    lines: [`  ✓ 已刷新 ${target.instructionsPath}（由新版本 ${installedCli.version} 生成）`],
+    lines: [`  ✓ 已刷新 ${target.instructionsPath}（由新版本 ${latest} 生成）`],
     failed: false,
   };
 }
@@ -610,7 +617,7 @@ function cliUpdateSection(
     return {
       lines,
       failed: false,
-      upgrade: { installedCli: locateInstalledCli(location, entryPath) },
+      upgrade: { installedCli: locateInstalledCli(location, entryPath), latest: evaluation.latest },
     };
   }
 
@@ -664,7 +671,7 @@ function cliUpdateSection(
     return {
       lines,
       failed: false,
-      upgrade: { installedCli: locateInstalledCli(location, entryPath) },
+      upgrade: { installedCli: locateInstalledCli(location, entryPath), latest: evaluation.latest },
     };
   }
 

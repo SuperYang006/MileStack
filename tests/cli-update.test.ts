@@ -505,6 +505,30 @@ describe("milestack update: npm global self-update", () => {
     expect(readFileSync(instructionsPath, "utf8")).toBe(staleGeneratedContent);
   });
 
+  it("does not trust or run a located CLI that is still older than the installed version", async () => {
+    const { prefix, entryPath } = createNpmGlobalEntry();
+    const { projectRoot, instructionsPath } = createInitializedProject();
+    const packageRoot = path.join(prefix, "lib", "node_modules", "milestack");
+    // The installer exits 0 but the package on disk is still 0.1.0, and the
+    // generated file already carries that version.
+    writeInstalledPackage(packageRoot, "0.1.0");
+    const fake = createCommandFake({ globalPrefix: prefix, latest: "9.9.9" });
+    const capture = outputCapture();
+
+    const exitCode = await runCli(
+      ["update", "--project", projectRoot],
+      capture.output,
+      fake.dependencies(entryPath),
+    );
+
+    expect(exitCode).toBe(1);
+    const stdout = capture.stdout.join("");
+    expect(stdout).not.toContain("已刷新");
+    expect(stdout).toContain("请再运行一次 milestack update");
+    expect(refreshCalls(fake)).toEqual([]);
+    expect(readFileSync(instructionsPath, "utf8")).toBe(staleGeneratedContent);
+  });
+
   it("does not report a refresh when the new CLI cannot be located after install", async () => {
     const { prefix, entryPath } = createNpmGlobalEntry();
     const { projectRoot, instructionsPath } = createInitializedProject();
