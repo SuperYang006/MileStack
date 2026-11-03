@@ -53,10 +53,11 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
 
           {/* Right Controls & Status Pill */}
-          <div className="flex items-center gap-2.5 sm:space-x-2.5 shrink-0 ml-auto">
+          <div className="flex max-w-full flex-wrap items-center justify-end gap-2.5 sm:space-x-2.5 ml-auto">
             {/* Product identity of the running process, separate from the managed project.
                 Never split, never dropped: narrow screens give up the goal and the
-                button labels first, and this group wraps to its own row if needed. */}
+                button labels first, and this group wraps to its own row, then wraps
+                its own items, if needed. */}
             {showRuntimeIdentity && (
               <span
                 className="font-mono text-[11px] tracking-tight text-zinc-600 select-none whitespace-nowrap"
