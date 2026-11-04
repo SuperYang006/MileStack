@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { createHttpServer } from "../../src/server/server.js";
+import { runtimeVersion } from "../../src/server/runtime-version.js";
 import type {
   CommandInvocation,
   CommandResult,
@@ -206,7 +207,7 @@ describe("HTTP server startup version check", () => {
         const health = await readHealth(server);
         expect(health).toMatchObject({ status: "ok", update: null });
         expect(typeof health.timestamp).toBe("string");
-        expect(health.version).toBe(currentVersion);
+        expect(health.version).toBe(runtimeVersion);
       } finally {
         server.context.database.close();
         await server.app.close();
