@@ -306,6 +306,17 @@ export const ExecutionFlowView: React.FC<ExecutionFlowViewProps> = ({
                                 </div>
                               )}
 
+                              {task.deferrableSteps > 0 && (
+                                <div className="text-[10px] text-zinc-500">
+                                  <span
+                                    className="px-1.5 py-px rounded bg-zinc-800/60 border border-zinc-700/60 text-zinc-400"
+                                    title="不在关键路径上，晚点做也不会增加整组完成所需的步数"
+                                  >
+                                    可延后 {task.deferrableSteps} 步
+                                  </span>
+                                </div>
+                              )}
+
                               {/* 小屏下折行显示的等待项 */}
                               {task.waitingCount > 0 && (
                                 <div className="text-[10px] text-zinc-500 font-mono sm:hidden">

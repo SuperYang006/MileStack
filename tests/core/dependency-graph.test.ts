@@ -241,6 +241,8 @@ describe("dependencyGraph calculation utils", () => {
 
     // 只有末端的 C 是终点，A、B 不是；唯一终点独占最后一步，标为最终目标
     expect(graph.stages.flatMap((s) => s.tasks).filter((t) => t.isGoal).map((t) => t.id)).toEqual(["t-c"]);
+    // 单终点直线链全部在关键路径上
+    expect(graph.stages.flatMap((s) => s.tasks).map((t) => t.deferrableSteps)).toEqual([0, 0, 0]);
     expect(graph.stages[2]?.label).toContain("最终目标");
   });
 
@@ -556,6 +558,15 @@ describe("dependencyGraph calculation utils", () => {
     // 多终点组里 M 虽独占最后一步，也不是“最终目标”
     expect(graph.stages.some((stage) => stage.label.includes("最终目标"))).toBe(false);
     expect(graph.stages[6]?.isFinalGoal).toBe(false);
+
+    // 可延后：B、H 晚 1 步，G、I 可以拖到最后一步（晚 3 步），其余在关键路径上
+    const deferrable = Object.fromEntries(
+      graph.stages
+        .flatMap((s) => s.tasks)
+        .filter((t) => t.deferrableSteps > 0)
+        .map((t) => [t.title.replace("任务 ", ""), t.deferrableSteps]),
+    );
+    expect(deferrable).toEqual({ B: 1, H: 1, G: 3, I: 3 });
 
     // 卡片只显示去掉冗余后的直接前置：E 不显示已被 C 间接覆盖的 A
     const prerequisites = Object.fromEntries(

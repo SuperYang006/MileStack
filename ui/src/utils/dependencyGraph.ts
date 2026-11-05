@@ -51,6 +51,8 @@ export interface DagStageTask {
   prerequisites: Array<{ id: string; title: string }>;
   /** 草稿任务的前置全部已完成，排入就绪队列后可并行执行（与收件箱的“可并行候选”同义） */
   isParallelCandidate: boolean;
+  /** 最晚可排在第几步而不推迟组内任何终点，比当前所在步晚的步数；0 表示在关键路径上，不可延后 */
+  deferrableSteps: number;
 }
 
 export interface DagStage {
@@ -409,6 +411,7 @@ export function buildConnectedDagGraphs(
         isGoal: !incompleteDownstreamIds.has(nodeId),
         prerequisites: [],
         isParallelCandidate: detail.isInboxParallelCandidate,
+        deferrableSteps: 0,
       };
 
       const list = stagesByIndex.get(stageIndex) || [];
@@ -477,6 +480,16 @@ export function buildConnectedDagGraphs(
           (stageTaskById.get(a.id)?.stageIndex ?? 0) - (stageTaskById.get(b.id)?.stageIndex ?? 0);
         return stageDiff !== 0 ? stageDiff : a.title.localeCompare(b.title);
       });
+    }
+
+    // 可延后步数：终点最晚排在最后一步，其余任务最晚比所有下游的最晚步早一步
+    const latestStageById = new Map<string, number>();
+    for (const task of [...stageTaskById.values()].sort((a, b) => b.stageIndex - a.stageIndex)) {
+      const latest = task.isGoal
+        ? maxStageIndex
+        : Math.min(...task.downstreamIds.map((id) => (latestStageById.get(id) ?? maxStageIndex) - 1));
+      latestStageById.set(task.id, latest);
+      task.deferrableSteps = Math.max(0, latest - task.stageIndex);
     }
 
     // 终点按分步先后排列，同一步内沿用上面的排序
