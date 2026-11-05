@@ -282,6 +282,38 @@ export function computeTransitiveReduction(
   return edges.filter((edge) => !hasIndirectPath(edge.from, edge.to));
 }
 
+/**
+ * 某个任务在给定依赖边内的全部上游（直接和间接前置）与全部下游，不含任务自身
+ *
+ * edges 取组内的 rawEdges（from 是前置，to 是依赖它的任务），因此结果不会包含组外任务；
+ * 菱形依赖中同一任务只出现一次，成环时也不会重复遍历。
+ */
+export function computeDependencyChain(
+  taskId: string,
+  edges: Array<{ from: string; to: string }>,
+): { upstream: Set<string>; downstream: Set<string> } {
+  const collect = (start: string, next: (edge: { from: string; to: string }) => [string, string]) => {
+    const reached = new Set<string>();
+    const queue = [start];
+    while (queue.length > 0) {
+      const current = queue.pop() ?? start;
+      for (const edge of edges) {
+        const [source, target] = next(edge);
+        if (source === current && target !== start && !reached.has(target)) {
+          reached.add(target);
+          queue.push(target);
+        }
+      }
+    }
+    return reached;
+  };
+
+  return {
+    upstream: collect(taskId, (edge) => [edge.to, edge.from]),
+    downstream: collect(taskId, (edge) => [edge.from, edge.to]),
+  };
+}
+
 function summarizeGoalPath(stages: DagStage[]): GoalPathOverview {
   const tasks = stages.flatMap((stage) => stage.tasks);
   const countByStatus = new Map<TaskStatus, number>();

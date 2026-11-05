@@ -7,6 +7,7 @@ import {
   computeReadyQueueStats,
   computeTransitiveReduction,
   buildConnectedDagGraphs,
+  computeDependencyChain,
 } from "../../ui/src/utils/dependencyGraph.js";
 
 function makeSummary(
@@ -733,6 +734,42 @@ describe("dependencyGraph calculation utils", () => {
     expect(before[0]?.goalTitles).toEqual(["G2", "G1"]);
     expect(after[0]?.goalTitles).toEqual(["G1", "G2"]);
     expect(after[0]?.id).toBe(before[0]?.id);
+  });
+
+  it("computes a task's full upstream and downstream within its group for card highlighting", () => {
+    // 组外的已完成前置 P 和另一组 U→V 都不应出现；菱形：A→B、A→C、B→D、C→D、D→E
+    const p = makeSummary({ id: "p", title: "P", status: "completed" });
+    const a = makeSummary({ id: "a", title: "A", status: "ready", dependencyIds: ["p"] });
+    const b = makeSummary({ id: "b", title: "B", status: "inbox", dependencyIds: ["a"] });
+    const c = makeSummary({ id: "c", title: "C", status: "inbox", dependencyIds: ["a"] });
+    const d = makeSummary({ id: "d", title: "D", status: "inbox", dependencyIds: ["b", "c"] });
+    const e = makeSummary({ id: "e", title: "E", status: "inbox", dependencyIds: ["d"] });
+    const u = makeSummary({ id: "u", title: "U", status: "ready" });
+    const v = makeSummary({ id: "v", title: "V", status: "inbox", dependencyIds: ["u"] });
+    const status: ProjectStatus = {
+      project: { id: "proj-1", name: "Test", goal: null },
+      counts: testCounts,
+      current: [],
+      next: [a, u],
+      inReview: [],
+      blocked: [],
+      inbox: [b, c, d, e, v],
+      recentlyCompleted: [p],
+    };
+
+    const graph = buildConnectedDagGraphs(status, []).find((item) => item.taskIds.includes("d"));
+    expect(graph).toBeDefined();
+    const chainOf = (id: string) => {
+      const chain = computeDependencyChain(id, graph?.rawEdges ?? []);
+      return { upstream: [...chain.upstream].sort(), downstream: [...chain.downstream].sort() };
+    };
+
+    // 间接前置和间接下游都包含，菱形里的 A 只出现一次，已完成的组外前置 P 不出现
+    expect(chainOf("d")).toEqual({ upstream: ["a", "b", "c"], downstream: ["e"] });
+    expect(chainOf("b")).toEqual({ upstream: ["a"], downstream: ["d", "e"] });
+    // 没有前置或没有下游时对应集合为空，不含另一组的任务
+    expect(chainOf("a")).toEqual({ upstream: [], downstream: ["b", "c", "d", "e"] });
+    expect(chainOf("e")).toEqual({ upstream: ["a", "b", "c", "d"], downstream: [] });
   });
 
   it("regression: groups the 5-node asymmetric AI review DAG under its final goal", () => {
