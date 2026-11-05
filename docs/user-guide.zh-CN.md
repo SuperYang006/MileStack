@@ -319,9 +319,17 @@ milestack --version
 
 - 在新终端中确认 `milestack --help` 可以运行。
 - 检查 `init` 创建的客户端项目文件。
-- 确认其中 `--project` 的值是当前 checkout 的绝对路径。
+- 确认其中 `--project` 的值是存放 `.milestack/milestack.db` 的 checkout 的绝对路径。在 git 工作树中，这个路径是主工作树（见下文）。
 - 修改 MCP 配置后重启客户端。
 - 使用 Codex 时确认仓库已受信任；使用 Claude 时批准项目 MCP 配置。
+
+### 在 git 工作树中使用 MileStack
+
+`.milestack/`、`.mcp.json` 等客户端文件都被 Git 忽略，所以 `git worktree add` 不会复制它们。链接工作树始终使用该仓库主工作树中的 MileStack 项目，不会拥有自己的数据库。不要把 `.milestack/milestack.db` 复制到工作树中。
+
+- 在工作树中运行 `milestack init --client <name>`：不会创建数据库，只会在工作树中写入 `.milestack/agent-instructions.md` 和所选客户端的配置，其中 `--project` 指向主工作树。如果主工作树尚未初始化，命令会报错且不写入任何文件，请先在主工作树运行 `init`。
+- 也可以直接从主工作树目录启动编程会话。
+- 在工作树中运行 `milestack status --discover` 和 `milestack mcp --discover` 会找到主工作树的项目，`--project <工作树路径>` 同样会解析到该项目。
 
 ### 页面或 Agent 显示了错误的项目
 

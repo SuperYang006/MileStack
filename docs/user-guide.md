@@ -319,9 +319,17 @@ After upgrading, open a new terminal and restart the MCP client and `milestack s
 
 - Confirm that `milestack --help` works in a new terminal.
 - Inspect the client project file created by `init`.
-- Confirm that its `--project` value is the absolute path of the current checkout.
+- Confirm that its `--project` value is the absolute path of the checkout that holds `.milestack/milestack.db`. In a git worktree, that is the main worktree (see below).
 - Restart the client after changing MCP configuration.
 - For Codex, confirm that the repository is trusted; for Claude, approve the project MCP configuration.
+
+### Using MileStack in a git worktree
+
+`.milestack/`, `.mcp.json`, and the other client files are ignored by Git, so `git worktree add` does not copy them. A linked worktree always uses the MileStack project of the repository's main worktree; it never gets a database of its own. Do not copy `.milestack/milestack.db` into a worktree.
+
+- Run `milestack init --client <name>` inside the worktree. It creates no database. It writes `.milestack/agent-instructions.md` and the selected client configuration in the worktree, with `--project` pointing at the main worktree. If the main worktree has not been initialized yet, the command fails without writing anything; run `init` in the main worktree first.
+- Alternatively, start the coding session from the main worktree directory.
+- `milestack status --discover` and `milestack mcp --discover` run from a worktree find the main worktree's project, and `--project <worktree path>` resolves to it as well.
 
 ### The wrong project is shown
 

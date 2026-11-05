@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import { runMcp } from "../mcp/server.js";
@@ -15,8 +15,11 @@ import {
   discoverProjectRoot,
   initializeProject,
   openProjectContext,
+  resolveExistingProjectRoot,
   resolveProjectRoot,
 } from "../project/project-context.js";
+import { resolveDatabasePath } from "../db/paths.js";
+import { findLinkedWorktree, type LinkedWorktree } from "../git/linked-worktree.js";
 import { resolveEntryPath } from "./entry-path.js";
 import { defaultOutput, type CliOutput } from "./output.js";
 import { runServe } from "./serve.js";
@@ -318,6 +321,7 @@ function agyMcpInstructions(): string {
 function projectMcpInstructions(
   projectRoot: string,
   results: readonly ProjectMcpConfigResult[],
+  linkedWorktree: boolean,
 ): string {
   const fileResults = results.filter((configuration) => configuration.client !== "agy");
   const agyResult = results.find((configuration) => configuration.client === "agy");
@@ -331,7 +335,9 @@ function projectMcpInstructions(
         ...fileResults.map((configuration) => `  ${configuration.client}: ${configuration.detail}`),
         "",
         "上述文件只写入当前项目目录，不会修改用户主目录中的全局配置。",
-        `--project 使用当前 checkout 的绝对路径：${projectRoot}`,
+        linkedWorktree
+          ? `--project 使用主工作树的绝对路径：${projectRoot}`
+          : `--project 使用当前 checkout 的绝对路径：${projectRoot}`,
         "写入后请重新打开对应客户端会话。",
       ].join("\n"),
     );
@@ -450,17 +456,23 @@ function formatNextStepLines(
   return lines;
 }
 
+type InitDatabaseStatus = "created" | "existing" | "linked-worktree";
+
+const initDatabaseLines: Record<InitDatabaseStatus, string> = {
+  created: "✓ 数据库已创建",
+  existing: "✓ 数据库已就绪（此前已初始化）",
+  "linked-worktree": "✓ 已关联到主工作树的 MileStack 项目（未创建新数据库）",
+};
+
 function formatInitSummary(
-  created: boolean,
+  databaseStatus: InitDatabaseStatus,
   results: readonly ProjectMcpConfigResult[] | undefined,
   agentInstructionLink: RootAgentInstructionLink,
   hasClients: boolean,
   styler: ReturnType<typeof createStyler>,
 ): string {
   const lines: string[] = [styler.bold("MileStack 初始化完成"), ""];
-  lines.push(
-    styler.green(created ? "✓ 数据库已创建" : "✓ 数据库已就绪（此前已初始化）"),
-  );
+  lines.push(styler.green(initDatabaseLines[databaseStatus]));
   for (const configuration of results ?? []) {
     const line = mcpSummaryLine(configuration);
     lines.push(line.startsWith("⚠") ? styler.yellow(line) : styler.green(line));
@@ -496,59 +508,142 @@ function formatInitSummary(
   return `${lines.join("\n")}\n`;
 }
 
+function formatMcpOutput(
+  mcpProjectRoot: string,
+  mcpResults: readonly ProjectMcpConfigResult[] | undefined,
+  linkedWorktree: boolean,
+): string {
+  if (mcpResults !== undefined) {
+    return projectMcpInstructions(mcpProjectRoot, mcpResults, linkedWorktree);
+  }
+  const projectConfiguration = {
+    mcpServers: {
+      milestack: {
+        command: "milestack",
+        args: ["mcp", "--project", mcpProjectRoot],
+      },
+    },
+  };
+  const discoverConfiguration = {
+    mcpServers: {
+      milestack: {
+        command: "milestack",
+        args: ["mcp", "--discover"],
+      },
+    },
+  };
+  return (
+    `MCP configuration (project-level, fixed path):\n${JSON.stringify(projectConfiguration, null, 2)}\n\n` +
+    `MCP configuration (user-level, auto-discover, for agy/gemini):\n${JSON.stringify(discoverConfiguration, null, 2)}\n\n` +
+    agyMcpInstructions() + "\n\n" +
+    codexMcpInstructions(mcpProjectRoot)
+  );
+}
+
+function writeProjectAgentInstructions(projectRoot: string): string {
+  const agentInstructionsPath = path.join(projectRoot, projectAgentInstructionsPath);
+  mkdirSync(path.dirname(agentInstructionsPath), { recursive: true });
+  writeFileSync(
+    agentInstructionsPath,
+    formatProjectAgentInstructions(runtimeVersion),
+    "utf8",
+  );
+  return agentInstructionsPath;
+}
+
+type InitOutputInput = {
+  headline: string;
+  databasePath: string;
+  agentInstructionsPath: string;
+  projectRoot: string;
+  mcpOutput: string;
+  databaseStatus: InitDatabaseStatus;
+  mcpResults: readonly ProjectMcpConfigResult[] | undefined;
+  hasClients: boolean;
+};
+
+function formatInitOutput(input: InitOutputInput): string {
+  return (
+    `${input.headline}\n` +
+    `Database: ${input.databasePath}\n\n` +
+    `Agent instructions: ${input.agentInstructionsPath}\n\n` +
+    `${input.mcpOutput}\n\n` +
+    `AI integration instructions:\n${formatAgentIntegrationInstructions()}\n\n` +
+    formatInitSummary(
+      input.databaseStatus,
+      input.mcpResults,
+      readRootAgentInstructionLink(input.projectRoot),
+      input.hasClients,
+      createStyler(shouldEnableColor()),
+    )
+  );
+}
+
+// A linked git worktree reuses the main worktree's project: it gets its own
+// generated files but never its own database.
+function runLinkedWorktreeInit(
+  linked: LinkedWorktree,
+  clients: readonly ProjectMcpClientName[] | undefined,
+  output: CliOutput,
+): void {
+  const { worktreeRoot, mainWorktreeRoot } = linked;
+  const databasePath = resolveDatabasePath(mainWorktreeRoot);
+  if (!existsSync(databasePath)) {
+    throw new Error(
+      `'${worktreeRoot}' is a linked git worktree of '${mainWorktreeRoot}', which has no MileStack project yet. ` +
+        `Run 'milestack init' in '${mainWorktreeRoot}' first, then rerun init here.`,
+    );
+  }
+
+  ensureGitignoreEntry(worktreeRoot);
+  const agentInstructionsPath = writeProjectAgentInstructions(worktreeRoot);
+  const mcpResults = clients === undefined
+    ? undefined
+    : configureProjectMcpClients(worktreeRoot, clients, mainWorktreeRoot);
+  output.writeStdout(
+    formatInitOutput({
+      headline: `Linked git worktree ${worktreeRoot} uses the MileStack project of its main worktree ${mainWorktreeRoot}`,
+      databasePath,
+      agentInstructionsPath,
+      projectRoot: worktreeRoot,
+      mcpOutput: formatMcpOutput(mainWorktreeRoot, mcpResults, true),
+      databaseStatus: "linked-worktree",
+      mcpResults,
+      hasClients: clients !== undefined,
+    }),
+  );
+}
+
 async function runInit(
   projectPath: string | undefined,
   clients: readonly ProjectMcpClientName[] | undefined,
   output: CliOutput,
 ): Promise<void> {
   const projectRoot = resolveProjectRoot(projectPath);
+  const linked = findLinkedWorktree(projectRoot);
+  if (linked) {
+    runLinkedWorktreeInit(linked, clients, output);
+    return;
+  }
+
   const context = await initializeProject(projectRoot);
   try {
     ensureGitignoreEntry(projectRoot);
-    const agentInstructionsPath = path.join(projectRoot, projectAgentInstructionsPath);
-    writeFileSync(
-      agentInstructionsPath,
-      formatProjectAgentInstructions(runtimeVersion),
-      "utf8",
-    );
-    const projectConfiguration = {
-      mcpServers: {
-        milestack: {
-          command: "milestack",
-          args: ["mcp", "--project", projectRoot],
-        },
-      },
-    };
-    const discoverConfiguration = {
-      mcpServers: {
-        milestack: {
-          command: "milestack",
-          args: ["mcp", "--discover"],
-        },
-      },
-    };
+    const agentInstructionsPath = writeProjectAgentInstructions(projectRoot);
     const mcpResults = clients === undefined
       ? undefined
       : configureProjectMcpClients(projectRoot, clients);
-    const mcpOutput = mcpResults === undefined
-      ? `MCP configuration (project-level, fixed path):\n${JSON.stringify(projectConfiguration, null, 2)}\n\n` +
-        `MCP configuration (user-level, auto-discover, for agy/gemini):\n${JSON.stringify(discoverConfiguration, null, 2)}\n\n` +
-        agyMcpInstructions() + "\n\n" +
-        codexMcpInstructions(projectRoot)
-      : projectMcpInstructions(projectRoot, mcpResults);
     output.writeStdout(
-      `${context.created ? "Initialized" : "Already initialized"} ${projectRoot}\n` +
-        `Database: ${context.database.databasePath}\n\n` +
-        `Agent instructions: ${agentInstructionsPath}\n\n` +
-        `${mcpOutput}\n\n` +
-        `AI integration instructions:\n${formatAgentIntegrationInstructions()}\n\n` +
-        formatInitSummary(
-          context.created,
-          mcpResults,
-          readRootAgentInstructionLink(projectRoot),
-          clients !== undefined,
-          createStyler(shouldEnableColor()),
-        ),
+      formatInitOutput({
+        headline: `${context.created ? "Initialized" : "Already initialized"} ${projectRoot}`,
+        databasePath: context.database.databasePath,
+        agentInstructionsPath,
+        projectRoot,
+        mcpOutput: formatMcpOutput(projectRoot, mcpResults, false),
+        databaseStatus: context.created ? "created" : "existing",
+        mcpResults,
+        hasClients: clients !== undefined,
+      }),
     );
   } finally {
     context.database.close();
@@ -561,7 +656,7 @@ async function runStatus(
   json: boolean | undefined,
   output: CliOutput,
 ): Promise<void> {
-  const projectRoot = discover ? discoverProjectRoot() : resolveProjectRoot(projectPath);
+  const projectRoot = discover ? discoverProjectRoot() : resolveExistingProjectRoot(projectPath);
   const context = await openProjectContext(projectRoot);
   try {
     const status = context.service.getProjectStatus({
@@ -619,7 +714,7 @@ export async function runCli(
     if (parsed.discover) {
       await runMcp({ discover: true });
     } else {
-      await runMcp(resolveProjectRoot(parsed.projectPath));
+      await runMcp(resolveExistingProjectRoot(parsed.projectPath));
     }
     return 0;
   } catch (error) {
