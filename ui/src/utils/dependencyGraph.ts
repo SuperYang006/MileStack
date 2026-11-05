@@ -549,7 +549,11 @@ export function buildConnectedDagGraphs(
     const title = goals.length > 1 ? `${goalTitles[0]} 等 ${goals.length} 个目标` : (goalTitles[0] ?? "");
 
     graphs.push({
-      id: `dag-${goals.map((task) => task.id).join("+")}`,
+      // 组 ID 只取决于终点集合，不随终点的展示顺序变化，界面据此在轮询后保持展开
+      id: `dag-${goals
+        .map((task) => task.id)
+        .sort()
+        .join("+")}`,
       title,
       goalTitles,
       overview: summarizeGoalPath(stages),

@@ -701,6 +701,40 @@ describe("dependencyGraph calculation utils", () => {
     expect(waiting.isAllDraft).toBe(false);
   });
 
+  it("keeps a group's id stable when completing a prerequisite reorders its goals", () => {
+    // A→B→C→G1、X→Y→G1，另有 B→G2、Y→G2；A 完成前 G2 在 G1 之前（更早的一步），完成后同步内按标题排序
+    const build = (aStatus: "running" | "completed") => {
+      const a = makeSummary({ id: "a", title: "A", status: aStatus });
+      const b = makeSummary({ id: "b", title: "B", status: "inbox", dependencyIds: ["a"] });
+      const c = makeSummary({ id: "c", title: "C", status: "inbox", dependencyIds: ["b"] });
+      const x = makeSummary({ id: "x", title: "X", status: "inbox" });
+      const y = makeSummary({ id: "y", title: "Y", status: "inbox", dependencyIds: ["x"] });
+      const g1 = makeSummary({ id: "g1", title: "G1", status: "inbox", dependencyIds: ["c", "y"] });
+      const g2 = makeSummary({ id: "g2", title: "G2", status: "inbox", dependencyIds: ["b", "y"] });
+      const status: ProjectStatus = {
+        project: { id: "proj-1", name: "Test", goal: null },
+        counts: testCounts,
+        current: aStatus === "running" ? [a] : [],
+        next: [],
+        inReview: [],
+        blocked: [],
+        inbox: [b, c, x, y, g1, g2],
+        recentlyCompleted: aStatus === "completed" ? [a] : [],
+      };
+      return buildConnectedDagGraphs(status);
+    };
+
+    const before = build("running");
+    const after = build("completed");
+
+    expect(before).toHaveLength(1);
+    expect(after).toHaveLength(1);
+    // 展示顺序确实变了，组 ID 不变
+    expect(before[0]?.goalTitles).toEqual(["G2", "G1"]);
+    expect(after[0]?.goalTitles).toEqual(["G1", "G2"]);
+    expect(after[0]?.id).toBe(before[0]?.id);
+  });
+
   it("regression: groups the 5-node asymmetric AI review DAG under its final goal", () => {
     // 1. 核心审核模型 (completed root, forks into HTTP/UI and MCP)
     const coreModel = makeSummary({
