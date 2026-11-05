@@ -18,6 +18,7 @@ import {
   formatAgentIntegrationInstructions,
   formatKnownTaskBriefInstructions,
   formatMcpInstructions,
+  rootAgentInstructionSnippet,
 } from "../src/core/agent-instructions.js";
 import {
   configureProjectMcpClients,
@@ -153,8 +154,9 @@ describe("CLI entry point", () => {
     expect(firstOutput).toContain("新的 Codex CLI 会话");
     expect(firstOutput).toContain("~/.codex/config.toml");
     expect(firstOutput).toContain("pnpm link --global");
+    expect(firstOutput).toContain(rootAgentInstructionSnippet);
     expect(firstOutput).toContain(
-      "Before working on tasks, read and follow .milestack/agent-instructions.md",
+      "Before working on tasks, read and follow `.milestack/agent-instructions.md`; if it is missing, call the MileStack MCP tool get_agent_instructions.",
     );
     expect(firstOutput).toContain("Agent instructions:");
     expect(readFileSync(path.join(projectRoot, ".mcp.json"), "utf8")).toBe(
@@ -335,9 +337,7 @@ describe("CLI entry point", () => {
     expect(generatedInstructions).toContain(
       "Do not push, merge, or modify a shared remote branch",
     );
-    expect(generatedInstructions).toContain(
-      "Before working on tasks, read and follow .milestack/agent-instructions.md",
-    );
+    expect(generatedInstructions).toContain(rootAgentInstructionSnippet);
     expect(generatedInstructions).not.toMatch(/[\u3400-\u9fff]/u);
 
     expect(readFileSync(path.join(projectRoot, "AGENTS.md"), "utf8")).toBe(rootAgentsContent);
@@ -749,8 +749,7 @@ describe("init AGENTS.md instruction reminder", () => {
   });
 
   const rootAgentsPath = (projectRoot: string): string => path.join(projectRoot, "AGENTS.md");
-  const copyableInstruction =
-    "  Before working on tasks, read and follow `.milestack/agent-instructions.md`.";
+  const copyableInstruction = `  ${rootAgentInstructionSnippet}`;
 
   it("asks the user to create AGENTS.md when it does not exist and never creates it", async () => {
     const projectRoot = createTemporaryProject();
@@ -822,6 +821,23 @@ describe("init AGENTS.md instruction reminder", () => {
     expect(output).not.toContain(copyableInstruction);
     expect(output).toContain("下一步：重新打开本次已成功配置的客户端会话：");
     expect(output).toContain("Claude、Codex");
+  });
+
+  it("still treats the legacy reference line without the fallback as referenced", async () => {
+    const projectRoot = createTemporaryProject();
+    const legacy =
+      "# Project rules\n\nBefore working on tasks, read and follow .milestack/agent-instructions.md\n";
+    writeFileSync(rootAgentsPath(projectRoot), legacy, "utf8");
+    const capture = outputCapture();
+
+    expect(
+      await runCli(["init", "--project", projectRoot, "--client", "claude"], capture.output),
+    ).toBe(0);
+
+    const output = capture.stdout.join("");
+    expect(output).toContain("✓ AGENTS.md 已包含 MileStack instructions 路径引用");
+    expect(output).not.toContain("还需手动完成 1 个项目级步骤");
+    expect(readFileSync(rootAgentsPath(projectRoot), "utf8")).toBe(legacy);
   });
 
   it("treats any custom wording that contains the instructions path as referenced", async () => {

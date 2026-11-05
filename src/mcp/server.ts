@@ -13,7 +13,10 @@ import { toJSONSchema, z, ZodError } from "zod";
 import { DomainError } from "../core/errors.js";
 import {
   acceptanceCriteriaCreationCheck,
+  agentInstructionsToolName,
   formatMcpInstructions,
+  formatProjectAgentInstructions,
+  projectAgentInstructionsPath,
   taskCreationReadinessPrompt,
 } from "../core/agent-instructions.js";
 import { runtimeVersion } from "../server/runtime-version.js";
@@ -78,6 +81,8 @@ const reviewDecisionArgumentsSchema = completeReviewArgumentsSchema.omit({
 const requestChangesArgumentsSchema = reviewDecisionArgumentsSchema
   .omit({ verificationEvidence: true })
   .extend({ findings: z.array(reviewFindingInputSchema).min(1) });
+
+const agentInstructionsArgumentsSchema = z.object({}).strict();
 
 const toolDefinitions: Tool[] = [
   {
@@ -163,6 +168,11 @@ const toolDefinitions: Tool[] = [
     description:
       "Retry the local read-only Git integration check for an already accepted latest review. Supply the expected review id from get_task. This never merges, fetches, pushes, or substitutes another commit SHA.",
     inputSchema: toJSONSchema(checkIntegrationArgumentsSchema) as Tool["inputSchema"],
+  },
+  {
+    name: agentInstructionsToolName,
+    description: `Read-only. Returns the full MileStack agent instructions, identical to the ${projectAgentInstructionsPath} that milestack init generates for this version. Call it when that file is missing in the current checkout.`,
+    inputSchema: toJSONSchema(agentInstructionsArgumentsSchema) as Tool["inputSchema"],
   },
 ];
 
@@ -356,6 +366,14 @@ export function createMcpServer(
               projectId: context.project.id,
             }),
           );
+        }
+        case agentInstructionsToolName: {
+          agentInstructionsArgumentsSchema.parse(args);
+          return {
+            content: [
+              { type: "text" as const, text: formatProjectAgentInstructions(runtimeVersion) },
+            ],
+          };
         }
         default:
           return errorResult(new Error(`Unknown tool '${request.params.name}'.`));

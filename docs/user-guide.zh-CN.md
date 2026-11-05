@@ -53,8 +53,10 @@ milestack init --project "$PWD"
 请把下面这行加入项目版本控制中的根 `AGENTS.md`：
 
 ```md
-Before working on tasks, read and follow `.milestack/agent-instructions.md`.
+Before working on tasks, read and follow `.milestack/agent-instructions.md`; if it is missing, call the MileStack MCP tool get_agent_instructions.
 ```
+
+生成的文件只在本地，不进入 Git，所以在没运行过 `milestack init` 的工作树或 checkout 中会找不到它。只读的 MCP 工具 `get_agent_instructions` 会返回当前运行版本的同一份完整说明，因此只要 MileStack MCP 可用，Agent 仍能读到。根 `AGENTS.md` 里只有旧的引用行（`Before working on tasks, read and follow .milestack/agent-instructions.md`）时，`init` 仍视为已包含引用；想让 Agent 知道这个工具，请补上回退说明。
 
 MileStack 有意不创建或修改根 `AGENTS.md`，因为项目级 Agent 指令必须由开发者亲自审核。
 

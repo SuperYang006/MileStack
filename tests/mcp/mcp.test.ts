@@ -1,11 +1,12 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { randomUUID } from "node:crypto";
-import { mkdirSync, rmSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { runCli } from "../../src/cli/command.js";
 import {
   initializeProject,
   openProjectContext,
@@ -90,6 +91,10 @@ describe("MCP task tools", () => {
     );
     expect(instructions).toContain("check the work against the repository root AGENTS.md");
     expect(instructions).toContain("severity does not permit a pass");
+    expect(instructions).toContain(
+      "If .milestack/agent-instructions.md is missing in the current checkout",
+    );
+    expect(instructions).toContain("call get_agent_instructions");
     expect(instructions).toContain("Task creation:");
     expect(instructions).toContain(
       "Before creating a task, confirm you can state what the developer will observe when it is done, what is explicitly out of scope, and how to verify it.",
@@ -127,6 +132,7 @@ describe("MCP task tools", () => {
       "request_changes",
       "complete_review",
       "check_task_integration",
+      "get_agent_instructions",
     ]);
     expect(toolNames).toContain("submit_for_review");
     expect(toolNames).not.toContain("finish_task");
@@ -771,6 +777,39 @@ describe("MCP task tools", () => {
       summary: "Inbox task definition updated by developer.",
       actorLabel: "developer",
     });
+
+    await client.close();
+    await server.close();
+    context.database.close();
+  });
+});
+
+describe("MCP get_agent_instructions", () => {
+  it("returns exactly the file milestack init generates and writes nothing", async () => {
+    const projectRoot = createTemporaryProject();
+    expect(
+      await runCli(["init", "--project", projectRoot], {
+        writeStdout: () => undefined,
+        writeStderr: () => undefined,
+      }),
+    ).toBe(0);
+    const instructionsPath = path.join(projectRoot, ".milestack", "agent-instructions.md");
+    const generated = readFileSync(instructionsPath, "utf8");
+    const rootEntriesBefore = readdirSync(projectRoot).sort();
+
+    const context = await openProjectContext(projectRoot);
+    const server = createMcpServer(context);
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const client = new Client({ name: "test-client", version: "1.0.0" });
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+
+    const result = await client.callTool({ name: "get_agent_instructions", arguments: {} });
+    expect(result.isError).toBeFalsy();
+    expect(textContent(result)).toBe(generated);
+
+    expect(readFileSync(instructionsPath, "utf8")).toBe(generated);
+    expect(readdirSync(projectRoot).sort()).toEqual(rootEntriesBefore);
 
     await client.close();
     await server.close();
