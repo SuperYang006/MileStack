@@ -7,7 +7,7 @@ import { resolveDatabasePath } from "../db/paths.js";
 import { ProjectNotFoundError } from "../core/errors.js";
 import { TaskService } from "../core/task-service.js";
 import { GitIntegrationChecker } from "../git/integration-checker.js";
-import { findLinkedWorktree } from "../git/linked-worktree.js";
+import { findLinkedWorktree, type LinkedWorktree } from "../git/linked-worktree.js";
 import { ensureDatabase } from "../db/ensure-database.js";
 import type { OpenDatabase } from "../db/open-database.js";
 import { createSqliteRepository } from "../db/sqlite-repository.js";
@@ -58,20 +58,30 @@ function hasProjectDatabase(projectRoot: string): boolean {
 }
 
 /**
- * Resolves an explicit project path for commands that open an existing
- * project. A linked git worktree without its own database maps to the main
- * worktree that holds the project; every other path is returned unchanged.
+ * The project root a linked worktree shares. Throws when the main worktree has
+ * no MileStack project, so callers never fall back to opening a database in
+ * the linked worktree itself.
  */
-export function resolveExistingProjectRoot(projectPath?: string): string {
+export function requireMainWorktreeProject(linked: LinkedWorktree): string {
+  if (!hasProjectDatabase(linked.mainWorktreeRoot)) {
+    throw new Error(
+      `'${linked.worktreeRoot}' is a linked git worktree of '${linked.mainWorktreeRoot}', which has no MileStack project yet. ` +
+        `Run 'milestack init' in '${linked.mainWorktreeRoot}' first, then retry.`,
+    );
+  }
+  return linked.mainWorktreeRoot;
+}
+
+/**
+ * Resolves an explicit project path for commands that open the project. A
+ * linked git worktree maps to the main worktree that holds the project, even
+ * when the worktree has a database of its own; every other path is returned
+ * unchanged.
+ */
+export function resolveProjectRootAcrossWorktrees(projectPath?: string): string {
   const projectRoot = resolveProjectRoot(projectPath);
-  if (existsSync(resolveDatabasePath(projectRoot))) {
-    return projectRoot;
-  }
   const linked = findLinkedWorktree(projectRoot);
-  if (linked && hasProjectDatabase(linked.mainWorktreeRoot)) {
-    return linked.mainWorktreeRoot;
-  }
-  return projectRoot;
+  return linked ? requireMainWorktreeProject(linked) : projectRoot;
 }
 
 /**
@@ -83,8 +93,9 @@ export function resolveExistingProjectRoot(projectPath?: string): string {
  * Throws when:
  * - `startDirectory` does not exist or is not a directory
  * - no `.milestack/milestack.db` is found before reaching the filesystem root
- *   and `startDirectory` is not in a linked git worktree whose main worktree
- *   holds one (in which case the main worktree root is returned)
+ *
+ * A linked git worktree whose main worktree holds a database resolves to the
+ * main worktree root, ahead of the ancestor walk.
  */
 export function discoverProjectRoot(startDirectory?: string): string {
   const resolved = path.resolve(startDirectory ?? process.cwd());
@@ -100,6 +111,14 @@ export function discoverProjectRoot(startDirectory?: string): string {
     throw new Error(
       `Cannot discover MileStack project: '${resolved}' is not a directory.`,
     );
+  }
+
+  // A linked git worktree shares the main worktree's project, which is
+  // usually not among its ancestors when the worktree is created beside the
+  // repository.
+  const linked = findLinkedWorktree(resolved);
+  if (linked && hasProjectDatabase(linked.mainWorktreeRoot)) {
+    return linked.mainWorktreeRoot;
   }
 
   let current = resolved;
@@ -120,13 +139,6 @@ export function discoverProjectRoot(startDirectory?: string): string {
       break;
     }
     current = parent;
-  }
-
-  // A linked git worktree is usually created beside the repository, so its
-  // ancestors miss the database that lives in the main worktree.
-  const linked = findLinkedWorktree(resolved);
-  if (linked && hasProjectDatabase(linked.mainWorktreeRoot)) {
-    return linked.mainWorktreeRoot;
   }
 
   throw new Error(

@@ -329,7 +329,7 @@ After upgrading, open a new terminal and restart the MCP client and `milestack s
 
 - Run `milestack init --client <name>` inside the worktree. It creates no database. It writes `.milestack/agent-instructions.md` and the selected client configuration in the worktree, with `--project` pointing at the main worktree. If the main worktree has not been initialized yet, the command fails without writing anything; run `init` in the main worktree first.
 - Alternatively, start the coding session from the main worktree directory.
-- `milestack status --discover` and `milestack mcp --discover` run from a worktree find the main worktree's project, and `--project <worktree path>` resolves to it as well.
+- `milestack status --discover` and `milestack mcp --discover` run from a worktree find the main worktree's project, and `--project <worktree path>` resolves to it as well, for `status`, `mcp`, and `serve`. When the main worktree has no MileStack project yet, these commands fail with the path to initialize instead of creating a database in the worktree.
 
 ### The wrong project is shown
 

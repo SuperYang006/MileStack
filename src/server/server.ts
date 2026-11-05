@@ -9,7 +9,7 @@ import { z } from "zod";
 import {
   openProjectContext,
   initializeProject,
-  resolveProjectRoot,
+  resolveProjectRootAcrossWorktrees,
   type ProjectContext,
 } from "../project/project-context.js";
 import {
@@ -75,7 +75,7 @@ export async function createHttpServer(
   host: string;
   versionCheck: VersionCheckHandle | null;
 }> {
-  const rootPath = resolveProjectRoot(options.projectRoot);
+  const rootPath = resolveProjectRootAcrossWorktrees(options.projectRoot);
 
   const staticPath = options.staticDir
     ? path.resolve(options.staticDir)

@@ -142,6 +142,32 @@ describe("linked git worktree", () => {
     }
   });
 
+  it("status and mcp in a linked worktree fail without files while the main worktree is uninitialized, then resolve once it is", async () => {
+    const { mainRoot, worktreeRoot } = createRepository();
+
+    const failures = [
+      outputCapture(),
+      outputCapture(),
+      outputCapture(),
+    ];
+    expect(await runCli(["status", "--project", worktreeRoot], failures[0]!.output)).toBe(1);
+    expect(await runCli(["mcp", "--project", worktreeRoot], failures[1]!.output)).toBe(1);
+    expect(
+      await inDirectory(worktreeRoot, () => runCli(["mcp", "--discover"], failures[2]!.output)),
+    ).toBe(1);
+    expect(failures[0]!.stderr.join("")).toContain(mainRoot);
+    expect(failures[0]!.stderr.join("")).toContain("milestack init");
+    for (const root of [mainRoot, worktreeRoot]) {
+      expect(existsSync(path.join(root, ".milestack"))).toBe(false);
+    }
+
+    const projectId = await initializeMainWorktree(mainRoot, "Task in main worktree");
+    const status = outputCapture();
+    expect(await runCli(["status", "--project", worktreeRoot], status.output)).toBe(0);
+    expect(status.stdout.join("")).toContain(projectId);
+    expect(existsSync(path.join(worktreeRoot, ".milestack"))).toBe(false);
+  });
+
   it("init in the main worktree of a git repository still creates its own database", async () => {
     const { mainRoot, worktreeRoot } = createRepository();
 

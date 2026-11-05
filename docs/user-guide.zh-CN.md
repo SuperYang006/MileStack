@@ -329,7 +329,7 @@ milestack --version
 
 - 在工作树中运行 `milestack init --client <name>`：不会创建数据库，只会在工作树中写入 `.milestack/agent-instructions.md` 和所选客户端的配置，其中 `--project` 指向主工作树。如果主工作树尚未初始化，命令会报错且不写入任何文件，请先在主工作树运行 `init`。
 - 也可以直接从主工作树目录启动编程会话。
-- 在工作树中运行 `milestack status --discover` 和 `milestack mcp --discover` 会找到主工作树的项目，`--project <工作树路径>` 同样会解析到该项目。
+- 在工作树中运行 `milestack status --discover` 和 `milestack mcp --discover` 会找到主工作树的项目，`--project <工作树路径>` 对 `status`、`mcp` 和 `serve` 同样会解析到该项目。如果主工作树还没有 MileStack 项目，这些命令会报错并给出需要初始化的路径，而不会在工作树中创建数据库。
 
 ### 页面或 Agent 显示了错误的项目
 

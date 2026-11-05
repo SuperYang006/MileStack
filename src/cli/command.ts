@@ -15,8 +15,9 @@ import {
   discoverProjectRoot,
   initializeProject,
   openProjectContext,
-  resolveExistingProjectRoot,
+  requireMainWorktreeProject,
   resolveProjectRoot,
+  resolveProjectRootAcrossWorktrees,
 } from "../project/project-context.js";
 import { resolveDatabasePath } from "../db/paths.js";
 import { findLinkedWorktree, type LinkedWorktree } from "../git/linked-worktree.js";
@@ -587,13 +588,8 @@ function runLinkedWorktreeInit(
   output: CliOutput,
 ): void {
   const { worktreeRoot, mainWorktreeRoot } = linked;
+  requireMainWorktreeProject(linked);
   const databasePath = resolveDatabasePath(mainWorktreeRoot);
-  if (!existsSync(databasePath)) {
-    throw new Error(
-      `'${worktreeRoot}' is a linked git worktree of '${mainWorktreeRoot}', which has no MileStack project yet. ` +
-        `Run 'milestack init' in '${mainWorktreeRoot}' first, then rerun init here.`,
-    );
-  }
 
   ensureGitignoreEntry(worktreeRoot);
   const agentInstructionsPath = writeProjectAgentInstructions(worktreeRoot);
@@ -656,7 +652,7 @@ async function runStatus(
   json: boolean | undefined,
   output: CliOutput,
 ): Promise<void> {
-  const projectRoot = discover ? discoverProjectRoot() : resolveExistingProjectRoot(projectPath);
+  const projectRoot = discover ? discoverProjectRoot() : resolveProjectRootAcrossWorktrees(projectPath);
   const context = await openProjectContext(projectRoot);
   try {
     const status = context.service.getProjectStatus({
@@ -714,7 +710,7 @@ export async function runCli(
     if (parsed.discover) {
       await runMcp({ discover: true });
     } else {
-      await runMcp(resolveExistingProjectRoot(parsed.projectPath));
+      await runMcp(resolveProjectRootAcrossWorktrees(parsed.projectPath));
     }
     return 0;
   } catch (error) {
