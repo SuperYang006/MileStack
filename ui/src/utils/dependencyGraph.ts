@@ -47,6 +47,10 @@ export interface DagStageTask {
   isParallelStageTask: boolean;
   /** 是否为终点任务：没有未完成的下游任务 */
   isGoal: boolean;
+  /** 卡片上显示的直接前置：组内、去掉冗余（已被其他前置间接覆盖）后的依赖，按分步先后再按标题排序 */
+  prerequisites: Array<{ id: string; title: string }>;
+  /** 草稿任务的前置全部已完成，排入就绪队列后可并行执行（与收件箱的“可并行候选”同义） */
+  isParallelCandidate: boolean;
 }
 
 export interface DagStage {
@@ -403,6 +407,8 @@ export function buildConnectedDagGraphs(
         waitingCount: detail.waitingFor.length,
         isParallelStageTask: false, // 稍后在 stage 级别判定
         isGoal: !incompleteDownstreamIds.has(nodeId),
+        prerequisites: [],
+        isParallelCandidate: detail.isInboxParallelCandidate,
       };
 
       const list = stagesByIndex.get(stageIndex) || [];
@@ -452,15 +458,33 @@ export function buildConnectedDagGraphs(
       };
     });
 
+    // 传递归约：去除显示层的冗余边
+    const reducedEdges = computeTransitiveReduction(groupNodeIds, rawEdges);
+
+    // 卡片只显示去掉冗余后的直接前置，顺序与分步和同步内排序一致
+    const stageTaskById = new Map<string, DagStageTask>();
+    for (const task of stages.flatMap((stage) => stage.tasks)) {
+      stageTaskById.set(task.id, task);
+    }
+    for (const edge of reducedEdges) {
+      const from = stageTaskById.get(edge.from);
+      if (from === undefined) continue;
+      stageTaskById.get(edge.to)?.prerequisites.push({ id: from.id, title: from.title });
+    }
+    for (const task of stageTaskById.values()) {
+      task.prerequisites.sort((a, b) => {
+        const stageDiff =
+          (stageTaskById.get(a.id)?.stageIndex ?? 0) - (stageTaskById.get(b.id)?.stageIndex ?? 0);
+        return stageDiff !== 0 ? stageDiff : a.title.localeCompare(b.title);
+      });
+    }
+
     // 终点按分步先后排列，同一步内沿用上面的排序
     const goals = stages.flatMap((stage) => stage.tasks.filter((task) => task.isGoal));
     const title =
       goals.length > 2
         ? `${goals[0]?.title}、${goals[1]?.title} 等 ${goals.length} 个目标`
         : goals.map((task) => task.title).join("、");
-
-    // 传递归约：去除显示层的冗余边
-    const reducedEdges = computeTransitiveReduction(groupNodeIds, rawEdges);
 
     graphs.push({
       id: `dag-${goals.map((task) => task.id).join("+")}`,

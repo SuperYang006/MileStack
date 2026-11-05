@@ -556,6 +556,67 @@ describe("dependencyGraph calculation utils", () => {
     // 多终点组里 M 虽独占最后一步，也不是“最终目标”
     expect(graph.stages.some((stage) => stage.label.includes("最终目标"))).toBe(false);
     expect(graph.stages[6]?.isFinalGoal).toBe(false);
+
+    // 卡片只显示去掉冗余后的直接前置：E 不显示已被 C 间接覆盖的 A
+    const prerequisites = Object.fromEntries(
+      graph.stages
+        .flatMap((s) => s.tasks)
+        .map((t) => [t.title.replace("任务 ", ""), t.prerequisites.map((p) => p.title.replace("任务 ", ""))]),
+    );
+    expect(prerequisites).toEqual({
+      A: [],
+      B: [],
+      C: ["A"],
+      D: ["A"],
+      E: ["B", "C"],
+      F: ["D"],
+      G: ["E"],
+      H: ["E"],
+      I: ["E"],
+      J: ["E", "F"],
+      K: ["J"],
+      L: ["H", "K"],
+      M: ["L"],
+    });
+    expect(graph.stages.flatMap((s) => s.tasks).find((t) => t.title === "任务 E")?.prerequisites.map((p) => p.id)).toEqual([
+      "b",
+      "c",
+    ]);
+  });
+
+  it("marks only drafts without incomplete prerequisites as parallel candidates, never ready tasks", () => {
+    const done = makeSummary({ id: "t-done", title: "已完成", status: "completed" });
+    const freeDraft = makeSummary({ id: "t-free", title: "前置已完成的草稿", status: "inbox", dependencyIds: ["t-done"] });
+    const waitingDraft = makeSummary({ id: "t-wait", title: "还有前置的草稿", status: "inbox", dependencyIds: ["t-free"] });
+    const readyTask = makeSummary({ id: "t-ready", title: "就绪任务", status: "ready", queuePosition: 1 });
+    const goal = makeSummary({
+      id: "t-goal",
+      title: "终点",
+      status: "inbox",
+      dependencyIds: ["t-wait", "t-ready"],
+    });
+
+    const status: ProjectStatus = {
+      project: { id: "proj-1", name: "Test", goal: null },
+      counts: testCounts,
+      current: [],
+      next: [readyTask],
+      inReview: [],
+      blocked: [],
+      inbox: [freeDraft, waitingDraft, goal],
+      recentlyCompleted: [done],
+    };
+
+    const graphs = buildConnectedDagGraphs(status);
+
+    expect(graphs).toHaveLength(1);
+    const tasks = new Map(graphs[0]!.stages.flatMap((s) => s.tasks).map((t) => [t.id, t]));
+    expect(tasks.get("t-free")?.isParallelCandidate).toBe(true);
+    expect(tasks.get("t-free")?.prerequisites).toEqual([]);
+    expect(tasks.get("t-wait")?.isParallelCandidate).toBe(false);
+    expect(tasks.get("t-goal")?.isParallelCandidate).toBe(false);
+    expect(tasks.get("t-ready")?.isRunnable).toBe(true);
+    expect(tasks.get("t-ready")?.isParallelCandidate).toBe(false);
   });
 
   it("regression: groups the 5-node asymmetric AI review DAG under its final goal", () => {

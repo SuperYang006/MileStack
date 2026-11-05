@@ -264,6 +264,15 @@ export const ExecutionFlowView: React.FC<ExecutionFlowViewProps> = ({
                                       <span>{task.isParallelStageTask ? "可并行" : "可推进"}</span>
                                     </span>
                                   )}
+                                  {task.isParallelCandidate && (
+                                    <span
+                                      className="inline-flex items-center space-x-0.5 px-1.5 py-px rounded text-[9px] bg-indigo-950/50 border border-indigo-900/60 text-indigo-300"
+                                      title="无未完成前置依赖，排入就绪队列后可并行执行"
+                                    >
+                                      <Zap className="w-2.5 h-2.5 text-indigo-400" />
+                                      <span>可并行候选</span>
+                                    </span>
+                                  )}
                                   {task.waitingCount > 0 && (
                                     <span className="text-[10px] text-zinc-500 hidden sm:inline">
                                       等待 {task.waitingCount} 项
@@ -280,6 +289,22 @@ export const ExecutionFlowView: React.FC<ExecutionFlowViewProps> = ({
                               >
                                 {task.title}
                               </h4>
+
+                              {/* 组内直接前置：短码，悬停显示标题 */}
+                              {task.prerequisites.length > 0 && (
+                                <div className="flex items-center flex-wrap gap-x-1.5 gap-y-0.5 text-[10px] text-zinc-500">
+                                  <span className="shrink-0">前置</span>
+                                  {task.prerequisites.map((dep) => (
+                                    <span
+                                      key={dep.id}
+                                      className="px-1.5 py-px rounded font-mono text-zinc-400 bg-zinc-900/60 border border-zinc-800/70"
+                                      title={dep.title}
+                                    >
+                                      #{dep.id.slice(0, 8)}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
 
                               {/* 小屏下折行显示的等待项 */}
                               {task.waitingCount > 0 && (
