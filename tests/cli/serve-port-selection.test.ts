@@ -223,6 +223,35 @@ describe("milestack serve port selection", () => {
     expect(Date.now() - startedAt).toBeLessThan(3_000);
   });
 
+  it("does not follow a redirect from an occupant, so nothing beyond it is contacted or trusted", async () => {
+    const base = await freeBasePort();
+    const project = createProject();
+    const existing = await startHttpServer({
+      projectRoot: project.projectRoot,
+      staticDir: project.staticDir,
+      port: 0,
+    });
+    const projectId = existing.context.project.id;
+    await existing.app.close();
+    // The redirect target answers as this very project; following it would make
+    // the unrelated occupant look like an already-running serve.
+    const targetPort = base + 10;
+    let targetRequests = 0;
+    await occupy(targetPort, (_request, response) => {
+      targetRequests += 1;
+      response.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ id: projectId }));
+    });
+    await occupy(base, (_request, response) => {
+      response.writeHead(302, { location: `http://127.0.0.1:${targetPort}/api/project` }).end();
+    });
+
+    const run = await serveInRange(project, { first: base, last: base + 3 });
+
+    expect(run.exitCode).toBe(0);
+    expect(run.server?.url).toBe(`http://127.0.0.1:${base + 1}`);
+    expect(targetRequests).toBe(0);
+  });
+
   it("reports the whole range and suggests --port when every port is taken", async () => {
     const base = await freeBasePort();
     for (const port of [base, base + 1, base + 2]) {

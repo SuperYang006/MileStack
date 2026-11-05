@@ -28,10 +28,13 @@ function isAddressInUse(error: unknown): boolean {
 
 // The project id of the MileStack service listening on the port, or null for
 // anything else: no answer within the timeout, a non-MileStack response, or a
-// connection failure. Only the loopback address is ever contacted.
+// connection failure. Only the loopback address is ever contacted: a redirect
+// is an error here, so it can neither reach another host nor make the occupant
+// look like a MileStack service.
 async function probeProjectId(port: number): Promise<string | null> {
   try {
     const response = await fetch(`http://${loopbackHost}:${port}/api/project`, {
+      redirect: "error",
       signal: AbortSignal.timeout(probeTimeoutMs),
     });
     if (!response.ok) {
