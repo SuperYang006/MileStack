@@ -239,11 +239,12 @@ describe("dependencyGraph calculation utils", () => {
     expect(graph.stages[2]?.tasks.map((t) => t.id)).toEqual(["t-c"]);
     expect(graph.stages.every((stage) => !stage.isParallel)).toBe(true);
 
-    // 直线中间任务不是共用前置
-    expect(graph.stages.flatMap((s) => s.tasks).every((t) => t.otherGoalCount === 0)).toBe(true);
+    // 只有末端的 C 是终点，A、B 不是；唯一终点独占最后一步，标为最终目标
+    expect(graph.stages.flatMap((s) => s.tasks).filter((t) => t.isGoal).map((t) => t.id)).toEqual(["t-c"]);
+    expect(graph.stages[2]?.label).toContain("最终目标");
   });
 
-  it("splits goals that only share one incomplete prerequisite", () => {
+  it("merges goals that share one incomplete prerequisite into a single group", () => {
     // 共用前置 R 同时被互不依赖的目标 G1 与 G2 依赖
     const shared = makeSummary({ id: "shared", title: "共用前置 R", status: "ready" });
     const goal1 = makeSummary({
@@ -272,27 +273,22 @@ describe("dependencyGraph calculation utils", () => {
 
     const graphs = buildConnectedDagGraphs(status);
 
-    // 只共用前置的目标拆成两组，标题是各自的目标标题
-    expect(graphs).toHaveLength(2);
-    expect(graphs.map((g) => g.title)).toEqual(["目标 G1", "目标 G2"]);
-    for (const graph of graphs) {
-      expect(graph.title).not.toBe("共用前置 R");
-      expect(graph.title).not.toContain("多源输入");
-      expect(graph.taskIds).toHaveLength(2);
-      expect(graph.taskIds).toContain("shared");
+    // 共用前置只出现一次，两个终点同在一组，标题列出两个终点
+    expect(graphs).toHaveLength(1);
+    const graph = graphs[0]!;
+    expect(graph.title).toBe("目标 G1、目标 G2");
+    expect([...graph.taskIds].sort()).toEqual(["goal-1", "goal-2", "shared"]);
+    expect(graph.stages.map((stage) => stage.tasks.map((t) => t.id).sort())).toEqual([
+      ["shared"],
+      ["goal-1", "goal-2"],
+    ]);
+    expect(graph.stages[1]?.isParallel).toBe(true);
 
-      // 共用前置在每组里都注明还被另外 1 个目标依赖
-      const sharedTask = graph.stages.flatMap((s) => s.tasks).find((t) => t.id === "shared");
-      expect(sharedTask?.otherGoalCount).toBe(1);
-
-      // 不同目标不合并成一张图，也不互相标成并行
-      expect(graph.stages.every((stage) => !stage.isParallel)).toBe(true);
-    }
-
-    // R 在两组里都出现，两个目标各自只出现在自己的组里
-    expect(graphs.flatMap((g) => g.taskIds).filter((id) => id === "shared")).toHaveLength(2);
-    expect(graphs[0]?.taskIds).not.toContain("goal-2");
-    expect(graphs[1]?.taskIds).not.toContain("goal-1");
+    // 多个终点时不使用“最终目标”
+    expect(graph.stages.some((stage) => stage.label.includes("最终目标"))).toBe(false);
+    expect(
+      graph.stages.flatMap((s) => s.tasks).filter((t) => t.isGoal).map((t) => t.id).sort(),
+    ).toEqual(["goal-1", "goal-2"]);
   });
 
   it("keeps branches that converge on one task in a single group", () => {
@@ -385,7 +381,7 @@ describe("dependencyGraph calculation utils", () => {
     expect(graphs).toEqual([]);
   });
 
-  it("annotates a shared prerequisite with the number of other goals", () => {
+  it("shows the first two goal titles and the total when a group has more than two goals", () => {
     // 同一个未完成前置被 3 个互不依赖的目标依赖
     const shared = makeSummary({ id: "shared", title: "共用前置 R", status: "ready" });
     const goalTasks = [1, 2, 3].map((n) =>
@@ -410,22 +406,12 @@ describe("dependencyGraph calculation utils", () => {
 
     const graphs = buildConnectedDagGraphs(status);
 
-    expect(graphs).toHaveLength(3);
-    expect([...graphs.map((g) => g.title)].sort()).toEqual(["目标 1", "目标 2", "目标 3"]);
-    for (const graph of graphs) {
-      const stageTasks = graph.stages.flatMap((s) => s.tasks);
-      // 共用前置在每一组里都注明还被另外 2 个目标依赖
-      const sharedTask = stageTasks.find((t) => t.id === "shared");
-      expect(sharedTask?.otherGoalCount).toBe(2);
-
-      // 目标本身不属于其他目标
-      const goalTask = stageTasks.find((t) => t.id !== "shared");
-      expect(goalTask?.otherGoalCount).toBe(0);
-      expect(graph.taskIds).toHaveLength(2);
-    }
+    expect(graphs).toHaveLength(1);
+    expect(graphs[0]?.title).toBe("目标 1、目标 2 等 3 个目标");
+    expect(graphs[0]?.taskIds).toHaveLength(4);
   });
 
-  it("splits a fork into one group per downstream goal", () => {
+  it("keeps a fork in a single group with both branches as goals", () => {
     const root = makeSummary({ id: "root", title: "根任务", status: "ready" });
     const branch1 = makeSummary({ id: "b1", title: "分支 1", status: "inbox", dependencyIds: ["root"] });
     const branch2 = makeSummary({ id: "b2", title: "分支 2", status: "inbox", dependencyIds: ["root"] });
@@ -443,18 +429,12 @@ describe("dependencyGraph calculation utils", () => {
 
     const graphs = buildConnectedDagGraphs(status);
 
-    expect(graphs).toHaveLength(2);
-    expect([...graphs.map((g) => g.title)].sort()).toEqual(["分支 1", "分支 2"]);
-    for (const graph of graphs) {
-      expect(graph.taskIds).toHaveLength(2);
-      expect(graph.taskIds).toContain("root");
-      expect(graph.stages).toHaveLength(2);
-      const rootTask = graph.stages.flatMap((s) => s.tasks).find((t) => t.id === "root");
-      expect(rootTask?.otherGoalCount).toBe(1);
-    }
+    expect(graphs).toHaveLength(1);
+    expect([...graphs[0]!.taskIds].sort()).toEqual(["b1", "b2", "root"]);
+    expect(graphs[0]?.stages).toHaveLength(2);
   });
 
-  it("keeps unrelated goals in separate groups", () => {
+  it("keeps unconnected dependency graphs in separate groups", () => {
     // 链 1：X -> Y
     const taskX = makeSummary({ id: "x", title: "任务 X", status: "ready" });
     const taskY = makeSummary({ id: "y", title: "任务 Y", status: "inbox", dependencyIds: ["x"] });
@@ -477,22 +457,105 @@ describe("dependencyGraph calculation utils", () => {
 
     const graphs = buildConnectedDagGraphs(status);
 
-    expect(graphs).toHaveLength(3);
-    expect([...graphs.map((g) => g.title)].sort()).toEqual(["任务 N", "任务 P", "任务 Y"]);
-
+    expect(graphs).toHaveLength(2);
     const graphY = graphs.find((g) => g.taskIds.includes("y"));
+    const graphFork = graphs.find((g) => g.taskIds.includes("m"));
+    expect(graphY?.title).toBe("任务 Y");
     expect([...graphY!.taskIds].sort()).toEqual(["x", "y"]);
+    expect(graphFork?.title).toBe("任务 N、任务 P");
+    expect([...graphFork!.taskIds].sort()).toEqual(["m", "n", "p"]);
+  });
 
-    const graphN = graphs.find((g) => g.taskIds.includes("n"));
-    const graphP = graphs.find((g) => g.taskIds.includes("p"));
-    expect([...graphN!.taskIds].sort()).toEqual(["m", "n"]);
-    expect([...graphP!.taskIds].sort()).toEqual(["m", "p"]);
+  it("does not connect two goals through a completed task", () => {
+    // X、Y 都依赖已完成的 P，但各自还有未完成前置
+    const done = makeSummary({ id: "done-p", title: "已完成 P", status: "completed" });
+    const preX = makeSummary({ id: "pre-x", title: "前置 X", status: "ready", dependencyIds: ["done-p"] });
+    const preY = makeSummary({ id: "pre-y", title: "前置 Y", status: "ready", dependencyIds: ["done-p"] });
+    const goalX = makeSummary({
+      id: "goal-x",
+      title: "目标 X",
+      status: "inbox",
+      dependencyIds: ["done-p", "pre-x"],
+    });
+    const goalY = makeSummary({
+      id: "goal-y",
+      title: "目标 Y",
+      status: "inbox",
+      dependencyIds: ["done-p", "pre-y"],
+    });
 
-    // 共用前置 M 在它的两个目标组里都注明还被另外 1 个目标依赖
-    for (const graph of [graphN, graphP]) {
-      const sharedTask = graph?.stages.flatMap((s) => s.tasks).find((t) => t.id === "m");
-      expect(sharedTask?.otherGoalCount).toBe(1);
-    }
+    const status: ProjectStatus = {
+      project: { id: "proj-1", name: "Test", goal: null },
+      counts: testCounts,
+      current: [],
+      next: [preX, preY],
+      inReview: [],
+      blocked: [],
+      inbox: [goalX, goalY],
+      recentlyCompleted: [done],
+    };
+
+    const graphs = buildConnectedDagGraphs(status);
+
+    expect(graphs).toHaveLength(2);
+    expect(graphs.map((g) => g.title).sort()).toEqual(["目标 X", "目标 Y"]);
+    expect([...graphs.find((g) => g.title === "目标 X")!.taskIds].sort()).toEqual(["goal-x", "pre-x"]);
+    expect([...graphs.find((g) => g.title === "目标 Y")!.taskIds].sort()).toEqual(["goal-y", "pre-y"]);
+    expect(graphs.flatMap((g) => g.taskIds)).not.toContain("done-p");
+  });
+
+  it("puts a 13-task connected draft graph with three goals in one group", () => {
+    // X←Y 表示 X 依赖 Y
+    const deps: Record<string, string[]> = {
+      A: [],
+      B: [],
+      C: ["A"],
+      D: ["A"],
+      E: ["A", "B", "C"],
+      F: ["A", "D"],
+      G: ["E"],
+      H: ["E"],
+      I: ["E"],
+      J: ["E", "F"],
+      K: ["J"],
+      L: ["K", "H"],
+      M: ["L"],
+    };
+    const drafts = Object.entries(deps).map(([name, dependencyIds]) =>
+      makeSummary({ id: name.toLowerCase(), title: `任务 ${name}`, status: "inbox", dependencyIds: dependencyIds.map((d) => d.toLowerCase()) }),
+    );
+
+    const status: ProjectStatus = {
+      project: { id: "proj-1", name: "Test", goal: null },
+      counts: testCounts,
+      current: [],
+      next: [],
+      inReview: [],
+      blocked: [],
+      inbox: drafts,
+      recentlyCompleted: [],
+    };
+
+    const graphs = buildConnectedDagGraphs(status);
+
+    expect(graphs).toHaveLength(1);
+    const graph = graphs[0]!;
+    expect(graph.taskIds).toHaveLength(13);
+    expect(new Set(graph.taskIds).size).toBe(13);
+    expect(
+      graph.stages.map((stage) => stage.tasks.map((t) => t.title.replace("任务 ", ""))),
+    ).toEqual([["A", "B"], ["C", "D"], ["E", "F"], ["G", "H", "I", "J"], ["K"], ["L"], ["M"]]);
+    expect(graph.stages[3]?.label).toContain("可以同时做");
+    expect(graph.stages[3]?.isParallel).toBe(true);
+
+    // 3 个终点 G、I、M：标题列出前 2 个并注明总数，卡片带终点标识
+    expect(graph.title).toBe("任务 G、任务 I 等 3 个目标");
+    expect(
+      graph.stages.flatMap((s) => s.tasks).filter((t) => t.isGoal).map((t) => t.title.replace("任务 ", "")),
+    ).toEqual(["G", "I", "M"]);
+    // 多终点组里 M 虽独占最后一步，也不是“最终目标”
+    expect(graph.stages.some((stage) => stage.label.includes("最终目标"))).toBe(false);
+    expect(graph.stages[6]?.isFinalGoal).toBe(false);
   });
 
   it("regression: groups the 5-node asymmetric AI review DAG under its final goal", () => {

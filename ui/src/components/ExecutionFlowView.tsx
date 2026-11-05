@@ -109,7 +109,7 @@ export const ExecutionFlowView: React.FC<ExecutionFlowViewProps> = ({
             目标路径 ({graphs.length})
           </h2>
           <span className="text-[11px] font-mono text-zinc-500 hidden sm:inline">
-            · 每个最终目标，以及还没做完的前置工作
+            · 相互关联的未完成任务，按先后分步
           </span>
         </div>
         <div className="flex items-center space-x-2">
@@ -149,7 +149,6 @@ export const ExecutionFlowView: React.FC<ExecutionFlowViewProps> = ({
               {/* 阶段列表 (移动端纵向流，PC 端横向 Pipeline 泳道) */}
               <div className="flex flex-col md:flex-row md:items-stretch gap-3 md:gap-2.5 overflow-x-auto pb-1">
                 {graph.stages.map((stage, stageIdx) => {
-                  const isLastStage = stageIdx === graph.stages.length - 1;
                   const isMultiTask = stage.tasks.length > 1;
 
                   return (
@@ -168,7 +167,7 @@ export const ExecutionFlowView: React.FC<ExecutionFlowViewProps> = ({
                                 </div>
                                 <div className="h-px bg-zinc-800 flex-1" />
                               </div>
-                            ) : isLastStage && graph.stages.length > 2 && stage.tasks.length === 1 ? (
+                            ) : stage.isFinalGoal ? (
                               <div className="flex items-center justify-center gap-2 text-zinc-600 text-[10px]">
                                 <div className="h-px bg-zinc-800 flex-1" />
                                 <div className="flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full bg-zinc-900 border border-zinc-800 text-amber-300 shrink-0">
@@ -196,7 +195,7 @@ export const ExecutionFlowView: React.FC<ExecutionFlowViewProps> = ({
                                 <GitFork className="w-3.5 h-3.5" />
                                 <ArrowRight className="w-3 h-3 text-zinc-500" />
                               </div>
-                            ) : isLastStage && graph.stages.length > 2 && stage.tasks.length === 1 ? (
+                            ) : stage.isFinalGoal ? (
                               <div
                                 className="flex flex-col items-center space-y-1 p-1.5 rounded bg-zinc-900/80 border border-zinc-800 text-amber-400"
                                 title="都做完后才能继续"
@@ -222,7 +221,7 @@ export const ExecutionFlowView: React.FC<ExecutionFlowViewProps> = ({
                               className={`w-1.5 h-1.5 rounded-full shrink-0 ${
                                 stage.isParallel
                                   ? "bg-indigo-400"
-                                  : isLastStage && graph.stages.length > 2
+                                  : stage.isFinalGoal
                                   ? "bg-amber-400"
                                   : "bg-zinc-500"
                               }`}
@@ -254,6 +253,11 @@ export const ExecutionFlowView: React.FC<ExecutionFlowViewProps> = ({
                                   <TaskIdBadge taskId={task.id} variant="muted" />
                                 </div>
                                 <div className="shrink-0 flex items-center space-x-1.5">
+                                  {task.isGoal && (
+                                    <span className="inline-flex items-center px-1.5 py-px rounded text-[9px] bg-amber-950/70 border border-amber-800/60 text-amber-300">
+                                      终点
+                                    </span>
+                                  )}
                                   {task.isRunnable && (
                                     <span className="inline-flex items-center space-x-0.5 px-1.5 py-px rounded text-[9px] bg-emerald-950/80 border border-emerald-700/60 text-emerald-300">
                                       <Zap className="w-2.5 h-2.5 text-emerald-400" />
@@ -276,14 +280,6 @@ export const ExecutionFlowView: React.FC<ExecutionFlowViewProps> = ({
                               >
                                 {task.title}
                               </h4>
-
-                              {/* 共用前置：还被其他目标依赖 */}
-                              {task.otherGoalCount > 0 && (
-                                <div className="flex items-center space-x-1 text-[10px] text-amber-300/90">
-                                  <GitMerge className="w-2.5 h-2.5 text-amber-400/80 shrink-0" />
-                                  <span>还被另外 {task.otherGoalCount} 个目标依赖</span>
-                                </div>
-                              )}
 
                               {/* 小屏下折行显示的等待项 */}
                               {task.waitingCount > 0 && (
