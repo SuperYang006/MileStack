@@ -7,6 +7,7 @@ import { resolveDatabasePath } from "../db/paths.js";
 import { ProjectNotFoundError } from "../core/errors.js";
 import { TaskService } from "../core/task-service.js";
 import { GitIntegrationChecker } from "../git/integration-checker.js";
+import { findLinkedWorktree, type LinkedWorktree } from "../git/linked-worktree.js";
 import { ensureDatabase } from "../db/ensure-database.js";
 import type { OpenDatabase } from "../db/open-database.js";
 import { createSqliteRepository } from "../db/sqlite-repository.js";
@@ -34,6 +35,55 @@ export function resolveProjectRoot(projectPath?: string): string {
   return projectRoot;
 }
 
+function hasProjectDatabase(projectRoot: string): boolean {
+  const databasePath = resolveDatabasePath(projectRoot);
+  if (!existsSync(databasePath)) {
+    return false;
+  }
+  try {
+    if (!statSync(databasePath).isFile()) {
+      throw new Error(
+        `Cannot discover MileStack project: database path '${databasePath}' is not a regular file.`,
+      );
+    }
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("not a regular file")) {
+      throw error;
+    }
+    throw new Error(
+      `Cannot discover MileStack project: database path '${databasePath}' is not accessible or unsafe.`,
+    );
+  }
+  return true;
+}
+
+/**
+ * The project root a linked worktree shares. Throws when the main worktree has
+ * no MileStack project, so callers never fall back to opening a database in
+ * the linked worktree itself.
+ */
+export function requireMainWorktreeProject(linked: LinkedWorktree): string {
+  if (!hasProjectDatabase(linked.mainWorktreeRoot)) {
+    throw new Error(
+      `'${linked.worktreeRoot}' is a linked git worktree of '${linked.mainWorktreeRoot}', which has no MileStack project yet. ` +
+        `Run 'milestack init' in '${linked.mainWorktreeRoot}' first, then retry.`,
+    );
+  }
+  return linked.mainWorktreeRoot;
+}
+
+/**
+ * Resolves an explicit project path for commands that open the project. A
+ * linked git worktree maps to the main worktree that holds the project, even
+ * when the worktree has a database of its own; every other path is returned
+ * unchanged.
+ */
+export function resolveProjectRootAcrossWorktrees(projectPath?: string): string {
+  const projectRoot = resolveProjectRoot(projectPath);
+  const linked = findLinkedWorktree(projectRoot);
+  return linked ? requireMainWorktreeProject(linked) : projectRoot;
+}
+
 /**
  * Walk up from `startDirectory` (resolved to an absolute path) to find the
  * nearest ancestor that contains an initialized MileStack database at
@@ -43,6 +93,9 @@ export function resolveProjectRoot(projectPath?: string): string {
  * Throws when:
  * - `startDirectory` does not exist or is not a directory
  * - no `.milestack/milestack.db` is found before reaching the filesystem root
+ *
+ * A linked git worktree whose main worktree holds a database resolves to the
+ * main worktree root, ahead of the ancestor walk.
  */
 export function discoverProjectRoot(startDirectory?: string): string {
   const resolved = path.resolve(startDirectory ?? process.cwd());
@@ -60,6 +113,14 @@ export function discoverProjectRoot(startDirectory?: string): string {
     );
   }
 
+  // A linked git worktree shares the main worktree's project, which is
+  // usually not among its ancestors when the worktree is created beside the
+  // repository.
+  const linked = findLinkedWorktree(resolved);
+  if (linked && hasProjectDatabase(linked.mainWorktreeRoot)) {
+    return linked.mainWorktreeRoot;
+  }
+
   let current = resolved;
   const visited = new Set<string>();
   while (true) {
@@ -70,23 +131,7 @@ export function discoverProjectRoot(startDirectory?: string): string {
     }
     visited.add(current);
 
-    const databasePath = resolveDatabasePath(current);
-    if (existsSync(databasePath)) {
-      try {
-        const stats = statSync(databasePath);
-        if (!stats.isFile()) {
-          throw new Error(
-            `Cannot discover MileStack project: database path '${databasePath}' is not a regular file.`,
-          );
-        }
-      } catch (error) {
-        if (error instanceof Error && error.message.includes("not a regular file")) {
-          throw error;
-        }
-        throw new Error(
-          `Cannot discover MileStack project: database path '${databasePath}' is not accessible or unsafe.`,
-        );
-      }
+    if (hasProjectDatabase(current)) {
       return current;
     }
     const parent = path.dirname(current);
@@ -97,7 +142,8 @@ export function discoverProjectRoot(startDirectory?: string): string {
   }
 
   throw new Error(
-    `Cannot discover MileStack project from '${resolved}': no .milestack/milestack.db found in any ancestor directory. ` +
+    `Cannot discover MileStack project from '${resolved}': no .milestack/milestack.db found in any ancestor directory` +
+      `${linked ? ` or in its main worktree '${linked.mainWorktreeRoot}'` : ""}. ` +
       `Run 'milestack init --project <project-root>' to initialize, then retry.`,
   );
 }

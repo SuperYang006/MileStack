@@ -738,13 +738,17 @@ function configureTomlFile(
 export function configureProjectMcpClients(
   projectRoot: string,
   clients: readonly ProjectMcpClientName[],
+  // The configuration files are written under `projectRoot`; a linked git
+  // worktree points `--project` at the main worktree that owns the database.
+  mcpProjectRoot: string = projectRoot,
 ): ProjectMcpConfigResult[] {
   const absoluteProjectRoot = path.resolve(projectRoot);
+  const absoluteMcpProjectRoot = path.resolve(mcpProjectRoot);
   const realProjectRoot = resolveRealProjectRoot(absoluteProjectRoot);
-  const launcher = resolveMcpLauncher({ projectRoot: absoluteProjectRoot });
+  const launcher = resolveMcpLauncher({ projectRoot: absoluteMcpProjectRoot });
   const projectEntry: McpEntry = {
     command: launcher.launcher.command,
-    args: [...launcher.launcher.args, "mcp", "--project", absoluteProjectRoot],
+    args: [...launcher.launcher.args, "mcp", "--project", absoluteMcpProjectRoot],
   };
   const openCodeEntry: OpenCodeMcpEntry = {
     type: "local",
