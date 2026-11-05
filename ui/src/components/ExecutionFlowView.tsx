@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from "react";
-import { GitFork, GitMerge, ArrowDown, ArrowRight, Zap, ChevronDown, ChevronRight, CheckCircle2, Clock } from "lucide-react";
-import type { ProjectStatus, TaskStatus, TaskSummary } from "../types";
+import React, { useCallback, useEffect, useState } from "react";
+import { GitFork, GitMerge, ArrowDown, ArrowRight, Zap, ChevronDown, ChevronRight, CheckCircle2, Clock, Check } from "lucide-react";
+import type { ProjectStatus, RiskLevel, TaskStatus, TaskSummary } from "../types";
 import {
   buildConnectedDagGraphs,
   computeDependencyChain,
@@ -10,11 +10,13 @@ import {
   type GoalPathSegmentStatus,
 } from "../utils/dependencyGraph";
 import { TaskIdBadge } from "./CopyTaskIdButton";
+import { RiskConfirmPopover } from "./RiskConfirmPopover";
 
 interface ExecutionFlowViewProps {
   status: ProjectStatus;
   additionalCompletedTasks?: TaskSummary[];
   onSelectTask: (taskId: string) => void;
+  onConfirmTask: (taskId: string, riskLevel?: RiskLevel) => void;
 }
 
 function getStatusBadge(status: TaskStatus) {
@@ -102,6 +104,48 @@ function getHighlightStyle(relation: "self" | "upstream" | "downstream" | "other
       return "";
   }
 }
+
+// 草稿卡片上的“排队”按钮：平时透明（保留占位，卡片尺寸不变，仍可被 Tab 聚焦），卡片悬停或键盘聚焦时出现，
+// 无悬停能力的设备常显，菜单打开时保持可见；菜单与草稿箱的“确认排队”共用
+const QueueDraftButton: React.FC<{
+  task: DagStageTask;
+  onConfirmTask: (taskId: string, riskLevel?: RiskLevel) => void;
+}> = ({ task, onConfirmTask }) => {
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  const closePopover = useCallback(() => setAnchor(null), []);
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={(event) => {
+          event.stopPropagation();
+          setAnchor(anchor === null ? event.currentTarget : null);
+        }}
+        className={`inline-flex items-center space-x-0.5 px-1.5 py-px rounded text-[10px] font-mono shrink-0 transition-colors cursor-pointer text-emerald-400 hover:text-emerald-300 bg-emerald-950/40 hover:bg-emerald-950/80 border border-emerald-900/60 focus-visible:opacity-100 group-hover/card:opacity-100 group-focus-visible/card:opacity-100 group-has-[:focus-visible]/card:opacity-100 [@media(hover:none)]:opacity-100 ${
+          anchor === null ? "opacity-0" : "opacity-100"
+        }`}
+        title="选择风险等级并排入执行队列"
+        aria-expanded={anchor !== null}
+        aria-haspopup="true"
+      >
+        <Check className="w-2.5 h-2.5" />
+        <span>排队</span>
+      </button>
+      {anchor !== null && (
+        <RiskConfirmPopover
+          anchor={anchor}
+          riskLevel={task.riskLevel}
+          onSelect={(riskLevel) => {
+            onConfirmTask(task.id, riskLevel);
+            closePopover();
+          }}
+          onClose={closePopover}
+        />
+      )}
+    </>
+  );
+};
 
 // 进度条分段颜色与状态徽标的圆点一致
 const SEGMENT_COLORS: Record<GoalPathSegmentStatus, string> = {
@@ -196,7 +240,8 @@ const GoalPathOverviewRow: React.FC<{
 const GoalPathStages: React.FC<{
   graph: ConnectedDagGraph;
   onSelectTask: (taskId: string) => void;
-}> = ({ graph, onSelectTask }) => {
+  onConfirmTask: (taskId: string, riskLevel?: RiskLevel) => void;
+}> = ({ graph, onSelectTask, onConfirmTask }) => {
   // 当前悬停（鼠标）或聚焦（键盘）的卡片；任务从组内消失后不再生效
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const activeTaskStillShown = activeTaskId !== null && graph.taskIds.includes(activeTaskId);
@@ -319,15 +364,14 @@ const GoalPathStages: React.FC<{
                     if (event.pointerType === "mouse") setActiveTaskId(task.id);
                   }}
                   onPointerLeave={() => clearActive(task.id)}
+                  // 焦点在卡片或卡片内的按钮（复制编号、排队）上都算聚焦，焦点移出卡片才恢复
                   onFocus={(event) => {
-                    if (event.target === event.currentTarget && event.currentTarget.matches(":focus-visible")) {
-                      setActiveTaskId(task.id);
-                    }
+                    if (event.target.matches(":focus-visible")) setActiveTaskId(task.id);
                   }}
                   onBlur={(event) => {
-                    if (event.target === event.currentTarget) clearActive(task.id);
+                    if (!event.currentTarget.contains(event.relatedTarget)) clearActive(task.id);
                   }}
-                  className={`min-w-0 flex flex-col justify-between p-2.5 rounded border transition cursor-pointer gap-2 outline-none focus-visible:ring-1 focus-visible:ring-zinc-300 ${getCardStyle(
+                  className={`min-w-0 flex flex-col justify-between p-2.5 rounded border transition cursor-pointer gap-2 group/card outline-none focus-visible:ring-1 focus-visible:ring-zinc-300 ${getCardStyle(
                     task,
                   )} ${getHighlightStyle(getRelation(task.id))}`}
                 >
@@ -336,6 +380,11 @@ const GoalPathStages: React.FC<{
                     <TaskIdBadge taskId={task.id} displayLength={8} variant="muted" />
                     {getStatusBadge(task.status)}
                     {task.isGoal && <span className="ml-auto shrink-0 text-[10px] text-zinc-500">终点</span>}
+                    {task.status === "inbox" && (
+                      <span className={task.isGoal ? "shrink-0" : "ml-auto shrink-0"}>
+                        <QueueDraftButton task={task} onConfirmTask={onConfirmTask} />
+                      </span>
+                    )}
                   </div>
   
                   {/* 任务标题 */}
@@ -407,6 +456,7 @@ export const ExecutionFlowView: React.FC<ExecutionFlowViewProps> = ({
   status,
   additionalCompletedTasks = [],
   onSelectTask,
+  onConfirmTask,
 }) => {
   const [isExpanded, setIsExpanded] = useState(true);
   // 同一时间最多展开一组；轮询刷新后按组 ID 保持展开
@@ -466,7 +516,7 @@ export const ExecutionFlowView: React.FC<ExecutionFlowViewProps> = ({
                 />
                 {isOpen && (
                   <div className="p-3 pt-2 border-t border-zinc-800/80">
-                    <GoalPathStages graph={graph} onSelectTask={onSelectTask} />
+                    <GoalPathStages graph={graph} onSelectTask={onSelectTask} onConfirmTask={onConfirmTask} />
                   </div>
                 )}
               </div>

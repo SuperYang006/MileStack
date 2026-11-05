@@ -434,6 +434,7 @@ export const DashboardPage: React.FC = () => {
           status={visibleStatus}
           additionalCompletedTasks={completedTasks}
           onSelectTask={(id) => setSelectedTaskId(id)}
+          onConfirmTask={(id, riskLevel) => confirmInboxMutation.mutate({ taskId: id, riskLevel })}
         />
 
         {/* Four active queue regions: symmetric 2x2 grid on wide screens; natural stack on mobile. */}

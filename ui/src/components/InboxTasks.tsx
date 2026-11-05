@@ -1,24 +1,13 @@
-import React, {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-} from "react";
-import { createPortal } from "react-dom";
+import React, { useCallback, useState } from "react";
 import { Check, Trash2, Edit3, Inbox, Plus, Zap, CheckCircle2, ChevronDown } from "lucide-react";
 import type { TaskSummary, RiskLevel } from "../types";
 import { TaskIdBadge } from "./CopyTaskIdButton";
 import { EmptyState } from "./EmptyState";
+import { RiskConfirmPopover } from "./RiskConfirmPopover";
 import {
   computeTaskDependencyDetail,
   type DependencyItem,
 } from "../utils/dependencyGraph";
-import {
-  computePopoverPosition,
-  RISK_OPTIONS,
-  type PopoverPosition,
-} from "../utils/riskOptions";
 
 interface InboxTasksProps {
   tasks: TaskSummary[];
@@ -39,140 +28,24 @@ export const InboxTasks: React.FC<InboxTasksProps> = ({
   onEditTask,
   onCreateTask,
 }) => {
-  const [confirmingTaskId, setConfirmingTaskId] = useState<string | null>(null);
-  const [popoverPosition, setPopoverPosition] = useState<PopoverPosition | null>(null);
-  const activeContainerRef = useRef<HTMLDivElement | null>(null);
-  const popoverRef = useRef<HTMLDivElement | null>(null);
-  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const [confirming, setConfirming] = useState<{ taskId: string; anchor: HTMLElement } | null>(null);
+  const confirmingTaskId = confirming?.taskId ?? null;
 
-  const closePopover = useCallback(() => {
-    setConfirmingTaskId(null);
-    setPopoverPosition(null);
-    triggerRef.current = null;
-  }, []);
-
-  const placePopover = useCallback(() => {
-    const trigger = triggerRef.current;
-    if (!trigger) return;
-
-    const triggerRect = trigger.getBoundingClientRect();
-    const popover = popoverRef.current;
-    const nextPosition = computePopoverPosition(
-      {
-        top: triggerRect.top,
-        bottom: triggerRect.bottom,
-        right: triggerRect.right,
-      },
-      {
-        width: popover?.offsetWidth ?? (window.innerWidth >= 640 ? 288 : 256),
-        height: popover?.offsetHeight ?? 180,
-      },
-      { width: window.innerWidth, height: window.innerHeight }
-    );
-
-    setPopoverPosition((current) =>
-      current &&
-      current.top === nextPosition.top &&
-      current.left === nextPosition.left &&
-      current.placement === nextPosition.placement
-        ? current
-        : nextPosition
-    );
-  }, []);
-
-  useEffect(() => {
-    if (!confirmingTaskId) return;
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        closePopover();
-      }
-    };
-
-    const handleClickOutside = (e: MouseEvent) => {
-      const target = e.target as Node;
-      const isInsideTrigger = activeContainerRef.current?.contains(target) ?? false;
-      const isInsidePopover = popoverRef.current?.contains(target) ?? false;
-
-      if (!isInsideTrigger && !isInsidePopover) {
-        closePopover();
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    window.addEventListener("mousedown", handleClickOutside);
-
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-      window.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, [confirmingTaskId, closePopover]);
-
-  useLayoutEffect(() => {
-    if (confirmingTaskId) {
-      placePopover();
-    }
-  }, [confirmingTaskId, placePopover]);
-
-  useEffect(() => {
-    if (!confirmingTaskId) return;
-
-    const handleViewportChange = () => placePopover();
-    window.addEventListener("resize", handleViewportChange);
-    window.addEventListener("scroll", handleViewportChange, true);
-
-    return () => {
-      window.removeEventListener("resize", handleViewportChange);
-      window.removeEventListener("scroll", handleViewportChange, true);
-    };
-  }, [confirmingTaskId, placePopover]);
-
-  useEffect(() => {
-    if (confirmingTaskId && activeContainerRef.current) {
-      const timer = setTimeout(() => {
-        activeContainerRef.current?.scrollIntoView({
-          block: "nearest",
-          behavior: "smooth",
-        });
-        placePopover();
-      }, 50);
-      return () => clearTimeout(timer);
-    }
-  }, [confirmingTaskId, placePopover]);
+  const closePopover = useCallback(() => setConfirming(null), []);
 
   const handleTogglePopover = (
     taskId: string,
     e: React.MouseEvent<HTMLButtonElement>
   ) => {
     e.stopPropagation();
-    if (confirmingTaskId === taskId) {
-      closePopover();
-      return;
-    }
-
-    triggerRef.current = e.currentTarget;
-    const triggerRect = e.currentTarget.getBoundingClientRect();
-    setPopoverPosition(
-      computePopoverPosition(
-        {
-          top: triggerRect.top,
-          bottom: triggerRect.bottom,
-          right: triggerRect.right,
-        },
-        {
-          width: window.innerWidth >= 640 ? 288 : 256,
-          height: 180,
-        },
-        { width: window.innerWidth, height: window.innerHeight }
-      )
-    );
-    setConfirmingTaskId(taskId);
+    setConfirming(confirmingTaskId === taskId ? null : { taskId, anchor: e.currentTarget });
   };
 
   const handleSelectRiskAndConfirm = (taskId: string, riskLevel: RiskLevel) => {
     onConfirmTask(taskId, riskLevel);
     closePopover();
   };
+
 
   return (
     <section className="rounded-lg border border-zinc-800 bg-zinc-900/50 backdrop-blur-xs overflow-hidden lg:h-full lg:min-h-0 lg:flex lg:flex-col">
@@ -298,10 +171,7 @@ export const InboxTasks: React.FC<InboxTasksProps> = ({
                   </div>
 
                   <div className="flex items-center space-x-1.5 shrink-0 pt-0.5 lg:col-start-3">
-                    <div
-                      ref={confirmingTaskId === task.id ? activeContainerRef : undefined}
-                      className="relative inline-block"
-                    >
+                    <div className="relative inline-block">
                       <button
                         type="button"
                         onClick={(e) => handleTogglePopover(task.id, e)}
@@ -325,68 +195,14 @@ export const InboxTasks: React.FC<InboxTasksProps> = ({
                         />
                       </button>
 
-                      {confirmingTaskId === task.id &&
-                        popoverPosition &&
-                        createPortal(
-                          <div
-                            ref={popoverRef}
-                            style={{
-                              top: popoverPosition.top,
-                              left: popoverPosition.left,
-                            }}
-                            className="fixed z-50 w-64 max-w-[calc(100vw-1rem)] sm:w-72 bg-zinc-950 border border-zinc-800 rounded-lg shadow-2xl p-1.5 backdrop-blur-md font-mono animate-in fade-in-0 zoom-in-95 duration-100 ring-1 ring-white/5"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <div className="px-2 py-1.5 mb-1 border-b border-zinc-800/80 flex items-center justify-between text-[10px] text-zinc-400">
-                              <span className="font-semibold tracking-wider text-zinc-300 uppercase">
-                                选择风险并排队
-                              </span>
-                              <span className="text-[9px] text-zinc-500">点击立即入队</span>
-                            </div>
-
-                            <div className="space-y-1">
-                              {RISK_OPTIONS.map((opt) => {
-                                const isPreset = task.riskLevel === opt.level;
-                                const isDefault = !task.riskLevel && opt.level === "medium";
-
-                                return (
-                                  <button
-                                    key={opt.level}
-                                    type="button"
-                                    onClick={() => handleSelectRiskAndConfirm(task.id, opt.level)}
-                                    className={`w-full text-left px-2 py-1.5 rounded flex items-start space-x-2.5 transition-all group/item border border-transparent ${opt.hoverBgClass} ${opt.hoverBorderClass}`}
-                                  >
-                                    <span
-                                      className={`w-2 h-2 rounded-full mt-1 shrink-0 ${opt.dotColorClass}`}
-                                    />
-                                    <div className="flex-1 min-w-0">
-                                      <div className="flex items-center justify-between">
-                                        <span
-                                          className={`text-[11px] font-bold ${opt.textColorClass}`}
-                                        >
-                                          {opt.label} ({opt.tag})
-                                        </span>
-                                        {isPreset ? (
-                                          <span className="text-[9px] text-zinc-500">
-                                            当前设定
-                                          </span>
-                                        ) : isDefault ? (
-                                          <span className="text-[9px] text-amber-500/80">
-                                            默认
-                                          </span>
-                                        ) : null}
-                                      </div>
-                                      <p className="text-[10px] text-zinc-400 group-hover/item:text-zinc-300 leading-tight mt-0.5">
-                                        {opt.description}
-                                      </p>
-                                    </div>
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </div>,
-                          document.body
-                        )}
+                      {confirming?.taskId === task.id && (
+                        <RiskConfirmPopover
+                          anchor={confirming.anchor}
+                          riskLevel={task.riskLevel}
+                          onSelect={(riskLevel) => handleSelectRiskAndConfirm(task.id, riskLevel)}
+                          onClose={closePopover}
+                        />
+                      )}
                     </div>
                     {onEditTask && (
                       <button

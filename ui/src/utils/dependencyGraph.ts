@@ -1,4 +1,4 @@
-import type { ProjectStatus, TaskStatus, TaskSummary } from "../types.js";
+import type { ProjectStatus, RiskLevel, TaskStatus, TaskSummary } from "../types.js";
 
 export interface DependencyItem {
   id: string;
@@ -35,6 +35,8 @@ export interface DagStageTask {
   id: string;
   title: string;
   status: TaskStatus;
+  /** 任务当前预设的风险等级，草稿卡片的排队菜单据此标出“当前设定” */
+  riskLevel?: RiskLevel | undefined;
   isRunnable: boolean;
   stageIndex: number;
   /** 该任务直接依赖的本拓扑内的前置任务 ID */
@@ -485,6 +487,7 @@ export function buildConnectedDagGraphs(
         id: task.id,
         title: task.title,
         status: task.status,
+        riskLevel: task.riskLevel,
         isRunnable: detail.isRunnable,
         stageIndex,
         upstreamIds: groupUpstreams.get(nodeId) || [],
