@@ -53,8 +53,10 @@ Initialization is safe to repeat. It:
 Add the following line to the project's version-controlled root `AGENTS.md`:
 
 ```md
-Before working on tasks, read and follow `.milestack/agent-instructions.md`.
+Before working on tasks, read and follow `.milestack/agent-instructions.md`; if it is missing, call the MileStack MCP tool get_agent_instructions.
 ```
+
+The generated file is local and not in Git, so it is missing in a worktree or checkout where `milestack init` has not run. The read-only MCP tool `get_agent_instructions` returns the same full instructions for the running MileStack version, so any agent with a working MileStack MCP connection can still load them. A root `AGENTS.md` that only has the older line (`Before working on tasks, read and follow .milestack/agent-instructions.md`) is still recognized as referencing the file; add the fallback clause when you want agents to know about the tool.
 
 MileStack deliberately does not create or edit the root `AGENTS.md`: project-level agent instructions require developer review.
 
@@ -249,6 +251,7 @@ milestack mcp --discover
 
 | Area | Tools |
 | --- | --- |
+| Agent instructions | `get_agent_instructions` |
 | Query | `get_project_status`, `list_tasks`, `get_task` |
 | Task creation | `create_task`, `create_tasks` |
 | Inbox editing | `edit_inbox_task` |

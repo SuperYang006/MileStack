@@ -64,7 +64,7 @@ milestack serve
 最后，在项目根目录的 `AGENTS.md` 中加入下面这行，让编程 Agent 读取 MileStack 生成的工作流规则：
 
 ```md
-Before working on tasks, read and follow `.milestack/agent-instructions.md`.
+Before working on tasks, read and follow `.milestack/agent-instructions.md`; if it is missing, call the MileStack MCP tool get_agent_instructions.
 ```
 
 初始化完成后重启编程客户端，并让它在开始工作前先查看 MileStack 项目状态。

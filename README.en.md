@@ -64,7 +64,7 @@ Replace `codex` with `claude`, `cursor`, `grok`, or `opencode` to configure anot
 Finally, add this line to the root `AGENTS.md` in your project so coding agents load the generated MileStack workflow rules:
 
 ```md
-Before working on tasks, read and follow `.milestack/agent-instructions.md`.
+Before working on tasks, read and follow `.milestack/agent-instructions.md`; if it is missing, call the MileStack MCP tool get_agent_instructions.
 ```
 
 Restart the coding client after initialization, then ask it to inspect the MileStack project status before starting work.
