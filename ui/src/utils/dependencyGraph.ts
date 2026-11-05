@@ -45,8 +45,8 @@ export interface DagStageTask {
   waitingCount: number;
   /** 在当前阶段中是否为并行分支任务（同 stage 包含多个任务） */
   isParallelStageTask: boolean;
-  /** 除本组目标外，还有多少个目标（组）也依赖该任务 */
-  otherGoalCount: number;
+  /** 是否为终点任务：没有未完成的下游任务 */
+  isGoal: boolean;
 }
 
 export interface DagStage {
@@ -55,6 +55,8 @@ export interface DagStage {
   tasks: DagStageTask[];
   /** 该阶段是否包含多个并行分支任务 */
   isParallel: boolean;
+  /** 是否为组内唯一终点所在的最后一步（标为“最终目标”） */
+  isFinalGoal: boolean;
 }
 
 export interface ConnectedDagGraph {
@@ -251,15 +253,16 @@ export function computeTransitiveReduction(
 }
 
 /**
- * 按最终目标对未完成依赖图分组，构建执行拓扑
+ * 把通过未完成依赖相互连通的任务合为一组，构建执行拓扑
  *
  * 核心设计准则：
- * 1. 每个还没有未完成下游的任务各自作为目标成组，分组标题即该目标的任务标题；
- * 2. 组内只包含该目标与能走到它的未完成前置（含间接前置），
- *    直线上的中间任务不另开组，已完成任务不进入拓扑；
- * 3. 多条分支汇合到同一个目标仍是一组，标题用汇合后的目标任务；
- * 4. 只共用一个前置的不同目标拆成多组，共用前置在每组里注明还被其他目标依赖；
- * 5. 同一 taskId 在同一组内只出现一次，阶段分层只反映组内真实依赖。
+ * 1. 未完成任务之间只要存在依赖边（不论方向，也不论间接）就属于同一组，
+ *    多个终点共用的前置只出现一次；
+ * 2. 已完成任务不进入拓扑，也不会把被它关联的两部分连成一组；
+ * 3. 终点是组内没有未完成下游的任务，组内有一个终点时标题为该终点的标题，
+ *    有多个终点时列出前 2 个并注明总数；
+ * 4. 没有任何未完成前置和下游的孤立任务不成组；
+ * 5. 同一 taskId 只出现一次，阶段按最长依赖路径分层。
  */
 export function buildConnectedDagGraphs(
   status: ProjectStatus,
@@ -281,62 +284,42 @@ export function buildConnectedDagGraphs(
     incompleteIds.add(t.id);
     incompleteTasks.push(t);
   }
-  const isIncomplete = (taskId: string): boolean => incompleteIds.has(taskId);
 
-  // 2. 统计每个任务被多少未完成任务直接依赖，用于识别目标
-  const incompleteDownstreamCount = new Map<string, number>();
-  for (const t of incompleteTasks) {
-    for (const depId of new Set(t.dependencyIds)) {
-      incompleteDownstreamCount.set(depId, (incompleteDownstreamCount.get(depId) || 0) + 1);
+  // 2. 按未完成依赖边求连通分量（并查集，边按无向处理）
+  const parent = new Map<string, string>(incompleteTasks.map((t) => [t.id, t.id]));
+  const findRoot = (taskId: string): string => {
+    let root = taskId;
+    while (parent.get(root) !== root) {
+      root = parent.get(root) ?? root;
     }
-  }
-
-  // 目标：没有任何未完成下游的任务
-  const goals = incompleteTasks.filter((t) => (incompleteDownstreamCount.get(t.id) || 0) === 0);
-
-  // 3. 为每个目标收集能走到它的未完成前置闭包（只沿未完成依赖继续向上）
-  const membersByGoal = new Map<string, string[]>();
-  const goalIdsByTask = new Map<string, string[]>();
-  const addGoalDependency = (taskId: string, goalId: string): void => {
-    const list = goalIdsByTask.get(taskId) || [];
-    list.push(goalId);
-    goalIdsByTask.set(taskId, list);
+    return root;
   };
-
-  for (const goal of goals) {
-    const members: string[] = [];
-    const visited = new Set<string>([goal.id]);
-    const queue = goal.dependencyIds.filter(isIncomplete);
-    while (queue.length > 0) {
-      const taskId = queue.shift()!;
-      if (visited.has(taskId)) continue;
-      visited.add(taskId);
-      members.push(taskId);
-      const task = allTasks.get(taskId);
-      if (task !== undefined) {
-        for (const depId of task.dependencyIds) {
-          if (!visited.has(depId) && isIncomplete(depId)) {
-            queue.push(depId);
-          }
-        }
-      }
-    }
-    membersByGoal.set(goal.id, members);
-    addGoalDependency(goal.id, goal.id);
-    for (const memberId of members) {
-      addGoalDependency(memberId, goal.id);
+  const incompleteDownstreamIds = new Set<string>();
+  for (const t of incompleteTasks) {
+    for (const depId of t.dependencyIds) {
+      if (!incompleteIds.has(depId)) continue;
+      incompleteDownstreamIds.add(depId);
+      parent.set(findRoot(t.id), findRoot(depId));
     }
   }
 
-  // 4. 逐目标构建分组拓扑：只有拥有未完成前置的目标才显示
+  const componentsByRoot = new Map<string, string[]>();
+  for (const t of incompleteTasks) {
+    const root = findRoot(t.id);
+    const members = componentsByRoot.get(root) || [];
+    members.push(t.id);
+    componentsByRoot.set(root, members);
+  }
+
+  // 3. 逐个连通分量构建拓扑：只有拥有两个及以上任务的分量才显示
   const graphs: ConnectedDagGraph[] = [];
 
-  for (const goal of goals) {
-    const members = membersByGoal.get(goal.id) || [];
-    if (members.length === 0) continue;
-
-    const groupNodeIds = [goal.id, ...members];
+  for (const groupNodeIds of componentsByRoot.values()) {
+    if (groupNodeIds.length < 2) continue;
     const groupNodeSet = new Set(groupNodeIds);
+    // 环内任务互为下游；没有任何终点的分量无法给出目标，不显示
+    const goalCount = groupNodeIds.filter((id) => !incompleteDownstreamIds.has(id)).length;
+    if (goalCount === 0) continue;
 
     // 组内直接依赖边
     const rawEdges: Array<{ from: string; to: string }> = [];
@@ -408,9 +391,6 @@ export function buildConnectedDagGraphs(
 
       const stageIndex = stageMap.get(nodeId) || 0;
       const detail = computeTaskDependencyDetail(task, allTasks);
-      const otherGoalCount = (goalIdsByTask.get(nodeId) || []).filter(
-        (goalId) => goalId !== goal.id,
-      ).length;
 
       const stageTask: DagStageTask = {
         id: task.id,
@@ -422,7 +402,7 @@ export function buildConnectedDagGraphs(
         downstreamIds: groupDownstreams.get(nodeId) || [],
         waitingCount: detail.waitingFor.length,
         isParallelStageTask: false, // 稍后在 stage 级别判定
-        otherGoalCount,
+        isGoal: !incompleteDownstreamIds.has(nodeId),
       };
 
       const list = stagesByIndex.get(stageIndex) || [];
@@ -444,13 +424,16 @@ export function buildConnectedDagGraphs(
       });
 
       const isParallel = tasks.length > 1;
+      // 只有组内唯一终点独占最后一步时，才是“最终目标”
+      const isFinalGoal =
+        goalCount === 1 && idx === sortedStageIndexes.length - 1 && tasks.length === 1 && maxStageIndex > 1;
 
-      // 仅当该阶段存在 2 个及以上任务时，这些任务才属于同一目标下的并行前置
+      // 仅当该阶段存在 2 个及以上任务时，这些任务才属于同一组内的并行任务
       for (const task of tasks) {
         task.isParallelStageTask = isParallel;
       }
       let label = `${idx + 1} 步`;
-      if (idx === sortedStageIndexes.length - 1 && tasks.length === 1 && maxStageIndex > 1) {
+      if (isFinalGoal) {
         label += " · 最终目标";
       } else if (idx === 0) {
         label += tasks.length > 1 ? " · 先做，可以同时做" : " · 先做";
@@ -465,15 +448,23 @@ export function buildConnectedDagGraphs(
         label,
         tasks,
         isParallel,
+        isFinalGoal,
       };
     });
+
+    // 终点按分步先后排列，同一步内沿用上面的排序
+    const goals = stages.flatMap((stage) => stage.tasks.filter((task) => task.isGoal));
+    const title =
+      goals.length > 2
+        ? `${goals[0]?.title}、${goals[1]?.title} 等 ${goals.length} 个目标`
+        : goals.map((task) => task.title).join("、");
 
     // 传递归约：去除显示层的冗余边
     const reducedEdges = computeTransitiveReduction(groupNodeIds, rawEdges);
 
     graphs.push({
-      id: `dag-${goal.id}`,
-      title: goal.title,
+      id: `dag-${goals.map((task) => task.id).join("+")}`,
+      title,
       taskIds: stages.flatMap((stage) => stage.tasks.map((task) => task.id)),
       stages,
       edges: reducedEdges,
@@ -485,7 +476,7 @@ export function buildConnectedDagGraphs(
 }
 
 /**
- * 兼容旧命名的别名函数，直接返回按最终目标分组的执行拓扑集合
+ * 兼容旧命名的别名函数，直接返回按连通依赖图分组的执行拓扑集合
  */
 export const buildExecutionFlowGroups = buildConnectedDagGraphs;
 export type ExecutionFlowGroup = ConnectedDagGraph;
