@@ -34,6 +34,9 @@ import {
   startTaskInputSchema,
   checkTaskIntegrationInputSchema,
   updateTaskInputSchema,
+  type ProjectStatusResult,
+  type TaskPage,
+  type TaskSummary,
 } from "../core/query-contract.js";
 import {
   discoverProjectRoot,
@@ -88,13 +91,13 @@ const toolDefinitions: Tool[] = [
   {
     name: "get_project_status",
     description:
-      "Use this when no taskId is known to read the current project work and ordered ready queue. Choose only ready tasks with runnable=true; waiting tasks include their unfinished dependencies.",
+      "Use this when no taskId is known to read the current project work and ordered ready queue. Choose only ready tasks with runnable=true; waiting tasks include their unfinished dependencies. Results contain task summaries only, without each task's objective or acceptance criteria; call get_task for the full definition.",
     inputSchema: toJSONSchema(projectStatusArgumentsSchema) as Tool["inputSchema"],
   },
   {
     name: "list_tasks",
     description:
-      "Read one task status section with a bounded limit and opaque cursor. Results use the existing ready-queue or recent-completion ordering.",
+      "Read one task status section with a bounded limit and opaque cursor. Results use the existing ready-queue or recent-completion ordering. Each task is a summary without its objective or acceptance criteria; call get_task for the full definition.",
     inputSchema: toJSONSchema(listTasksArgumentsSchema) as Tool["inputSchema"],
   },
   {
@@ -201,6 +204,36 @@ function jsonResult(value: unknown) {
   };
 }
 
+type McpTaskSummary = Omit<TaskSummary, "objective" | "acceptanceCriteria">;
+
+function toMcpTaskSummary(summary: TaskSummary): McpTaskSummary {
+  const { objective, acceptanceCriteria, ...rest } = summary;
+  return rest;
+}
+
+function toMcpProjectStatus(status: ProjectStatusResult) {
+  const taskGroups = {
+    current: status.current.map(toMcpTaskSummary),
+    next: status.next.map(toMcpTaskSummary),
+    blocked: status.blocked.map(toMcpTaskSummary),
+    inReview: status.inReview.map(toMcpTaskSummary),
+    inbox: status.inbox.map(toMcpTaskSummary),
+    recentlyCompleted: status.recentlyCompleted.map(toMcpTaskSummary),
+  };
+  if ("view" in status) {
+    return {
+      ...status,
+      ...taskGroups,
+      nextRunnable: status.nextRunnable ? toMcpTaskSummary(status.nextRunnable) : null,
+    };
+  }
+  return { ...status, ...taskGroups };
+}
+
+function toMcpTaskPage(page: TaskPage) {
+  return { ...page, tasks: page.tasks.map(toMcpTaskSummary) };
+}
+
 function errorResult(error: unknown) {
   return {
     isError: true,
@@ -243,15 +276,17 @@ export function createMcpServer(
             projectId: context.project.id,
             view: parsed.view ?? "compact",
           });
-          return jsonResult(context.service.getProjectStatus(input));
+          return jsonResult(toMcpProjectStatus(context.service.getProjectStatus(input)));
         }
         case "list_tasks": {
           const parsed = listTasksArgumentsSchema.parse(args);
           return jsonResult(
-            context.service.listTasks({
-              ...parsed,
-              projectId: context.project.id,
-            }),
+            toMcpTaskPage(
+              context.service.listTasks({
+                ...parsed,
+                projectId: context.project.id,
+              }),
+            ),
           );
         }
         case "get_task": {
