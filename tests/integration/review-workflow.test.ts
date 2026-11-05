@@ -11,7 +11,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { createMcpServer } from "../../src/mcp/server.js";
 import type { StartedReview, StartedTask } from "../../src/core/task-service.js";
-import type { TaskDetails } from "../../src/core/query-contract.js";
+import type { ProjectStatus, TaskDetails, TaskSummary } from "../../src/core/query-contract.js";
 import {
   createHttpServer,
   type HttpServerOptions,
@@ -545,10 +545,29 @@ describe("review workflow integration", () => {
       url: "/api/status?view=full",
     });
     expect(httpStatusResponse.statusCode).toBe(200);
-    expect(mcpStatus).toEqual(JSON.parse(httpStatusResponse.payload));
-    expect((mcpStatus.recentlyCompleted as Array<{ id: string }>).map((task) => task.id)).toEqual(
-      expect.arrayContaining(taskIds),
+    const httpStatus = JSON.parse(httpStatusResponse.payload) as ProjectStatus;
+    const summariesWithoutDefinitions = (tasks: TaskSummary[]) =>
+      tasks.map(({ objective, acceptanceCriteria, ...task }) => task);
+    expect(mcpStatus).toEqual({
+      ...httpStatus,
+      current: summariesWithoutDefinitions(httpStatus.current),
+      next: summariesWithoutDefinitions(httpStatus.next),
+      blocked: summariesWithoutDefinitions(httpStatus.blocked),
+      inReview: summariesWithoutDefinitions(httpStatus.inReview),
+      inbox: summariesWithoutDefinitions(httpStatus.inbox),
+      recentlyCompleted: summariesWithoutDefinitions(httpStatus.recentlyCompleted),
+    });
+    expect(httpStatus.recentlyCompleted).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          objective: expect.anything(),
+          acceptanceCriteria: expect.any(Array),
+        }),
+      ]),
     );
+    expect(
+      (mcpStatus.recentlyCompleted as Array<{ id: string }>).map((task) => task.id),
+    ).toEqual(expect.arrayContaining(taskIds));
   });
 
   it("serializes review claims and invalidates execution and review credentials after rework", async () => {

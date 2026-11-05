@@ -15,6 +15,13 @@ import {
   taskCreationReadinessPrompt,
 } from "../../src/core/agent-instructions.js";
 import { createMcpServer } from "../../src/mcp/server.js";
+import { taskStatuses } from "../../src/core/task-model.js";
+import type {
+  CompactProjectStatus,
+  ProjectStatus,
+  TaskPage,
+  TaskSummary,
+} from "../../src/core/query-contract.js";
 
 const temporaryProjects: string[] = [];
 
@@ -41,6 +48,51 @@ function textContent(result: unknown): string {
     throw new Error("MCP result did not contain text content.");
   }
   return content.text;
+}
+
+const statusTaskGroups = [
+  "current",
+  "next",
+  "blocked",
+  "inReview",
+  "inbox",
+  "recentlyCompleted",
+] as const;
+
+function summariesWithoutDefinitions(tasks: TaskSummary[]) {
+  return tasks.map(({ objective, acceptanceCriteria, ...summary }) => summary);
+}
+
+function expectStatusWithoutDefinitions(
+  actual: ProjectStatus | CompactProjectStatus,
+  expected: ProjectStatus | CompactProjectStatus,
+) {
+  expect(actual.project).toEqual(expected.project);
+  expect(actual.latestUpdatedAt).toEqual(expected.latestUpdatedAt);
+  expect(actual.counts).toEqual(expected.counts);
+  for (const group of statusTaskGroups) {
+    expect(actual[group]).toEqual(summariesWithoutDefinitions(expected[group]));
+  }
+  if ("view" in expected) {
+    expect(actual).toMatchObject({ view: "compact", truncated: expected.truncated });
+    if (!("view" in actual)) {
+      throw new Error("Expected a compact project status from MCP.");
+    }
+    expect(actual.nextRunnable).toEqual(
+      expected.nextRunnable
+        ? summariesWithoutDefinitions([expected.nextRunnable])[0]
+        : null,
+    );
+  } else {
+    expect(actual).not.toHaveProperty("view");
+  }
+}
+
+function expectTaskPageWithoutDefinitions(actual: TaskPage, expected: TaskPage) {
+  expect(actual.status).toBe(expected.status);
+  expect(actual.tasks).toEqual(summariesWithoutDefinitions(expected.tasks));
+  expect(actual.nextCursor).toBe(expected.nextCursor);
+  expect(actual.hasMore).toBe(expected.hasMore);
 }
 
 afterEach(() => {
@@ -130,6 +182,12 @@ describe("MCP task tools", () => {
     ]);
     expect(toolNames).toContain("submit_for_review");
     expect(toolNames).not.toContain("finish_task");
+    const projectStatusTool = listed.tools.find((tool) => tool.name === "get_project_status");
+    const listTasksTool = listed.tools.find((tool) => tool.name === "list_tasks");
+    expect(projectStatusTool?.description).toContain("without each task's objective or acceptance criteria");
+    expect(projectStatusTool?.description).toContain("call get_task for the full definition");
+    expect(listTasksTool?.description).toContain("without its objective or acceptance criteria");
+    expect(listTasksTool?.description).toContain("call get_task for the full definition");
     const createTaskTool = listed.tools.find((tool) => tool.name === "create_task");
     const createTasksTool = listed.tools.find((tool) => tool.name === "create_tasks");
     expect(createTaskTool?.description).toContain(acceptanceCriteriaCreationCheck);
@@ -298,6 +356,227 @@ describe("MCP task tools", () => {
     });
     expect(invalid.isError).toBe(true);
     expect(textContent(invalid)).toContain("TASK_NOT_FOUND");
+
+    await client.close();
+    await server.close();
+    context.database.close();
+  });
+
+  it("returns MCP list summaries without task definitions and keeps full definitions in get_task", async () => {
+    const projectRoot = createTemporaryProject();
+    const initialized = await initializeProject(projectRoot);
+    initialized.database.close();
+    const context = await openProjectContext(projectRoot);
+
+    const objectiveFor = (title: string) => `Objective for ${title}. ${"detail ".repeat(150)}`;
+    const criteriaFor = (title: string) =>
+      Array.from(
+        { length: 6 },
+        (_, index) =>
+          `Criterion ${index + 1} for ${title}: ${"verification step ".repeat(8)}`,
+      );
+    const createTask = (title: string, status: "inbox" | "ready") =>
+      context.service.createTask({
+        projectId: context.project.id,
+        title,
+        objective: objectiveFor(title),
+        acceptanceCriteria: criteriaFor(title),
+        status,
+        createdBy: status === "inbox" ? "agent" : "developer",
+      });
+
+    const inboxTasks = ["Inbox one", "Inbox two", "Inbox three", "Inbox four"];
+    for (const title of inboxTasks) {
+      createTask(title, "inbox");
+    }
+    for (const title of ["Ready one", "Ready two", "Ready three"]) {
+      createTask(title, "ready");
+    }
+    const running = createTask("Running task", "ready");
+    context.service.startTask({
+      projectId: context.project.id,
+      taskId: running.task.id,
+    });
+    const review = createTask("Review task", "ready");
+    const reviewRun = context.service.startTask({
+      projectId: context.project.id,
+      taskId: review.task.id,
+    });
+    context.service.submitForReview({
+      projectId: context.project.id,
+      taskId: review.task.id,
+      runId: reviewRun.runId,
+      commitSha: "1".repeat(40),
+      summary: "Submitted for summary testing.",
+      criteriaResults: (review.task.acceptanceCriteria ?? []).map((criterion) => ({
+        criterionId: criterion.id,
+        status: "met" as const,
+        evidence: [{ command: "pnpm test", result: "passed" }],
+      })),
+    });
+    const blocked = createTask("Blocked task", "ready");
+    const completed = createTask("Completed task", "ready");
+    const completionTime = new Date().toISOString();
+    context.repository.transaction((transaction) => {
+      transaction.updateTask(blocked.task.id, {
+        status: "blocked",
+        blocker: "Waiting for external input",
+        updatedAt: completionTime,
+      });
+      transaction.updateTask(completed.task.id, {
+        status: "completed",
+        completedAt: completionTime,
+        updatedAt: completionTime,
+      });
+    });
+
+    const server = createMcpServer(context);
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const client = new Client({ name: "summary-test-client", version: "1.0.0" });
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+
+    const legacyFull = context.service.getProjectStatus({
+      projectId: context.project.id,
+      view: "full",
+    });
+    const fullText = textContent(
+      await client.callTool({
+        name: "get_project_status",
+        arguments: { view: "full" },
+      }),
+    );
+    const mcpFull = JSON.parse(fullText) as ProjectStatus;
+    expectStatusWithoutDefinitions(mcpFull, legacyFull);
+    expect(mcpFull.current).toHaveLength(1);
+    expect(mcpFull.next).toHaveLength(3);
+    expect(mcpFull.blocked).toHaveLength(1);
+    expect(mcpFull.inReview).toHaveLength(1);
+    expect(mcpFull.inbox).toHaveLength(4);
+    expect(mcpFull.recentlyCompleted).toHaveLength(1);
+
+    const legacyCompact = context.service.getProjectStatus({
+      projectId: context.project.id,
+      view: "compact",
+    });
+    const compactText = textContent(
+      await client.callTool({
+        name: "get_project_status",
+        arguments: { view: "compact" },
+      }),
+    );
+    const mcpCompact = JSON.parse(compactText) as CompactProjectStatus;
+    expectStatusWithoutDefinitions(mcpCompact, legacyCompact);
+    expect(mcpCompact.inbox).toHaveLength(3);
+    expect(mcpCompact.truncated.inbox).toBe(true);
+    expect(mcpCompact.nextRunnable).not.toBeNull();
+
+    const listTexts = new Map<string, string>();
+    for (const status of taskStatuses) {
+      const legacyPage = context.service.listTasks({
+        projectId: context.project.id,
+        status,
+        limit: 100,
+      });
+      const result = await client.callTool({
+        name: "list_tasks",
+        arguments: { status, limit: 100 },
+      });
+      const text = textContent(result);
+      listTexts.set(status, text);
+      expectTaskPageWithoutDefinitions(JSON.parse(text) as TaskPage, legacyPage);
+    }
+
+    const legacyFirstInboxPage = context.service.listTasks({
+      projectId: context.project.id,
+      status: "inbox",
+      limit: 2,
+    });
+    expect(legacyFirstInboxPage.hasMore).toBe(true);
+    const firstInboxCursor = legacyFirstInboxPage.nextCursor;
+    if (!firstInboxCursor) {
+      throw new Error("Expected an inbox continuation cursor.");
+    }
+    const firstInboxResult = await client.callTool({
+      name: "list_tasks",
+      arguments: { status: "inbox", limit: 2 },
+    });
+    const firstInboxPage = JSON.parse(textContent(firstInboxResult)) as TaskPage;
+    expectTaskPageWithoutDefinitions(firstInboxPage, legacyFirstInboxPage);
+
+    const legacySecondInboxPage = context.service.listTasks({
+      projectId: context.project.id,
+      status: "inbox",
+      limit: 2,
+      cursor: firstInboxCursor,
+    });
+    const secondInboxResult = await client.callTool({
+      name: "list_tasks",
+      arguments: {
+        status: "inbox",
+        limit: 2,
+        cursor: firstInboxCursor,
+      },
+    });
+    expectTaskPageWithoutDefinitions(
+      JSON.parse(textContent(secondInboxResult)) as TaskPage,
+      legacySecondInboxPage,
+    );
+
+    const listedTask = firstInboxPage.tasks[0];
+    if (!listedTask) {
+      throw new Error("Expected an inbox list result.");
+    }
+    expect(listedTask).not.toHaveProperty("objective");
+    expect(listedTask).not.toHaveProperty("acceptanceCriteria");
+
+    const legacyDetails = context.service.getTask({
+      projectId: context.project.id,
+      taskId: listedTask.id,
+    });
+    const mcpDetails = JSON.parse(
+      textContent(
+        await client.callTool({
+          name: "get_task",
+          arguments: { taskId: listedTask.id },
+        }),
+      ),
+    ) as { task: { objective: string | null; acceptanceCriteria: Array<{ id: string; text: string }> | null } };
+    expect(mcpDetails.task.objective).toBe(legacyDetails.task.objective);
+    expect(mcpDetails.task.objective).toContain(`Objective for ${listedTask.title}.`);
+    expect(mcpDetails.task.acceptanceCriteria).toEqual(
+      legacyDetails.task.acceptanceCriteria,
+    );
+    expect(mcpDetails.task.acceptanceCriteria).toHaveLength(6);
+    for (const criterion of mcpDetails.task.acceptanceCriteria ?? []) {
+      expect(criterion.id).toBeTruthy();
+      expect(criterion.text).toContain("verification step");
+    }
+
+    const legacyFullCharacters = JSON.stringify(legacyFull, null, 2).length;
+    const mcpFullCharacters = fullText.length;
+    const inboxListText = listTexts.get("inbox");
+    if (!inboxListText) {
+      throw new Error("Expected an inbox list response.");
+    }
+    const legacyInboxCharacters = JSON.stringify(
+      context.service.listTasks({
+        projectId: context.project.id,
+        status: "inbox",
+        limit: 100,
+      }),
+      null,
+      2,
+    ).length;
+    const mcpInboxCharacters = inboxListText.length;
+    console.log(
+      `get_project_status(full) characters: ${legacyFullCharacters} -> ${mcpFullCharacters}`,
+    );
+    console.log(
+      `list_tasks(status=inbox) characters: ${legacyInboxCharacters} -> ${mcpInboxCharacters}`,
+    );
+    expect(mcpFullCharacters).toBeLessThan(legacyFullCharacters * 0.5);
+    expect(mcpInboxCharacters).toBeLessThan(legacyInboxCharacters * 0.5);
 
     await client.close();
     await server.close();
