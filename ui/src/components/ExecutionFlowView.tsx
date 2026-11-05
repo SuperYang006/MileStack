@@ -1,10 +1,12 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { GitFork, GitMerge, ArrowDown, ArrowRight, Zap, ChevronDown, ChevronRight, CheckCircle2, Clock } from "lucide-react";
 import type { ProjectStatus, TaskStatus, TaskSummary } from "../types";
 import {
   buildConnectedDagGraphs,
   type ConnectedDagGraph,
   type DagStageTask,
+  type GoalPathAttentionItem,
+  type GoalPathSegmentStatus,
 } from "../utils/dependencyGraph";
 import { TaskIdBadge } from "./CopyTaskIdButton";
 
@@ -84,13 +86,282 @@ function getCardStyle(task: DagStageTask) {
   return `bg-zinc-900/80 ${border}`;
 }
 
+// 进度条分段颜色与状态徽标的圆点一致
+const SEGMENT_COLORS: Record<GoalPathSegmentStatus, string> = {
+  running: "bg-cyan-400",
+  in_review: "bg-violet-400",
+  blocked: "bg-rose-400",
+  ready: "bg-indigo-400",
+  inbox: "bg-zinc-600",
+};
+
+const SEGMENT_LABELS: Record<GoalPathSegmentStatus, string> = {
+  running: "执行中",
+  in_review: "待审核",
+  blocked: "阻塞",
+  ready: "就绪",
+  inbox: "草稿",
+};
+
+const ATTENTION_STYLES: Record<GoalPathAttentionItem["kind"], { label: string; className: string }> = {
+  running: { label: "执行中", className: "text-cyan-300" },
+  in_review: { label: "待审核", className: "text-violet-300" },
+  blocked: { label: "阻塞", className: "text-rose-300" },
+  runnable: { label: "可推进", className: "text-emerald-300" },
+};
+
+const GoalPathOverviewRow: React.FC<{
+  graph: ConnectedDagGraph;
+  isOpen: boolean;
+  onToggle: () => void;
+}> = ({ graph, isOpen, onToggle }) => {
+  const { overview } = graph;
+  const segmentSummary = overview.segments
+    .map((segment) => `${SEGMENT_LABELS[segment.status]} ${segment.count}`)
+    .join(" · ");
+
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-expanded={isOpen}
+      className="w-full px-3 py-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-left hover:bg-zinc-900/60 transition-colors cursor-pointer"
+    >
+      <span className="flex items-center space-x-2 min-w-0 flex-1 basis-40" title={graph.goalTitles.join("\n")}>
+        <span className="w-2 h-2 rounded-full bg-indigo-400 shrink-0" />
+        <span className="font-semibold text-zinc-200 truncate text-xs">{graph.title}</span>
+      </span>
+
+      <span
+        className="flex h-1.5 w-full sm:w-40 shrink-0 gap-px rounded-full overflow-hidden bg-zinc-800"
+        title={segmentSummary}
+      >
+        {overview.segments.map((segment) => (
+          <span
+            key={segment.status}
+            className={SEGMENT_COLORS[segment.status]}
+            style={{ flex: `${segment.count} 1 0%` }}
+          />
+        ))}
+      </span>
+
+      {overview.attention.length > 0 || overview.isAllDraft ? (
+        <span className="text-[11px] text-zinc-500 sm:w-72 sm:truncate">
+          {overview.isAllDraft
+            ? "全部是草稿"
+            : overview.attention.map((item, index) => (
+                <React.Fragment key={item.kind}>
+                  {index > 0 && " · "}
+                  <span className={ATTENTION_STYLES[item.kind].className}>
+                    {ATTENTION_STYLES[item.kind].label} {item.count}
+                  </span>
+                </React.Fragment>
+              ))}
+        </span>
+      ) : (
+        <span className="hidden sm:block sm:w-72" />
+      )}
+
+      <span className="flex items-center space-x-2 shrink-0 ml-auto text-[11px] text-zinc-400">
+        <span>
+          剩 {overview.remainingTasks} 个 · {overview.remainingSteps} 步
+        </span>
+        {isOpen ? (
+          <ChevronDown className="w-3.5 h-3.5 text-zinc-500" />
+        ) : (
+          <ChevronRight className="w-3.5 h-3.5 text-zinc-500" />
+        )}
+      </span>
+    </button>
+  );
+};
+
+const GoalPathStages: React.FC<{
+  graph: ConnectedDagGraph;
+  onSelectTask: (taskId: string) => void;
+}> = ({ graph, onSelectTask }) => (
+  // 阶段列表 (移动端纵向流，PC 端横向 Pipeline 泳道)
+  <div className="flex flex-col md:flex-row md:items-stretch gap-3 md:gap-2.5 overflow-x-auto pb-1">
+    {graph.stages.map((stage, stageIdx) => (
+      <React.Fragment key={`stage-wrapper-${stage.stageIndex}`}>
+        {/* 阶段间的流转指示器 */}
+        {stageIdx > 0 && (
+          <>
+            {/* 移动端垂直流转指示 */}
+            <div className="md:hidden py-1">
+              {stage.isParallel ? (
+                <div className="flex items-center justify-center gap-2 text-zinc-600 text-[10px]">
+                  <div className="h-px bg-zinc-800 flex-1" />
+                  <div className="flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full bg-zinc-900 border border-zinc-800 text-indigo-300 shrink-0">
+                    <GitFork className="w-3 h-3 text-indigo-400" />
+                    <span>这里可以同时做 {stage.tasks.length} 件</span>
+                  </div>
+                  <div className="h-px bg-zinc-800 flex-1" />
+                </div>
+              ) : stage.isFinalGoal ? (
+                <div className="flex items-center justify-center gap-2 text-zinc-600 text-[10px]">
+                  <div className="h-px bg-zinc-800 flex-1" />
+                  <div className="flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full bg-zinc-900 border border-zinc-800 text-amber-300 shrink-0">
+                    <GitMerge className="w-3 h-3 text-amber-400" />
+                    <span>都做完后才能继续</span>
+                  </div>
+                  <div className="h-px bg-zinc-800 flex-1" />
+                </div>
+              ) : (
+                <div className="flex items-center justify-center gap-2 text-zinc-600 text-[10px]">
+                  <div className="h-px bg-zinc-800/80 flex-1" />
+                  <ArrowDown className="w-3 h-3 text-zinc-600 shrink-0" />
+                  <div className="h-px bg-zinc-800/80 flex-1" />
+                </div>
+              )}
+            </div>
+
+            {/* PC 宽屏横向流转连接器 */}
+            <div className="hidden md:flex flex-col items-center justify-center shrink-0 px-0.5 text-zinc-600 self-center">
+              {stage.isParallel ? (
+                <div
+                  className="flex flex-col items-center space-y-1 p-1.5 rounded bg-zinc-900/80 border border-zinc-800 text-indigo-400"
+                  title={`这里可以同时做 ${stage.tasks.length} 件`}
+                >
+                  <GitFork className="w-3.5 h-3.5" />
+                  <ArrowRight className="w-3 h-3 text-zinc-500" />
+                </div>
+              ) : stage.isFinalGoal ? (
+                <div
+                  className="flex flex-col items-center space-y-1 p-1.5 rounded bg-zinc-900/80 border border-zinc-800 text-amber-400"
+                  title="都做完后才能继续"
+                >
+                  <GitMerge className="w-3.5 h-3.5" />
+                  <ArrowRight className="w-3 h-3 text-zinc-500" />
+                </div>
+              ) : (
+                <div className="flex items-center justify-center p-1 text-zinc-600">
+                  <ArrowRight className="w-4 h-4 text-zinc-600" />
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
+        {/* 阶段泳道列 (PC 端自适应等宽弹性列) */}
+        <div className="flex-1 min-w-[250px] flex flex-col space-y-2 rounded-md bg-zinc-900/20 p-2.5">
+          {/* 阶段标题栏 */}
+          <div className="flex items-center justify-between text-[11px] text-zinc-400 pb-1.5">
+            <div className="flex items-center space-x-1.5 min-w-0">
+              <span
+                className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                  stage.isParallel ? "bg-indigo-400" : stage.isFinalGoal ? "bg-amber-400" : "bg-zinc-500"
+                }`}
+              />
+              <span className="font-semibold text-zinc-300 truncate text-[11px]" title={stage.label}>
+                {stage.label}
+              </span>
+            </div>
+            {stage.isParallel && (
+              <span className="text-[9px] px-1.5 py-px rounded bg-indigo-950/70 border border-indigo-800/60 text-indigo-300 shrink-0">
+                并行
+              </span>
+            )}
+          </div>
+
+          {/* 阶段内任务卡片列表 (PC 端纵向分支排布，移动端适度分列) */}
+          <div className="flex-1 flex flex-col justify-start gap-2">
+            {stage.tasks.map((task) => (
+              <div
+                key={task.id}
+                onClick={() => onSelectTask(task.id)}
+                className={`min-w-0 flex flex-col justify-between p-2.5 rounded border transition-colors cursor-pointer gap-2 ${getCardStyle(
+                  task,
+                )}`}
+              >
+                {/* 卡片顶栏: 短编号 + 状态徽标，终点为弱化小字 */}
+                <div className="flex items-center gap-2 min-w-0">
+                  <TaskIdBadge taskId={task.id} displayLength={8} variant="muted" />
+                  {getStatusBadge(task.status)}
+                  {task.isGoal && <span className="ml-auto shrink-0 text-[10px] text-zinc-500">终点</span>}
+                </div>
+
+                {/* 任务标题 */}
+                <h4
+                  className="text-zinc-50 text-[13px] font-semibold line-clamp-2 leading-snug"
+                  title={task.title}
+                >
+                  {task.title}
+                </h4>
+
+                {/* 组内直接前置：短码，悬停显示标题 */}
+                {task.prerequisites.length > 0 && (
+                  <div className="flex items-center flex-wrap gap-x-1.5 gap-y-0.5 text-[10px] text-zinc-500">
+                    <span className="shrink-0">前置</span>
+                    {task.prerequisites.map((dep) => (
+                      <span
+                        key={dep.id}
+                        className="px-1.5 py-px rounded font-mono text-zinc-400 bg-zinc-900/60 border border-zinc-800/70"
+                        title={dep.title}
+                      >
+                        #{dep.id.slice(0, 8)}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {(task.isRunnable ||
+                  task.isParallelCandidate ||
+                  task.deferrableSteps > 0 ||
+                  task.waitingCount > 0) && (
+                  <div className="flex items-center flex-wrap gap-1.5 text-[10px] text-zinc-500">
+                    {task.isRunnable && (
+                      <span className="inline-flex items-center space-x-0.5 px-1.5 py-px rounded text-[9px] bg-emerald-950/80 border border-emerald-700/60 text-emerald-300">
+                        <Zap className="w-2.5 h-2.5 text-emerald-400" />
+                        <span>{task.isParallelStageTask ? "可并行" : "可推进"}</span>
+                      </span>
+                    )}
+                    {task.isParallelCandidate && (
+                      <span
+                        className="inline-flex items-center space-x-0.5 px-1.5 py-px rounded text-[9px] bg-indigo-950/50 border border-indigo-900/60 text-indigo-300"
+                        title="无未完成前置依赖，排入就绪队列后可并行执行"
+                      >
+                        <Zap className="w-2.5 h-2.5 text-indigo-400" />
+                        <span>可并行候选</span>
+                      </span>
+                    )}
+                    {task.deferrableSteps > 0 && (
+                      <span
+                        className="px-1.5 py-px rounded bg-zinc-800/60 border border-zinc-700/60 text-zinc-400"
+                        title="不在关键路径上，晚点做也不会增加整组完成所需的步数"
+                      >
+                        可延后 {task.deferrableSteps} 步
+                      </span>
+                    )}
+                    {task.waitingCount > 0 && <span>等待 {task.waitingCount} 项</span>}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      </React.Fragment>
+    ))}
+  </div>
+);
+
 export const ExecutionFlowView: React.FC<ExecutionFlowViewProps> = ({
   status,
   additionalCompletedTasks = [],
   onSelectTask,
 }) => {
   const [isExpanded, setIsExpanded] = useState(true);
+  // 同一时间最多展开一组；轮询刷新后按组 ID 保持展开
+  const [openGraphId, setOpenGraphId] = useState<string | null>(null);
   const graphs = buildConnectedDagGraphs(status, additionalCompletedTasks);
+  const openGraphStillShown = graphs.some((graph) => graph.id === openGraphId);
+
+  // 展开的组不再显示时，所有组回到收起状态，避免它再次出现时自动展开
+  useEffect(() => {
+    if (openGraphId !== null && !openGraphStillShown) {
+      setOpenGraphId(null);
+    }
+  }, [openGraphId, openGraphStillShown]);
 
   if (graphs.length === 0) {
     return null;
@@ -125,214 +396,24 @@ export const ExecutionFlowView: React.FC<ExecutionFlowViewProps> = ({
       </button>
 
       {isExpanded && (
-        <div className="p-4 space-y-6 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
-          {graphs.map((graph: ConnectedDagGraph) => (
-            <div
-              key={graph.id}
-              className="p-3.5 rounded-md bg-zinc-950/70 border border-zinc-800 space-y-4 font-mono text-xs"
-            >
-              {/* 拓扑图头部 */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5">
-                <div className="flex items-center space-x-2 min-w-0">
-                  <span className="w-2 h-2 rounded-full bg-indigo-400 shrink-0" />
-                  <span className="font-semibold text-zinc-200 truncate text-xs">
-                    {graph.title}
-                  </span>
-                </div>
-                <div className="flex items-center space-x-2 shrink-0 text-[10px] text-zinc-500">
-                  <span>共 {graph.taskIds.length} 个任务</span>
-                  <span>·</span>
-                  <span>{graph.stages.length} 步</span>
-                </div>
+        <div className="p-3 space-y-1.5 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
+          {graphs.map((graph: ConnectedDagGraph) => {
+            const isOpen = graph.id === openGraphId;
+            return (
+              <div key={graph.id} className="rounded-md bg-zinc-950/70 border border-zinc-800 font-mono text-xs">
+                <GoalPathOverviewRow
+                  graph={graph}
+                  isOpen={isOpen}
+                  onToggle={() => setOpenGraphId(isOpen ? null : graph.id)}
+                />
+                {isOpen && (
+                  <div className="p-3 pt-2 border-t border-zinc-800/80">
+                    <GoalPathStages graph={graph} onSelectTask={onSelectTask} />
+                  </div>
+                )}
               </div>
-
-              {/* 阶段列表 (移动端纵向流，PC 端横向 Pipeline 泳道) */}
-              <div className="flex flex-col md:flex-row md:items-stretch gap-3 md:gap-2.5 overflow-x-auto pb-1">
-                {graph.stages.map((stage, stageIdx) => {
-                  const isMultiTask = stage.tasks.length > 1;
-
-                  return (
-                    <React.Fragment key={`stage-wrapper-${stage.stageIndex}`}>
-                      {/* 阶段间的流转指示器 */}
-                      {stageIdx > 0 && (
-                        <>
-                          {/* 移动端垂直流转指示 */}
-                          <div className="md:hidden py-1">
-                            {stage.isParallel ? (
-                              <div className="flex items-center justify-center gap-2 text-zinc-600 text-[10px]">
-                                <div className="h-px bg-zinc-800 flex-1" />
-                                <div className="flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full bg-zinc-900 border border-zinc-800 text-indigo-300 shrink-0">
-                                  <GitFork className="w-3 h-3 text-indigo-400" />
-                                  <span>这里可以同时做 {stage.tasks.length} 件</span>
-                                </div>
-                                <div className="h-px bg-zinc-800 flex-1" />
-                              </div>
-                            ) : stage.isFinalGoal ? (
-                              <div className="flex items-center justify-center gap-2 text-zinc-600 text-[10px]">
-                                <div className="h-px bg-zinc-800 flex-1" />
-                                <div className="flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full bg-zinc-900 border border-zinc-800 text-amber-300 shrink-0">
-                                  <GitMerge className="w-3 h-3 text-amber-400" />
-                                  <span>都做完后才能继续</span>
-                                </div>
-                                <div className="h-px bg-zinc-800 flex-1" />
-                              </div>
-                            ) : (
-                              <div className="flex items-center justify-center gap-2 text-zinc-600 text-[10px]">
-                                <div className="h-px bg-zinc-800/80 flex-1" />
-                                <ArrowDown className="w-3 h-3 text-zinc-600 shrink-0" />
-                                <div className="h-px bg-zinc-800/80 flex-1" />
-                              </div>
-                            )}
-                          </div>
-
-                          {/* PC 宽屏横向流转连接器 */}
-                          <div className="hidden md:flex flex-col items-center justify-center shrink-0 px-0.5 text-zinc-600 self-center">
-                            {stage.isParallel ? (
-                              <div
-                                className="flex flex-col items-center space-y-1 p-1.5 rounded bg-zinc-900/80 border border-zinc-800 text-indigo-400"
-                                title={`这里可以同时做 ${stage.tasks.length} 件`}
-                              >
-                                <GitFork className="w-3.5 h-3.5" />
-                                <ArrowRight className="w-3 h-3 text-zinc-500" />
-                              </div>
-                            ) : stage.isFinalGoal ? (
-                              <div
-                                className="flex flex-col items-center space-y-1 p-1.5 rounded bg-zinc-900/80 border border-zinc-800 text-amber-400"
-                                title="都做完后才能继续"
-                              >
-                                <GitMerge className="w-3.5 h-3.5" />
-                                <ArrowRight className="w-3 h-3 text-zinc-500" />
-                              </div>
-                            ) : (
-                              <div className="flex items-center justify-center p-1 text-zinc-600">
-                                <ArrowRight className="w-4 h-4 text-zinc-600" />
-                              </div>
-                            )}
-                          </div>
-                        </>
-                      )}
-
-                      {/* 阶段泳道列 (PC 端自适应等宽弹性列) */}
-                      <div className="flex-1 min-w-[250px] flex flex-col space-y-2 rounded-md bg-zinc-900/20 p-2.5">
-                        {/* 阶段标题栏 */}
-                        <div className="flex items-center justify-between text-[11px] text-zinc-400 pb-1.5">
-                          <div className="flex items-center space-x-1.5 min-w-0">
-                            <span
-                              className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                                stage.isParallel
-                                  ? "bg-indigo-400"
-                                  : stage.isFinalGoal
-                                  ? "bg-amber-400"
-                                  : "bg-zinc-500"
-                              }`}
-                            />
-                            <span className="font-semibold text-zinc-300 truncate text-[11px]" title={stage.label}>
-                              {stage.label}
-                            </span>
-                          </div>
-                          {stage.isParallel && (
-                            <span className="text-[9px] px-1.5 py-px rounded bg-indigo-950/70 border border-indigo-800/60 text-indigo-300 shrink-0">
-                              并行
-                            </span>
-                          )}
-                        </div>
-
-                        {/* 阶段内任务卡片列表 (PC 端纵向分支排布，移动端适度分列) */}
-                        <div className="flex-1 flex flex-col justify-start gap-2">
-                          {stage.tasks.map((task) => (
-                            <div
-                              key={task.id}
-                              onClick={() => onSelectTask(task.id)}
-                              className={`min-w-0 flex flex-col justify-between p-2.5 rounded border transition-colors cursor-pointer gap-2 ${getCardStyle(
-                                task,
-                              )}`}
-                            >
-                              {/* 卡片顶栏: TaskId + 右侧徽标 */}
-                              <div className="flex items-center justify-between gap-2 min-w-0">
-                                <div className="min-w-0 flex items-center">
-                                  <TaskIdBadge taskId={task.id} variant="muted" />
-                                </div>
-                                <div className="shrink-0 flex items-center space-x-1.5">
-                                  {task.isGoal && (
-                                    <span className="inline-flex items-center px-1.5 py-px rounded text-[9px] bg-amber-950/70 border border-amber-800/60 text-amber-300">
-                                      终点
-                                    </span>
-                                  )}
-                                  {task.isRunnable && (
-                                    <span className="inline-flex items-center space-x-0.5 px-1.5 py-px rounded text-[9px] bg-emerald-950/80 border border-emerald-700/60 text-emerald-300">
-                                      <Zap className="w-2.5 h-2.5 text-emerald-400" />
-                                      <span>{task.isParallelStageTask ? "可并行" : "可推进"}</span>
-                                    </span>
-                                  )}
-                                  {task.isParallelCandidate && (
-                                    <span
-                                      className="inline-flex items-center space-x-0.5 px-1.5 py-px rounded text-[9px] bg-indigo-950/50 border border-indigo-900/60 text-indigo-300"
-                                      title="无未完成前置依赖，排入就绪队列后可并行执行"
-                                    >
-                                      <Zap className="w-2.5 h-2.5 text-indigo-400" />
-                                      <span>可并行候选</span>
-                                    </span>
-                                  )}
-                                  {task.waitingCount > 0 && (
-                                    <span className="text-[10px] text-zinc-500 hidden sm:inline">
-                                      等待 {task.waitingCount} 项
-                                    </span>
-                                  )}
-                                  {getStatusBadge(task.status)}
-                                </div>
-                              </div>
-
-                              {/* 任务标题 */}
-                              <h4
-                                className="text-zinc-200 text-xs font-medium line-clamp-2 leading-relaxed"
-                                title={task.title}
-                              >
-                                {task.title}
-                              </h4>
-
-                              {/* 组内直接前置：短码，悬停显示标题 */}
-                              {task.prerequisites.length > 0 && (
-                                <div className="flex items-center flex-wrap gap-x-1.5 gap-y-0.5 text-[10px] text-zinc-500">
-                                  <span className="shrink-0">前置</span>
-                                  {task.prerequisites.map((dep) => (
-                                    <span
-                                      key={dep.id}
-                                      className="px-1.5 py-px rounded font-mono text-zinc-400 bg-zinc-900/60 border border-zinc-800/70"
-                                      title={dep.title}
-                                    >
-                                      #{dep.id.slice(0, 8)}
-                                    </span>
-                                  ))}
-                                </div>
-                              )}
-
-                              {task.deferrableSteps > 0 && (
-                                <div className="text-[10px] text-zinc-500">
-                                  <span
-                                    className="px-1.5 py-px rounded bg-zinc-800/60 border border-zinc-700/60 text-zinc-400"
-                                    title="不在关键路径上，晚点做也不会增加整组完成所需的步数"
-                                  >
-                                    可延后 {task.deferrableSteps} 步
-                                  </span>
-                                </div>
-                              )}
-
-                              {/* 小屏下折行显示的等待项 */}
-                              {task.waitingCount > 0 && (
-                                <div className="text-[10px] text-zinc-500 font-mono sm:hidden">
-                                  等待 {task.waitingCount} 项依赖
-                                </div>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    </React.Fragment>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </section>

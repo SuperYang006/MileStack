@@ -278,7 +278,8 @@ describe("dependencyGraph calculation utils", () => {
     // 共用前置只出现一次，两个终点同在一组，标题列出两个终点
     expect(graphs).toHaveLength(1);
     const graph = graphs[0]!;
-    expect(graph.title).toBe("目标 G1、目标 G2");
+    expect(graph.title).toBe("目标 G1 等 2 个目标");
+    expect(graph.goalTitles).toEqual(["目标 G1", "目标 G2"]);
     expect([...graph.taskIds].sort()).toEqual(["goal-1", "goal-2", "shared"]);
     expect(graph.stages.map((stage) => stage.tasks.map((t) => t.id).sort())).toEqual([
       ["shared"],
@@ -409,7 +410,8 @@ describe("dependencyGraph calculation utils", () => {
     const graphs = buildConnectedDagGraphs(status);
 
     expect(graphs).toHaveLength(1);
-    expect(graphs[0]?.title).toBe("目标 1、目标 2 等 3 个目标");
+    expect(graphs[0]?.title).toBe("目标 1 等 3 个目标");
+    expect(graphs[0]?.goalTitles).toEqual(["目标 1", "目标 2", "目标 3"]);
     expect(graphs[0]?.taskIds).toHaveLength(4);
   });
 
@@ -463,8 +465,9 @@ describe("dependencyGraph calculation utils", () => {
     const graphY = graphs.find((g) => g.taskIds.includes("y"));
     const graphFork = graphs.find((g) => g.taskIds.includes("m"));
     expect(graphY?.title).toBe("任务 Y");
+    expect(graphY?.goalTitles).toEqual(["任务 Y"]);
     expect([...graphY!.taskIds].sort()).toEqual(["x", "y"]);
-    expect(graphFork?.title).toBe("任务 N、任务 P");
+    expect(graphFork?.title).toBe("任务 N 等 2 个目标");
     expect([...graphFork!.taskIds].sort()).toEqual(["m", "n", "p"]);
   });
 
@@ -550,8 +553,9 @@ describe("dependencyGraph calculation utils", () => {
     expect(graph.stages[3]?.label).toContain("可以同时做");
     expect(graph.stages[3]?.isParallel).toBe(true);
 
-    // 3 个终点 G、I、M：标题列出前 2 个并注明总数，卡片带终点标识
-    expect(graph.title).toBe("任务 G、任务 I 等 3 个目标");
+    // 3 个终点 G、I、M：组名为首个终点加总数，悬停可看全部终点，卡片带终点标识
+    expect(graph.title).toBe("任务 G 等 3 个目标");
+    expect(graph.goalTitles).toEqual(["任务 G", "任务 I", "任务 M"]);
     expect(
       graph.stages.flatMap((s) => s.tasks).filter((t) => t.isGoal).map((t) => t.title.replace("任务 ", "")),
     ).toEqual(["G", "I", "M"]);
@@ -628,6 +632,73 @@ describe("dependencyGraph calculation utils", () => {
     expect(tasks.get("t-goal")?.isParallelCandidate).toBe(false);
     expect(tasks.get("t-ready")?.isRunnable).toBe(true);
     expect(tasks.get("t-ready")?.isParallelCandidate).toBe(false);
+  });
+
+  it("summarizes each group's remaining tasks by status for the overview row", () => {
+    // 组 1：四种状态各一个，汇合到一个草稿终点
+    const running = makeSummary({ id: "run", title: "执行中任务", status: "running" });
+    const review = makeSummary({ id: "rev", title: "待审核任务", status: "in_review" });
+    const blocked = makeSummary({ id: "blk", title: "阻塞任务", status: "blocked" });
+    const ready = makeSummary({ id: "rdy", title: "就绪任务", status: "ready", queuePosition: 1 });
+    const goal = makeSummary({
+      id: "goal",
+      title: "汇合终点",
+      status: "inbox",
+      dependencyIds: ["run", "rev", "blk", "rdy"],
+    });
+
+    // 组 2：三个草稿的直线链
+    const d1 = makeSummary({ id: "d1", title: "草稿 1", status: "inbox" });
+    const d2 = makeSummary({ id: "d2", title: "草稿 2", status: "inbox", dependencyIds: ["d1"] });
+    const d3 = makeSummary({ id: "d3", title: "草稿 3", status: "inbox", dependencyIds: ["d2"] });
+
+    // 组 3：就绪任务还在等执行中的前置，没有可推进项，也不是全部草稿
+    const x = makeSummary({ id: "x", title: "前置 X", status: "running" });
+    const y = makeSummary({ id: "y", title: "等待中的就绪任务", status: "ready", dependencyIds: ["x"] });
+
+    const status: ProjectStatus = {
+      project: { id: "proj-1", name: "Test", goal: null },
+      counts: testCounts,
+      current: [running, x],
+      next: [ready, y],
+      inReview: [review],
+      blocked: [blocked],
+      inbox: [goal, d1, d2, d3],
+      recentlyCompleted: [],
+    };
+
+    const graphs = buildConnectedDagGraphs(status);
+    const mixed = graphs.find((g) => g.taskIds.includes("goal"))!.overview;
+    const drafts = graphs.find((g) => g.taskIds.includes("d1"))!.overview;
+    const waiting = graphs.find((g) => g.taskIds.includes("y"))!.overview;
+
+    expect(mixed.segments).toEqual([
+      { status: "running", count: 1 },
+      { status: "in_review", count: 1 },
+      { status: "blocked", count: 1 },
+      { status: "ready", count: 1 },
+      { status: "inbox", count: 1 },
+    ]);
+    expect(mixed.attention).toEqual([
+      { kind: "running", count: 1 },
+      { kind: "in_review", count: 1 },
+      { kind: "blocked", count: 1 },
+      { kind: "runnable", count: 1 },
+    ]);
+    expect(mixed.isAllDraft).toBe(false);
+    expect(mixed.remainingTasks).toBe(5);
+    expect(mixed.remainingSteps).toBe(2);
+
+    // 全部是草稿：只有一个草稿分段，没有需关注项
+    expect(drafts.segments).toEqual([{ status: "inbox", count: 3 }]);
+    expect(drafts.attention).toEqual([]);
+    expect(drafts.isAllDraft).toBe(true);
+    expect(drafts.remainingTasks).toBe(3);
+    expect(drafts.remainingSteps).toBe(3);
+
+    // 数量为 0 的需关注项不出现
+    expect(waiting.attention).toEqual([{ kind: "running", count: 1 }]);
+    expect(waiting.isAllDraft).toBe(false);
   });
 
   it("regression: groups the 5-node asymmetric AI review DAG under its final goal", () => {

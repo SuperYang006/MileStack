@@ -65,9 +65,33 @@ export interface DagStage {
   isFinalGoal: boolean;
 }
 
+/** 概览进度条的分段与需关注项使用的状态，按显示先后排列 */
+export const GOAL_PATH_SEGMENT_STATUSES = ["running", "in_review", "blocked", "ready", "inbox"] as const;
+export type GoalPathSegmentStatus = (typeof GOAL_PATH_SEGMENT_STATUSES)[number];
+
+export interface GoalPathAttentionItem {
+  kind: "running" | "in_review" | "blocked" | "runnable";
+  count: number;
+}
+
+export interface GoalPathOverview {
+  /** 进度条分段：按执行中、待审核、阻塞、就绪、草稿排列，只含数量大于 0 的状态 */
+  segments: Array<{ status: GoalPathSegmentStatus; count: number }>;
+  /** 需关注项：依次为执行中、待审核、阻塞、可推进，只含数量大于 0 的项 */
+  attention: GoalPathAttentionItem[];
+  /** 剩余任务全部是草稿 */
+  isAllDraft: boolean;
+  remainingTasks: number;
+  remainingSteps: number;
+}
+
 export interface ConnectedDagGraph {
   id: string;
+  /** 组名：一个终点时为该终点的标题，两个及以上时为“<首个终点标题> 等 N 个目标” */
   title: string;
+  /** 组内所有终点标题，按分步先后排列 */
+  goalTitles: string[];
+  overview: GoalPathOverview;
   /** 拓扑包含的所有唯一 taskId 集合 */
   taskIds: string[];
   /** 按拓扑序分层的执行阶段列表 */
@@ -258,6 +282,33 @@ export function computeTransitiveReduction(
   return edges.filter((edge) => !hasIndirectPath(edge.from, edge.to));
 }
 
+function summarizeGoalPath(stages: DagStage[]): GoalPathOverview {
+  const tasks = stages.flatMap((stage) => stage.tasks);
+  const countByStatus = new Map<TaskStatus, number>();
+  for (const task of tasks) {
+    countByStatus.set(task.status, (countByStatus.get(task.status) ?? 0) + 1);
+  }
+  const countOf = (status: TaskStatus) => countByStatus.get(status) ?? 0;
+
+  const segments = GOAL_PATH_SEGMENT_STATUSES.map((status) => ({ status, count: countOf(status) })).filter(
+    (segment) => segment.count > 0,
+  );
+  const attention: GoalPathAttentionItem[] = [
+    { kind: "running", count: countOf("running") },
+    { kind: "in_review", count: countOf("in_review") },
+    { kind: "blocked", count: countOf("blocked") },
+    { kind: "runnable", count: tasks.filter((task) => task.isRunnable).length },
+  ];
+
+  return {
+    segments,
+    attention: attention.filter((item) => item.count > 0),
+    isAllDraft: tasks.length > 0 && countOf("inbox") === tasks.length,
+    remainingTasks: tasks.length,
+    remainingSteps: stages.length,
+  };
+}
+
 /**
  * 把通过未完成依赖相互连通的任务合为一组，构建执行拓扑
  *
@@ -266,7 +317,7 @@ export function computeTransitiveReduction(
  *    多个终点共用的前置只出现一次；
  * 2. 已完成任务不进入拓扑，也不会把被它关联的两部分连成一组；
  * 3. 终点是组内没有未完成下游的任务，组内有一个终点时标题为该终点的标题，
- *    有多个终点时列出前 2 个并注明总数；
+ *    有多个终点时为“<首个终点标题> 等 N 个目标”；
  * 4. 没有任何未完成前置和下游的孤立任务不成组；
  * 5. 同一 taskId 只出现一次，阶段按最长依赖路径分层。
  */
@@ -494,14 +545,14 @@ export function buildConnectedDagGraphs(
 
     // 终点按分步先后排列，同一步内沿用上面的排序
     const goals = stages.flatMap((stage) => stage.tasks.filter((task) => task.isGoal));
-    const title =
-      goals.length > 2
-        ? `${goals[0]?.title}、${goals[1]?.title} 等 ${goals.length} 个目标`
-        : goals.map((task) => task.title).join("、");
+    const goalTitles = goals.map((task) => task.title);
+    const title = goals.length > 1 ? `${goalTitles[0]} 等 ${goals.length} 个目标` : (goalTitles[0] ?? "");
 
     graphs.push({
       id: `dag-${goals.map((task) => task.id).join("+")}`,
       title,
+      goalTitles,
+      overview: summarizeGoalPath(stages),
       taskIds: stages.flatMap((stage) => stage.tasks.map((task) => task.id)),
       stages,
       edges: reducedEdges,

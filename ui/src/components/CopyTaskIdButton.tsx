@@ -5,6 +5,8 @@ export interface TaskIdBadgeProps {
   taskId: string;
   variant?: "muted" | "cyan" | "rose" | "zinc" | "plain";
   showText?: boolean;
+  /** 只显示 ID 的前几位，复制的仍是完整 ID */
+  displayLength?: number;
   className?: string;
   title?: string;
 }
@@ -26,6 +28,7 @@ export const TaskIdBadge: React.FC<TaskIdBadgeProps> = ({
   taskId,
   variant = "muted",
   showText = true,
+  displayLength,
   className = "",
   title,
 }) => {
@@ -55,7 +58,7 @@ export const TaskIdBadge: React.FC<TaskIdBadgeProps> = ({
       } ${className}`}
       title={copied ? "已复制任务 ID 到剪贴板" : title || `点击复制任务 ID: ${taskId}`}
     >
-      {showText && <span className="truncate">{taskId}</span>}
+      {showText && <span className="truncate">{displayLength === undefined ? taskId : taskId.slice(0, displayLength)}</span>}
       <span className="inline-flex items-center justify-center shrink-0">
         {copied ? (
           <Check className="w-3 h-3 text-emerald-400" />
