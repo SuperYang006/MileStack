@@ -6,6 +6,7 @@ import {
   projectAgentInstructionsPath,
 } from "../core/agent-instructions.js";
 import { resolveDatabasePath } from "../db/paths.js";
+import { readGeneratedHeaderLine } from "../project/generated-instructions.js";
 import { resolveProjectRoot } from "../project/project-context.js";
 import { runtimeVersion } from "../server/runtime-version.js";
 import {
@@ -143,14 +144,6 @@ function locateInstalledCli(location: EntryLocation, entryPath: string): Install
   return undefined;
 }
 
-function generatedHeaderVersionLine(instructionsPath: string): string {
-  try {
-    return readFileSync(instructionsPath, "utf8").split("\n", 1)[0] ?? "";
-  } catch {
-    return "";
-  }
-}
-
 function skippedUninitialized(target: ProjectRefreshTarget): StepOutcome {
   return {
     state: "skipped",
@@ -216,7 +209,7 @@ async function refreshWithInstalledCli(
     command: process.execPath,
     args: [installedCli.entryPath, "update", "--project", target.projectRoot],
   });
-  if (!generatedHeaderVersionLine(target.instructionsPath).includes(`version: ${latest}. -->`)) {
+  if (!readGeneratedHeaderLine(target.instructionsPath).includes(`version: ${latest}. -->`)) {
     const succeeded = result.status === 0 && !result.error;
     return failure(
       `用新版本 ${latest} 刷新生成文件失败`,

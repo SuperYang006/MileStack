@@ -1,3 +1,9 @@
+import {
+  refreshStaleInstructions,
+  writeFileAtomically,
+  type InstructionsRefreshResult,
+} from "../project/generated-instructions.js";
+import { resolveProjectRoot } from "../project/project-context.js";
 import { runtimeVersion } from "../server/runtime-version.js";
 import { startHttpServer, type HttpServerOptions } from "../server/server.js";
 import { defaultRunCommand } from "../update/command-runner.js";
@@ -20,6 +26,10 @@ export type ServeServer = {
 export type ServeDependencies = {
   startServer: (options: HttpServerOptions) => Promise<ServeServer>;
   versionCheck: VersionCheckDependencies;
+  instructions: {
+    currentVersion: string;
+    writeFile: (target: string, content: string) => void;
+  };
   waitForShutdown: (server: ServeServer, beginShutdown: () => void) => Promise<void>;
 };
 
@@ -43,6 +53,7 @@ export const defaultServeDependencies: ServeDependencies = {
     resolveEntryPath,
     runCommand: defaultRunCommand,
   },
+  instructions: { currentVersion: runtimeVersion, writeFile: writeFileAtomically },
   waitForShutdown: waitForSignals,
 };
 
@@ -58,6 +69,31 @@ export function formatVersionCheckHint(result: VersionCheckResult): string | nul
   return `MileStack ${result.currentVersion} → ${result.latestVersion} 可用；${reason}`;
 }
 
+// One line for the terminal, or null when nothing was refreshed or flagged.
+export function formatInstructionsRefreshNotice(
+  result: InstructionsRefreshResult,
+): { stream: "stdout" | "stderr"; line: string } | null {
+  if (result.kind === "refreshed") {
+    return {
+      stream: "stdout",
+      line: `已将 ${result.instructionsPath} 从 ${result.from} 刷新到 ${result.to}。`,
+    };
+  }
+  if (result.kind === "not-generated") {
+    return {
+      stream: "stdout",
+      line: `${result.instructionsPath} 不存在或缺少 MileStack 生成标记，未刷新；可在该项目运行 milestack update。`,
+    };
+  }
+  if (result.kind === "failed") {
+    return {
+      stream: "stderr",
+      line: `警告：未能刷新 ${result.instructionsPath}（${result.reason}）；可在该项目运行 milestack update。`,
+    };
+  }
+  return null;
+}
+
 export async function runServe(
   projectPath: string | undefined,
   port: number,
@@ -70,6 +106,23 @@ export async function runServe(
     versionCheck: dependencies.versionCheck,
   });
   output.writeStdout(`MileStack HTTP service running at ${server.url}\n`);
+
+  // Runs after the service is listening and never throws, so a stale generated
+  // file can neither delay nor stop startup.
+  const notice = formatInstructionsRefreshNotice(
+    refreshStaleInstructions(
+      resolveProjectRoot(projectPath),
+      dependencies.instructions.currentVersion,
+      dependencies.instructions.writeFile,
+    ),
+  );
+  if (notice !== null) {
+    if (notice.stream === "stdout") {
+      output.writeStdout(`${notice.line}\n`);
+    } else {
+      output.writeStderr(`${notice.line}\n`);
+    }
+  }
 
   const versionCheck = server.versionCheck;
   let shuttingDown = false;

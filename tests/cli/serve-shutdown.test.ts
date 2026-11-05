@@ -151,6 +151,7 @@ describe("milestack serve shutdown", () => {
         "    resolveEntryPath: () => entryPath,",
         "    runCommand: defaultRunCommand,",
         "  },",
+        '  instructions: { currentVersion: "unknown", writeFile: () => {} },',
         "  waitForShutdown: (_server, beginShutdown) => new Promise((resolve) => {",
         "    const handleSignal = () => {",
         '      process.off("SIGTERM", handleSignal);',

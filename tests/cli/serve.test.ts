@@ -148,6 +148,7 @@ function createServeDependencies(
       resolveEntryPath: () => entryPath,
       runCommand,
     },
+    instructions: { currentVersion: "unknown", writeFile: () => {} },
     startServer: async (options): Promise<ServeServer> => ({
       app: {
         close: async () => {
@@ -295,6 +296,7 @@ describe("milestack serve version hint", () => {
         resolveEntryPath: () => entryPath,
         runCommand,
       },
+      instructions: { currentVersion: "unknown", writeFile: () => {} },
       startServer: async (options): Promise<ServeServer> => ({
         app: { close: async () => {} },
         url: "http://127.0.0.1:7331",
