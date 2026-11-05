@@ -57,7 +57,7 @@ milestack init --client codex
 milestack serve
 ```
 
-然后打开 [http://127.0.0.1:7331](http://127.0.0.1:7331)。
+默认地址是 [http://127.0.0.1:7331](http://127.0.0.1:7331)；该端口被占用时，`serve` 会依次改用 7332 到 7350 中第一个可用的端口，请以终端输出的地址为准。本项目的 `serve` 已在运行时，会提示已有地址。`--port` 显式指定的端口被占用时会直接报错，不会换端口。
 
 如需配置其他支持项目级 MCP 的客户端，可以把 `codex` 替换为 `claude`、`cursor`、`grok` 或 `opencode`；也可以重复传入 `--client`，一次配置多个客户端。AGY（Gemini CLI）使用动态项目发现，需要进行一次手动全局注册，详见[用户指南](docs/user-guide.zh-CN.md#连接编程客户端)。
 

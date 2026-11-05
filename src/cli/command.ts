@@ -614,7 +614,7 @@ export async function runCli(
       );
     }
     if (parsed.command === "serve") {
-      return await runServe(parsed.projectPath, parsed.port ?? 7331, output);
+      return await runServe(parsed.projectPath, parsed.port, output);
     }
     if (parsed.discover) {
       await runMcp({ discover: true });

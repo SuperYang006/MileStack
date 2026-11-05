@@ -126,11 +126,15 @@ Open [http://127.0.0.1:7331](http://127.0.0.1:7331). The dashboard shows:
 - inbox work that still needs developer triage;
 - recently completed tasks.
 
-The server listens on the local loopback interface by default. To use another port:
+The server listens on the local loopback interface by default. The default port is 7331. If it is taken, for example because another project's `serve` is already running, `serve` tries 7332, 7333, and so on up to 7350, uses the first free port, and prints a line naming the occupied ports and the port it switched to. Open the address printed in the terminal rather than assuming 7331. If this project's own `serve` is already running, the command prints its address (`http://127.0.0.1:<port>`) and exits with status 0 instead of starting a second instance. If every port from 7331 to 7350 is taken, it exits with an error that suggests `--port`.
+
+To pick a port yourself:
 
 ```bash
 milestack serve --project "$PWD" --port 7332
 ```
+
+An explicit `--port` is used as given: if that port is taken, `serve` exits with an error and does not try other ports.
 
 ## Core concepts
 

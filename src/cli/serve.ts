@@ -5,6 +5,7 @@ import {
 } from "../project/generated-instructions.js";
 import { resolveProjectRoot } from "../project/project-context.js";
 import { runtimeVersion } from "../server/runtime-version.js";
+import { defaultServePortRange, ServeAlreadyRunningError } from "../server/port-selection.js";
 import { startHttpServer, type HttpServerOptions } from "../server/server.js";
 import { defaultRunCommand } from "../update/command-runner.js";
 import type {
@@ -20,6 +21,8 @@ import type { CliOutput } from "./output.js";
 export type ServeServer = {
   app: { close: () => Promise<unknown> };
   url: string;
+  // Ports tried and found occupied before this one; absent when none were.
+  skippedPorts?: readonly number[];
   versionCheck: VersionCheckHandle | null;
 };
 
@@ -94,17 +97,43 @@ export function formatInstructionsRefreshNotice(
   return null;
 }
 
+// One line for the terminal when the default port was occupied, or null.
+export function formatPortFallbackNotice(
+  skippedPorts: readonly number[],
+  url: string,
+): string | null {
+  if (skippedPorts.length === 0) {
+    return null;
+  }
+  return `端口 ${skippedPorts.join("、")} 已被占用，改用 ${new URL(url).port}。`;
+}
+
+// An explicit port is used exactly as given. Without one, the default range is
+// searched in order.
 export async function runServe(
   projectPath: string | undefined,
-  port: number,
+  port: number | undefined,
   output: CliOutput,
   dependencies: ServeDependencies = defaultServeDependencies,
 ): Promise<number> {
-  const server = await dependencies.startServer({
-    projectRoot: projectPath,
-    port,
-    versionCheck: dependencies.versionCheck,
-  });
+  let server: ServeServer;
+  try {
+    server = await dependencies.startServer({
+      projectRoot: projectPath,
+      port: port ?? defaultServePortRange,
+      versionCheck: dependencies.versionCheck,
+    });
+  } catch (error) {
+    if (error instanceof ServeAlreadyRunningError) {
+      output.writeStdout(`${error.message}\n`);
+      return 0;
+    }
+    throw error;
+  }
+  const fallbackNotice = formatPortFallbackNotice(server.skippedPorts ?? [], server.url);
+  if (fallbackNotice !== null) {
+    output.writeStdout(`${fallbackNotice}\n`);
+  }
   output.writeStdout(`MileStack HTTP service running at ${server.url}\n`);
 
   // Runs after the service is listening and never throws, so a stale generated

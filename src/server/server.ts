@@ -38,11 +38,14 @@ import {
   type VersionCheckDependencies,
   type VersionCheckHandle,
 } from "../update/version-check.js";
+import { listenInRange, type PortRange } from "./port-selection.js";
 import { runtimeVersion } from "./runtime-version.js";
 
 export type HttpServerOptions = {
   projectRoot?: string | undefined;
-  port?: number | undefined;
+  // A number listens on exactly that port. A range tries each port in order
+  // (see listenInRange) and is only honored by startHttpServer.
+  port?: number | PortRange | undefined;
   host?: string | undefined;
   staticDir?: string | undefined;
   // Left unset, no registry access happens (for example in focused API tests).
@@ -728,7 +731,7 @@ export async function createHttpServer(
     }
   });
 
-  const port = options.port ?? 7331;
+  const port = typeof options.port === "object" ? options.port.first : (options.port ?? 7331);
   const host = options.host ?? "127.0.0.1";
 
   return { app, context, port, host, versionCheck };
@@ -738,10 +741,30 @@ export async function startHttpServer(options: HttpServerOptions = {}): Promise<
   app: FastifyInstance;
   context: ProjectContext;
   url: string;
+  skippedPorts: number[];
   versionCheck: VersionCheckHandle | null;
 }> {
   const { app, context, port, host, versionCheck } = await createHttpServer(options);
-  await app.listen({ port, host });
-  const url = `http://${host}:${port}`;
-  return { app, context, url, versionCheck };
+  if (typeof options.port !== "object") {
+    await app.listen({ port, host });
+    return { app, context, url: `http://${host}:${port}`, skippedPorts: [], versionCheck };
+  }
+  try {
+    const listening = await listenInRange(options.port, context.project.id, (candidate) =>
+      app.listen({ port: candidate, host }),
+    );
+    return {
+      app,
+      context,
+      url: `http://${host}:${listening.port}`,
+      skippedPorts: listening.skippedPorts,
+      versionCheck,
+    };
+  } catch (error) {
+    // Nothing is serving, so release what createHttpServer opened.
+    versionCheck?.cancel();
+    await app.close();
+    context.database.close();
+    throw error;
+  }
 }

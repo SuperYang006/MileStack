@@ -57,7 +57,7 @@ milestack init --client codex
 milestack serve
 ```
 
-Then open [http://127.0.0.1:7331](http://127.0.0.1:7331).
+The default address is [http://127.0.0.1:7331](http://127.0.0.1:7331). If that port is taken, `serve` switches to the first free port from 7332 to 7350; open the address printed in the terminal. If this project's `serve` is already running, it prints the existing address instead. A port given with `--port` is used as is and fails with an error if it is taken.
 
 Replace `codex` with `claude`, `cursor`, `grok`, or `opencode` to configure another supported project-level MCP client. You can repeat `--client` to configure several clients at once. AGY (Gemini CLI) uses dynamic project discovery and needs a one-time manual registration; see the [user guide](docs/user-guide.md#connect-a-coding-client).
 
