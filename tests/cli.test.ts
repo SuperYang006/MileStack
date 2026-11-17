@@ -266,6 +266,28 @@ describe("CLI entry point", () => {
     expect(generatedInstructions).toContain(
       "- Treat developer-confirmed UI layouts, field order, workflows, state behavior, and API/protocol fields as mandatory acceptance constraints; do not downgrade them because they are concrete.",
     );
+    expect(generatedInstructions).toContain("## Handle page comments");
+    expect(generatedInstructions).toContain(
+      "Comments the developer pastes from the MileStack bookmarklet or any other comment tool are handled the same way. Organize them before editing code.",
+    );
+    expect(generatedInstructions).toContain(
+      "- Organize first, without changing code: locate every comment in the code; merge comments that ask for the same change; separate requests that change data, an API, or validation from the visual change; and point out where the code and what the developer saw disagree and need the developer's confirmation.",
+    );
+    expect(generatedInstructions).toContain(
+      "- Ask the developer in one batch about directional feedback, how the work should be split, and anything ambiguous, and attach a recommended answer to every question.",
+    );
+    expect(generatedInstructions).toContain(
+      "- Create tasks only after the developer confirms the answers, and record the confirmed decisions in the task.",
+    );
+    expect(generatedInstructions).toContain(
+      "- Organize acceptance criteria by change, not by comment: one criterion may cover several comments that ask for the same adjustment.",
+    );
+    expect(generatedInstructions).toContain(
+      "- Account for every comment: map it to an acceptance criterion, split it into another task, or state why it will not be done. Keep the original comment text in the task so the adjustment stays traceable.",
+    );
+    expect(generatedInstructions).toContain(
+      "- The developer accepts the visual result on the page. When something still looks wrong, they add page comments again and the same flow applies.",
+    );
     expect(generatedInstructions.indexOf("## Create well-scoped tasks")).toBeLessThan(
       generatedInstructions.indexOf("## Preserve concrete task constraints"),
     );
@@ -273,6 +295,9 @@ describe("CLI entry point", () => {
       generatedInstructions.indexOf("## Calibrate task specificity"),
     );
     expect(generatedInstructions.indexOf("## Calibrate task specificity")).toBeLessThan(
+      generatedInstructions.indexOf("## Handle page comments"),
+    );
+    expect(generatedInstructions.indexOf("## Handle page comments")).toBeLessThan(
       generatedInstructions.indexOf("## Discover, claim, and execute work"),
     );
     expect(generatedInstructions).toContain("start_task");

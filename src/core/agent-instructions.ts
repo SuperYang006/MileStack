@@ -9,6 +9,8 @@ const taskClaimValidationRule =
 const taskCreationReadinessRule =
   "Before creating a task, confirm you can state what the developer will observe when it is done, what is explicitly out of scope, and how to verify it. If unclear requirements prevent any of these, ask the developer instead of filling them in. Ask a small batch of targeted questions at once and give each a recommended default answer; do not re-ask what is already clear or can be discovered from code or documentation. If an answer is unavailable, record the unconfirmed point as an explicitly labeled assumption in the objective or acceptance criteria for inbox review instead of silently treating it as agreed.";
 const taskCreationRule = `${taskCreationReadinessRule} Create inbox tasks only for independently verifiable outcomes. State a verifiable objective and acceptance criteria that each describe one independently checkable result as scenario, expected result, and verification. Scale the number of criteria to the task's size and risk, and do not add separate criteria for generic regression checks already required by the root AGENTS.md or review. Preserve developer-confirmed examples and UI hierarchy, ordering, and state behavior as acceptance constraints. Include same-project dependencyIds and explain each dependency in the objective or acceptance criteria. State file or module ownership and exclusions only for planned parallel work, and do not copy the general workflow, review, risk, or Git rules into each task.`;
+const pageCommentsRule =
+  "When the developer pastes page comments, organize them first and ask the developer to confirm decision points, each with a recommended answer, before creating tasks or editing code.";
 const inboxEditRule =
   "Use edit_inbox_task only to correct an inbox task definition. Call get_task first and pass the returned updatedAt as expectedUpdatedAt; the edit is rejected if the task changed since it was read, so call get_task again before retrying. This tool cannot change risk level or risk confirmation and cannot edit ready or later tasks. Use update_task for run-scoped progress instead.";
 const taskSubmissionRule =
@@ -89,6 +91,17 @@ export function formatProjectAgentInstructions(version: string): string {
     "- Treat developer-confirmed UI layouts, field order, workflows, state behavior, and API/protocol fields as mandatory acceptance constraints; do not downgrade them because they are concrete.",
     `- ${acceptanceCriteriaCreationCheck}`,
     "",
+    "## Handle page comments",
+    "",
+    "Comments the developer pastes from the MileStack bookmarklet or any other comment tool are handled the same way. Organize them before editing code.",
+    "",
+    "- Organize first, without changing code: locate every comment in the code; merge comments that ask for the same change; separate requests that change data, an API, or validation from the visual change; and point out where the code and what the developer saw disagree and need the developer's confirmation.",
+    "- Ask the developer in one batch about directional feedback, how the work should be split, and anything ambiguous, and attach a recommended answer to every question.",
+    "- Create tasks only after the developer confirms the answers, and record the confirmed decisions in the task.",
+    "- Organize acceptance criteria by change, not by comment: one criterion may cover several comments that ask for the same adjustment.",
+    "- Account for every comment: map it to an acceptance criterion, split it into another task, or state why it will not be done. Keep the original comment text in the task so the adjustment stays traceable.",
+    "- The developer accepts the visual result on the page. When something still looks wrong, they add page comments again and the same flow applies.",
+    "",
     "## Discover, claim, and execute work",
     "",
     `- ${taskDiscoveryRule}`,
@@ -159,6 +172,7 @@ export function formatAgentIntegrationInstructions(): string {
 export function formatMcpInstructions(): string {
   return [
     `Local instructions file: ${missingInstructionsFileRule}`,
+    `Page comments: ${pageCommentsRule}`,
     `Task creation: ${taskCreationRule} Record newly discovered independent work with create_task or create_tasks; agent-created work enters inbox for developer review and prioritization.`,
     `Inbox edits: ${inboxEditRule}`,
     `Task discovery: ${taskDiscoveryRule}`,

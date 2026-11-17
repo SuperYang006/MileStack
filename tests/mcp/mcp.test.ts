@@ -148,6 +148,12 @@ describe("MCP task tools", () => {
     );
     expect(instructions).toContain("call get_agent_instructions");
     expect(instructions).toContain("Task creation:");
+    expect(instructions).toContain("Page comments:");
+    expect(instructions).toContain(
+      "When the developer pastes page comments, organize them first",
+    );
+    expect(instructions).toContain("each with a recommended answer");
+    expect(instructions).toContain("before creating tasks or editing code");
     expect(instructions).toContain(
       "Before creating a task, confirm you can state what the developer will observe when it is done, what is explicitly out of scope, and how to verify it.",
     );
