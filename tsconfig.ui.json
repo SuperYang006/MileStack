@@ -11,5 +11,5 @@
     "noUncheckedIndexedAccess": true,
     "lib": ["DOM", "DOM.Iterable", "ES2022"]
   },
-  "include": ["ui/src", "vite.config.ts"]
+  "include": ["ui/src", "vite.config.ts", "vite.page-comments.config.ts"]
 }
