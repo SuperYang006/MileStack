@@ -156,7 +156,7 @@ export const PageCommentsModal: React.FC<PageCommentsModalProps> = ({
           </div>
 
           <ol className="list-decimal space-y-1.5 pl-4 text-[11px] text-zinc-400 marker:text-zinc-600">
-            <li>把“页面评论”拖到浏览器书签栏。</li>
+            <li>把“页面评论”拖到浏览器书签栏；看不到书签栏时，按 ⌘+Shift+B（Windows/Linux：Ctrl+Shift+B）显示。</li>
             <li>打开要评论的 localhost 开发页面，点击这个书签。</li>
             <li>点选元素写评论；需要正常操作页面时切换为“已暂停点选”。</li>
             <li>点“复制全部”，把文本粘贴给编程 Agent 整理。</li>

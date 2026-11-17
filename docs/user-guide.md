@@ -145,7 +145,7 @@ MileStack ships a lightweight page-comment bookmark: comment directly on element
 ### Install
 
 1. Run `milestack serve --project "$PWD"` and open the WebUI address printed in the terminal.
-2. Click the “页面评论” (Page comments) entry in the header, then drag the “页面评论” button from the dialog to your browser's bookmarks bar.
+2. Click the “页面评论” (Page comments) entry in the header, then drag the “页面评论” button from the dialog to your browser's bookmarks bar. If the bookmarks bar is hidden, press ⌘+Shift+B (Windows/Linux: Ctrl+Shift+B) to show it.
 3. If dragging does not work, click “复制控制台片段” (Copy console snippet) and paste it into the target page's DevTools Console.
 
 The bookmark and snippet contain only a small loader. They load `/page-comments.js` from a running MileStack service, trying the service address that generated the bookmark first and then ports 7331–7350. They do not embed the comment script and do not call the MileStack API. When no MileStack service is running, the page shows “未找到运行中的 MileStack 服务，请先运行 milestack serve” (No running MileStack service found; run milestack serve first).
