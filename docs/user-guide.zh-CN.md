@@ -145,7 +145,7 @@ MileStack 提供一个轻量的页面评论书签：在本地开发页面上直�
 ### 安装
 
 1. 运行 `milestack serve --project "$PWD"`，打开终端输出的 WebUI 地址。
-2. 点击页头的“页面评论”，把弹窗中的“页面评论”按钮拖到浏览器书签栏。
+2. 点击页头的“页面评论”，把弹窗中的“页面评论”按钮拖到浏览器书签栏。看不到书签栏时，按 ⌘+Shift+B（Windows/Linux：Ctrl+Shift+B）显示。
 3. 如果书签拖不动，点击“复制控制台片段”，在目标开发页面的开发者工具 Console 中粘贴执行。
 
 书签和片段只包含一小段加载代码，会从运行中的 MileStack 服务加载 `/page-comments.js`：先尝试生成书签时的服务地址，再尝试 7331–7350。它不内嵌评论脚本，也不调用 MileStack 接口。所有 MileStack 服务都未运行时，页面会提示“未找到运行中的 MileStack 服务，请先运行 milestack serve”。
