@@ -38,8 +38,9 @@
     "milestack": "dist/index.js"
   },
   "scripts": {
-    "build": "tsup && pnpm run build:ui",
+    "build": "tsup && pnpm run build:ui && pnpm run build:page-comments",
     "build:ui": "vite build",
+    "build:page-comments": "vite build --config vite.page-comments.config.ts",
     "dev:ui": "vite",
     "serve": "node dist/index.js serve",
     "db:generate": "drizzle-kit generate",
