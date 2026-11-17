@@ -8,9 +8,6 @@ importers:
 
   .:
     dependencies:
-      '@fastify/cors':
-        specifier: ^11.3.1
-        version: 11.3.1
       '@fastify/static':
         specifier: ^10.1.6
         version: 10.1.6
@@ -697,9 +694,6 @@ packages:
 
   '@fastify/ajv-compiler@4.0.7':
     resolution: {integrity: sha512-VP0yIfwlc1ohj733keYDqyHm1VWeP9VQxYomunhr90jkC4aNNibbkrRiaNgPgqj1ORxUenILR4qzA/ppYBNAtQ==}
-
-  '@fastify/cors@11.3.1':
-    resolution: {integrity: sha512-gZXNzd6FLHzOIfvoK4+Az3Wko2V6Y0MIsLxpyo4AEYl7a9q1JBPwPaxLea4nkr++8FCiJiPpYYo6E02uZW0dqw==}
 
   '@fastify/deepmerge@3.2.2':
     resolution: {integrity: sha512-155eqA/WMQdN6gUD4RrhS2K0Pcz2Ou9pQ86L0sipOpP9ONbTA6oYw/hW4VdBjR4egcDHqmWUK9x80oUX7S1mDQ==}
@@ -2740,11 +2734,6 @@ snapshots:
       ajv: 8.20.0
       ajv-formats: 3.0.1(ajv@8.20.0)
       fast-uri: 4.2.2
-
-  '@fastify/cors@11.3.1':
-    dependencies:
-      fastify-plugin: 6.0.1
-      toad-cache: 3.7.4
 
   '@fastify/deepmerge@3.2.2': {}
 

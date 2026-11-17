@@ -1,5 +1,4 @@
 import Fastify, { type FastifyInstance } from "fastify";
-import cors from "@fastify/cors";
 import fastifyStatic from "@fastify/static";
 import { existsSync } from "node:fs";
 import path from "node:path";
@@ -95,10 +94,9 @@ export async function createHttpServer(
     logger: false,
   });
 
-  await app.register(cors, {
-    origin: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  });
+  // No CORS plugin: the WebUI is served from this same origin, and the Vite
+  // dev server proxies /api, so no browser request needs cross-origin access.
+  // Other origins must not be able to call the local API from a browser.
 
   // Serve the static UI assets.
   await app.register(fastifyStatic, {

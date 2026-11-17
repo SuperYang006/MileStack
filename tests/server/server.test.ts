@@ -62,6 +62,93 @@ describe("HTTP API Server", () => {
     expect(res.payload).toContain("MileStack test UI");
   });
 
+  it("does not grant a foreign origin cross-origin access to mutation routes", async () => {
+    const origin = "http://localhost:3000";
+    const createInboxTask = async (title: string) => {
+      const res = await serverInstance.app.inject({
+        method: "POST",
+        url: "/api/tasks",
+        payload: { title, status: "inbox" },
+      });
+      expect(res.statusCode).toBe(201);
+      return JSON.parse(res.payload).task.id as string;
+    };
+    const taskToConfirm = await createInboxTask("CORS confirm probe");
+    const taskToEdit = await createInboxTask("CORS edit probe");
+    const taskToDelete = await createInboxTask("CORS delete probe");
+
+    const preflight = await serverInstance.app.inject({
+      method: "OPTIONS",
+      url: `/api/tasks/${taskToConfirm}/confirm`,
+      headers: {
+        origin,
+        "access-control-request-method": "POST",
+        "access-control-request-headers": "content-type",
+      },
+    });
+    expect(preflight.headers["access-control-allow-origin"]).toBeUndefined();
+    expect(preflight.headers["access-control-allow-methods"]).toBeUndefined();
+
+    const actualRequests = [
+      { method: "POST" as const, url: `/api/tasks/${taskToConfirm}/confirm` },
+      {
+        method: "PUT" as const,
+        url: `/api/tasks/${taskToEdit}`,
+        payload: { title: "Cross-origin edit" },
+      },
+      { method: "POST" as const, url: `/api/tasks/${taskToDelete}/delete` },
+      { method: "DELETE" as const, url: `/api/tasks/${taskToDelete}` },
+    ];
+
+    for (const [index, request] of actualRequests.entries()) {
+      const res = await serverInstance.app.inject({ ...request, headers: { origin } });
+      // The first three routes are real mutation endpoints; the response must
+      // be normal, only without permission for the foreign origin to read it.
+      if (index < 3) {
+        expect(res.statusCode).toBe(200);
+      }
+      expect(res.headers["access-control-allow-origin"]).toBeUndefined();
+      expect(res.headers["access-control-allow-credentials"]).toBeUndefined();
+    }
+  });
+
+  it("serves clients without an Origin header and same-origin requests unchanged", async () => {
+    const cliLike = await serverInstance.app.inject({
+      method: "POST",
+      url: "/api/tasks",
+      payload: { title: "CLI-like request", status: "inbox" },
+    });
+    expect(cliLike.statusCode).toBe(201);
+    expect(cliLike.headers["access-control-allow-origin"]).toBeUndefined();
+
+    const sameOrigin = await serverInstance.app.inject({
+      method: "POST",
+      url: "/api/tasks",
+      headers: { origin: "http://127.0.0.1:7331" },
+      payload: { title: "WebUI request", status: "inbox" },
+    });
+    expect(sameOrigin.statusCode).toBe(201);
+    expect(sameOrigin.headers["access-control-allow-origin"]).toBeUndefined();
+  });
+
+  it("serves static scripts to cross-origin <script> tags without blocking headers", async () => {
+    writeFileSync(
+      path.join(tempDir, "dist", "ui", "page-comments.js"),
+      "window.__milestackPageComments = {};\n",
+    );
+
+    const res = await serverInstance.app.inject({
+      method: "GET",
+      url: "/page-comments.js",
+      headers: { origin: "https://example.com" },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["content-type"]).toContain("javascript");
+    expect(res.headers["cross-origin-resource-policy"]).toBeUndefined();
+    expect(res.payload).toContain("__milestackPageComments");
+  });
+
   it("reports how to build the UI when an explicit static directory is missing", async () => {
     const missingStaticDir = path.join(tempDir, "missing-ui");
 
