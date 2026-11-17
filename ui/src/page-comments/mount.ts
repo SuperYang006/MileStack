@@ -1,6 +1,7 @@
 import { formatComments } from "./format.js";
 import { compareElementSignals, pickBestCandidate } from "./matching.js";
 import type { PageComment } from "./model.js";
+import { MissingTargetRetry } from "./placement-retry.js";
 import {
   collectCandidates,
   collectSignals,
@@ -24,8 +25,6 @@ type ViewportRect = {
   width: number;
   height: number;
 };
-
-const RETRY_MISSING_AFTER_MS = 1000;
 
 export function mountPageComments(): PageCommentsHandle {
   const host = document.createElement("div");
@@ -119,7 +118,10 @@ export function mountPageComments(): PageCommentsHandle {
   let reassignIndex: number | null = null;
 
   const placements = new Map<string, Element | null>();
-  const retryMissingAfter = new Map<string, number>();
+  const missingRetry = new MissingTargetRetry({
+    set: (callback, delayMs) => window.setTimeout(callback, delayMs),
+    clear: (handle) => window.clearTimeout(handle),
+  });
 
   const currentComment = (): PageComment | null => {
     if (draft) return draft;
@@ -168,7 +170,7 @@ export function mountPageComments(): PageCommentsHandle {
 
   function refreshPlacements(): void {
     const route = currentRoute();
-    const now = Date.now();
+    let missingCount = 0;
     for (const comment of comments) {
       if (comment.route !== route) {
         placements.delete(comment.id);
@@ -182,16 +184,13 @@ export function mountPageComments(): PageCommentsHandle {
       ) {
         continue;
       }
-      const retryAt = retryMissingAfter.get(comment.id) ?? 0;
-      if (now < retryAt) {
-        placements.set(comment.id, null);
-        continue;
-      }
       const found = locate(comment);
       placements.set(comment.id, found);
-      if (found) retryMissingAfter.delete(comment.id);
-      else retryMissingAfter.set(comment.id, now + RETRY_MISSING_AFTER_MS);
+      if (!found) missingCount += 1;
     }
+    // Mutations always run this pass. The bounded retry additionally covers a
+    // target that reappears after the last observed mutation.
+    missingRetry.update(missingCount, () => refresh());
   }
 
   function elementRect(element: Element): ViewportRect {
@@ -448,7 +447,6 @@ export function mountPageComments(): PageCommentsHandle {
     comment.origin = location.origin;
     comment.viewport = viewportLabel();
     placements.set(comment.id, element);
-    retryMissingAfter.delete(comment.id);
     reassignIndex = null;
     persist();
     refresh();
@@ -516,7 +514,6 @@ export function mountPageComments(): PageCommentsHandle {
     if (window.confirm(`清空全部 ${comments.length} 条评论？`)) {
       comments = [];
       placements.clear();
-      retryMissingAfter.clear();
       persist();
       closeEditor();
       refresh();
@@ -619,6 +616,7 @@ export function mountPageComments(): PageCommentsHandle {
     window.removeEventListener("scroll", onViewportChange, true);
     window.removeEventListener("resize", onViewportChange);
     observer.disconnect();
+    missingRetry.dispose();
     window.clearInterval(routeTimer);
     window.clearTimeout(refreshTimer);
     window.clearTimeout(toastTimer);
