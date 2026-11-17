@@ -22,6 +22,7 @@ import { BriefingModal } from "../components/BriefingModal";
 import { EditInboxModal } from "../components/EditInboxModal";
 import { DeleteTaskConfirmModal } from "../components/DeleteTaskConfirmModal";
 import { ServiceDisconnectedModal } from "../components/ServiceDisconnectedModal";
+import { PageCommentsModal } from "../components/PageCommentsModal";
 import {
   projectStatusQueryOptions,
   projectStatusQueryKey,
@@ -97,6 +98,7 @@ export const DashboardPage: React.FC = () => {
     source: "inbox" | "ready";
   } | null>(null);
   const [isArchiveOpen, setIsArchiveOpen] = useState(false);
+  const [isPageCommentsOpen, setIsPageCommentsOpen] = useState(false);
   const [lastProject, setLastProject] = useState<ProjectSummary>({ id: "", name: "", goal: null });
   const [isDisconnectNoticeDismissed, setIsDisconnectNoticeDismissed] = useState(false);
   const [isReconnecting, setIsReconnecting] = useState(false);
@@ -397,6 +399,7 @@ export const DashboardPage: React.FC = () => {
           }
         }}
         onOpenCreateModal={openCreateModal}
+        onOpenPageComments={() => setIsPageCommentsOpen(true)}
         onOpenArchive={() => setIsArchiveOpen(true)}
         completedCount={visibleStatus.counts.completed}
         isRefreshing={isRefetching}
@@ -599,6 +602,11 @@ export const DashboardPage: React.FC = () => {
         isReconnecting={isReconnecting}
         onReconnect={reconnect}
         onClose={() => setIsDisconnectNoticeDismissed(true)}
+      />
+
+      <PageCommentsModal
+        isOpen={isPageCommentsOpen}
+        onClose={() => setIsPageCommentsOpen(false)}
       />
     </div>
   );

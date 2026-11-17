@@ -138,6 +138,30 @@ milestack serve --project "$PWD" --port 7332
 
 An explicit `--port` is used as given: if that port is taken, `serve` exits with an error and does not try other ports.
 
+## Page comments
+
+MileStack ships a lightweight page-comment bookmark: comment directly on elements in a local development page, then hand the formatted text to a coding agent. Only `localhost` pages are supported for now.
+
+### Install
+
+1. Run `milestack serve --project "$PWD"` and open the WebUI address printed in the terminal.
+2. Click the “页面评论” (Page comments) entry in the header, then drag the “页面评论” button from the dialog to your browser's bookmarks bar.
+3. If dragging does not work, click “复制控制台片段” (Copy console snippet) and paste it into the target page's DevTools Console.
+
+The bookmark and snippet contain only a small loader. They load `/page-comments.js` from a running MileStack service, trying the service address that generated the bookmark first and then ports 7331–7350. They do not embed the comment script and do not call the MileStack API. When no MileStack service is running, the page shows “未找到运行中的 MileStack 服务，请先运行 milestack serve” (No running MileStack service found; run milestack serve first).
+
+### Use
+
+1. Open the localhost development page you want to comment on and click the “页面评论” bookmark. The comment toolbar appears at the bottom right.
+2. Click an element and write a comment; a numbered marker appears on the element. Switch to “已暂停点选” (picking paused) when you need to expand a menu, open a dialog, or change routes normally.
+3. Click a number to edit or delete a comment. The toolbar provides the list, copy all, clear, and exit. Clicking the bookmark again hides or shows the toolbar.
+4. After a hot update, markers are re-located using the element's clues. When the original element cannot be found, a dashed “原元素已变化” (element changed) marker stays at the original position; you can edit, delete, or reassign the comment to a new element. After a full page reload, click the bookmark again to restore comments.
+5. Click “复制全部” (Copy all) and paste the text to your coding agent.
+
+The agent first organizes the comments: it locates the code for each item, merges comments about the same place, separates requirements that involve data or APIs, and asks the developer about decisions with recommendations. Only after the developer confirms does it create tasks or change code.
+
+Only `localhost` pages are supported for now. Pages served over public HTTPS or with a strict CSP are not guaranteed to work.
+
 ## Core concepts
 
 ### What MileStack records

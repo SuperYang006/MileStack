@@ -1,5 +1,5 @@
 import React from "react";
-import { Plus, RefreshCw, Archive, ArrowUp } from "lucide-react";
+import { Plus, RefreshCw, Archive, ArrowUp, MessageSquare } from "lucide-react";
 import { Logo } from "./Logo";
 import type { ProjectSummary, RuntimeUpdateInfo } from "../types";
 import { isSemverVersion } from "../runtime-version";
@@ -11,6 +11,7 @@ interface HeaderProps {
   runtimeUpdate?: RuntimeUpdateInfo | null;
   onRefresh: () => void;
   onOpenCreateModal: () => void;
+  onOpenPageComments: () => void;
   onOpenArchive?: () => void;
   completedCount?: number;
   isRefreshing?: boolean;
@@ -23,6 +24,7 @@ export const Header: React.FC<HeaderProps> = ({
   runtimeUpdate,
   onRefresh,
   onOpenCreateModal,
+  onOpenPageComments,
   onOpenArchive,
   completedCount,
   isRefreshing = false,
@@ -119,6 +121,18 @@ export const Header: React.FC<HeaderProps> = ({
                 {isBackendConnected ? "服务在线" : "服务离线"}
               </span>
             </div>
+
+            {/* Page comments bookmark installer, kept secondary to the task controls. */}
+            <button
+              type="button"
+              onClick={onOpenPageComments}
+              className="inline-flex items-center space-x-1.5 rounded-md border border-zinc-800/70 bg-zinc-900/60 px-2.5 py-1 font-mono text-xs text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
+              title="安装页面评论书签"
+              aria-label="安装页面评论书签"
+            >
+              <MessageSquare className="w-3.5 h-3.5 text-cyan-400/80" />
+              <span className="hidden sm:inline">页面评论</span>
+            </button>
 
             {/* Archive Drawer Trigger */}
             {onOpenArchive && (
