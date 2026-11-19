@@ -22,6 +22,58 @@ import {
 } from "./FeedbackModal";
 import { findingsAwaitingClosure } from "../utils/reviewRecords";
 
+/** The in-review queue splits into two developer-facing groups inside one panel:
+ *  等待 AI holds the reviews not yet handed to a review agent (unclaimed first,
+ *  then claimed and running); 等待你 holds every other state the developer acts
+ *  on (approval, local integration, direct acceptance, ...). Grouping is
+ *  presentation-only: the server's inReview order stays untouched and is kept
+ *  within each group, and card content and buttons do not change per group. */
+function splitReviewQueue(tasks: TaskSummary[]): {
+  waitingForAi: TaskSummary[];
+  waitingForYou: TaskSummary[];
+} {
+  const waitingForAi = [
+    ...tasks.filter((task) => !task.latestReview || task.latestReview.status === "pending"),
+    ...tasks.filter((task) => task.latestReview?.status === "in_progress"),
+  ];
+  const waitingForYou = tasks.filter(
+    (task) =>
+      task.latestReview != null &&
+      task.latestReview.status !== "pending" &&
+      task.latestReview.status !== "in_progress",
+  );
+  return { waitingForAi, waitingForYou };
+}
+
+/** A group renders only when it has tasks, so an empty group never shows a
+ *  stranded heading. The heading and its cards live inside the panel's
+ *  scrollable body, so they scroll together when the queue overflows. */
+const ReviewGroup: React.FC<{
+  label: string;
+  dotClass: string;
+  textClass: string;
+  tasks: TaskSummary[];
+  renderItem: (task: TaskSummary) => React.ReactNode;
+}> = ({ label, dotClass, textClass, tasks, renderItem }) => {
+  if (tasks.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="space-y-2.5">
+      <h3
+        className={`flex items-center gap-1.5 text-[11px] font-bold tracking-wider uppercase ${textClass}`}
+      >
+        <span className={`w-1.5 h-1.5 shrink-0 rounded-full ${dotClass}`} />
+        <span>
+          {label} <span className="font-mono">({tasks.length})</span>
+        </span>
+      </h3>
+      {tasks.map(renderItem)}
+    </div>
+  );
+};
+
 interface ReviewTasksProps {
   tasks: TaskSummary[];
   onApprove: (taskId: string) => void;
@@ -333,6 +385,21 @@ export const ReviewTasks: React.FC<ReviewTasksProps> = ({
     });
   };
 
+  const { waitingForAi, waitingForYou } = splitReviewQueue(tasks);
+
+  const renderTaskItem = (task: TaskSummary) => (
+    <ReviewTaskItem
+      key={task.id}
+      task={task}
+      onApprove={onApprove}
+      onOpenWaive={handleOpenWaive}
+      onOpenRequestChanges={handleOpenRequestChanges}
+      onCheckIntegration={onCheckIntegration}
+      isCheckingIntegration={checkingTaskId === task.id}
+      onSelectTask={onSelectTask}
+    />
+  );
+
   // An empty queue collapses to a one-line status bar so populated queues keep
   // the dashboard's remaining height.
   if (tasks.length === 0) {
@@ -354,18 +421,20 @@ export const ReviewTasks: React.FC<ReviewTasksProps> = ({
         </div>
 
         <div className="p-3 space-y-2.5 lg:flex-1 lg:min-h-0 lg:overflow-y-auto">
-          {tasks.map((task) => (
-            <ReviewTaskItem
-              key={task.id}
-              task={task}
-              onApprove={onApprove}
-              onOpenWaive={handleOpenWaive}
-              onOpenRequestChanges={handleOpenRequestChanges}
-              onCheckIntegration={onCheckIntegration}
-              isCheckingIntegration={checkingTaskId === task.id}
-              onSelectTask={onSelectTask}
-            />
-          ))}
+          <ReviewGroup
+            label="等待 AI"
+            dotClass="bg-cyan-400"
+            textClass="text-cyan-300/90"
+            tasks={waitingForAi}
+            renderItem={renderTaskItem}
+          />
+          <ReviewGroup
+            label="等待你"
+            dotClass="bg-violet-400"
+            textClass="text-violet-300/90"
+            tasks={waitingForYou}
+            renderItem={renderTaskItem}
+          />
         </div>
       </section>
 
