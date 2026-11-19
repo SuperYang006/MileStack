@@ -405,7 +405,7 @@ export const DashboardPage: React.FC = () => {
 
   if (isStatusLoading || (!status && !isServiceDisconnected)) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-zinc-950 font-mono text-zinc-500 text-xs">
+      <div className="min-h-screen flex items-center justify-center bg-zinc-950 text-zinc-500 text-xs">
         正在连接 MileStack 数据总线...
       </div>
     );
@@ -440,9 +440,12 @@ export const DashboardPage: React.FC = () => {
           are never read as an empty project. */}
       {isServiceDisconnected && (
         <div className="w-full px-4 sm:px-6 lg:px-8 pt-4">
-          <div className="max-w-7xl mx-auto flex flex-wrap items-center gap-x-3 gap-y-2 rounded-md border border-rose-900/60 bg-rose-950/30 px-3 py-2 font-mono text-[11px] text-rose-200">
+          <div className="max-w-7xl mx-auto flex flex-wrap items-center gap-x-3 gap-y-2 rounded-md border border-rose-900/60 bg-rose-950/30 px-3 py-2 text-[11px] text-rose-200">
             <WifiOff className="w-3.5 h-3.5 shrink-0 text-rose-400" />
-            <span>服务离线，当前不显示任务数据。请确认 milestack serve 仍在运行后重试。</span>
+            <span>
+              服务离线，当前不显示任务数据。请确认{" "}
+              <span className="font-mono">milestack serve</span> 仍在运行后重试。
+            </span>
             <button
               type="button"
               onClick={() => void reconnect()}

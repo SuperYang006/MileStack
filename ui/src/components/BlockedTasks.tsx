@@ -16,8 +16,8 @@ export const BlockedTasks: React.FC<BlockedTasksProps> = ({ tasks, onSelectTask 
       <div className="px-4 py-2.5 border-b border-rose-900/30 flex items-center justify-between shrink-0">
         <div className="flex items-center space-x-2">
           <span className="w-2 h-2 rounded-full bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.9)] animate-pulse" />
-          <h2 className="text-xs font-mono font-bold tracking-wider text-rose-300 uppercase">
-            阻塞异常 ({tasks.length})
+          <h2 className="text-[13px] font-bold tracking-wider text-rose-300 uppercase">
+            阻塞异常 <span className="font-mono">({tasks.length})</span>
           </h2>
         </div>
       </div>
@@ -33,12 +33,12 @@ export const BlockedTasks: React.FC<BlockedTasksProps> = ({ tasks, onSelectTask 
               <div className="flex-1 min-w-0">
                 <div className="flex items-center space-x-2.5 mb-1.5">
                   <TaskIdBadge taskId={task.id} variant="rose" displayLength={8} />
-                  <h3 className="flex-1 min-w-0 text-xs font-mono font-semibold text-zinc-100 group-hover:text-rose-300 transition-colors line-clamp-2 break-words">
+                  <h3 className="flex-1 min-w-0 text-[13px] font-semibold text-zinc-100 group-hover:text-rose-300 transition-colors line-clamp-2 break-words">
                     {task.title}
                   </h3>
                 </div>
 
-                <div className="space-y-1 text-[11px] font-mono mt-2">
+                <div className="space-y-1 text-[11px] mt-2">
                   {task.blocker && (
                     <div className="text-rose-400 flex items-start space-x-1.5">
                       <span className="text-rose-500 shrink-0">阻塞原因:</span>

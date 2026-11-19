@@ -100,12 +100,12 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
 
   return createPortal(
     <div className="fixed inset-0 z-50 overflow-y-auto bg-black/75 backdrop-blur-xs flex items-center justify-center p-4">
-      <div className="bg-zinc-950 rounded-lg border border-zinc-800 max-w-lg w-full overflow-hidden shadow-2xl font-mono">
+      <div className="bg-zinc-950 rounded-lg border border-zinc-800 max-w-lg w-full overflow-hidden shadow-2xl">
         {/* Header */}
         <div className="px-5 py-3 border-b border-zinc-800 flex items-center justify-between">
           <div className="flex items-center space-x-2">
             <Terminal className="w-4 h-4 text-cyan-400" />
-            <h2 className="text-xs font-bold text-zinc-100 uppercase tracking-wider">
+            <h2 className="text-[13px] font-bold text-zinc-100 uppercase tracking-wider">
               录入任务
             </h2>
           </div>
@@ -185,7 +185,7 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
                 placeholder="- 命令执行退出码为 0&#10;- 新增状态流转回归测试并通过"
                 className="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded text-zinc-100 placeholder:text-zinc-600 focus:outline-hidden focus:border-cyan-500/80 transition-colors"
               />
-              <p className="mt-1 text-[10px] text-zinc-500 leading-relaxed">
+              <p className="mt-1 text-[11px] text-zinc-500 leading-relaxed">
                 {acceptanceCriteriaPreSubmissionReminder}
               </p>
             </div>
@@ -213,7 +213,7 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
                     />
                     <span className="font-bold text-[11px]">低风险 (Low)</span>
                   </div>
-                  <span className="text-[10px] text-zinc-400 leading-tight">
+                  <span className="text-[11px] text-zinc-400 leading-tight">
                     AI 审核通过后自动完成
                   </span>
                 </label>
@@ -236,7 +236,7 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
                     />
                     <span className="font-bold text-[11px]">中风险 (Medium)</span>
                   </div>
-                  <span className="text-[10px] text-zinc-400 leading-tight">
+                  <span className="text-[11px] text-zinc-400 leading-tight">
                     默认等级，通过后需开发者批准
                   </span>
                 </label>
@@ -259,7 +259,7 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
                     />
                     <span className="font-bold text-[11px]">高风险 (High)</span>
                   </div>
-                  <span className="text-[10px] text-zinc-400 leading-tight">
+                  <span className="text-[11px] text-zinc-400 leading-tight">
                     破坏性/敏感变更，需人工终审
                   </span>
                 </label>
@@ -340,7 +340,7 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
                 value={batchText}
                 onChange={(e) => setBatchText(e.target.value)}
                 placeholder={`- 实现 Fastify 本地 JSON API 路由\n- 增加 SQLite 迁移断电测试\n* 完善 CLI status 终端着色\n1. 补充 MCP 协议单元测试`}
-                className="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded text-zinc-100 placeholder:text-zinc-600 focus:outline-hidden focus:border-cyan-500/80 transition-colors font-mono leading-relaxed"
+                className="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded text-zinc-100 placeholder:text-zinc-600 focus:outline-hidden focus:border-cyan-500/80 transition-colors leading-relaxed"
               />
             </div>
 

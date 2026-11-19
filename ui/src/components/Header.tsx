@@ -72,7 +72,7 @@ export const Header: React.FC<HeaderProps> = ({
               {project.goal && (
                 <>
                   <span className="hidden md:inline font-mono text-xs text-zinc-500">::</span>
-                  <span className="hidden md:inline font-mono text-xs text-zinc-400 truncate">
+                  <span className="hidden md:inline text-xs text-zinc-400 truncate">
                     {project.goal}
                   </span>
                 </>
@@ -121,7 +121,7 @@ export const Header: React.FC<HeaderProps> = ({
                       {isUpdateCommandCopied && (
                         <span
                           role="status"
-                          className="inline-flex items-center gap-0.5 font-mono text-[11px] whitespace-nowrap text-emerald-400"
+                          className="inline-flex items-center gap-0.5 text-[11px] whitespace-nowrap text-emerald-400"
                         >
                           <Check className="w-3 h-3" aria-hidden="true" />
                           已复制
@@ -154,13 +154,13 @@ export const Header: React.FC<HeaderProps> = ({
                 <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
                 <span
                   role="tooltip"
-                  className="pointer-events-none invisible absolute left-1/2 top-full z-50 mt-1 -translate-x-1/2 whitespace-nowrap rounded border border-zinc-700 bg-zinc-900 px-2 py-1 font-mono text-[11px] text-zinc-200 shadow-lg group-hover/status:visible group-focus-within/status:visible"
+                  className="pointer-events-none invisible absolute left-1/2 top-full z-50 mt-1 -translate-x-1/2 whitespace-nowrap rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-[11px] text-zinc-200 shadow-lg group-hover/status:visible group-focus-within/status:visible"
                 >
                   服务在线
                 </span>
               </span>
             ) : (
-              <div className="flex items-center space-x-2 px-2.5 py-1 rounded-md bg-zinc-900/90 border border-zinc-800 text-[11px] font-mono text-zinc-400">
+              <div className="flex items-center space-x-2 px-2.5 py-1 rounded-md bg-zinc-900/90 border border-zinc-800 text-[11px] text-zinc-400">
                 <span className="w-1.5 h-1.5 rounded-full bg-rose-400 shadow-[0_0_8px_rgba(251,113,133,0.8)]" />
                 <span className="text-zinc-300">服务离线</span>
               </div>
@@ -170,7 +170,7 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               type="button"
               onClick={onOpenPageComments}
-              className="inline-flex items-center space-x-1.5 rounded-md border border-zinc-800/70 bg-zinc-900/60 px-2.5 py-1 font-mono text-xs text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
+              className="inline-flex items-center space-x-1.5 rounded-md border border-zinc-800/70 bg-zinc-900/60 px-2.5 py-1 text-xs text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
               title="安装页面评论书签"
               aria-label="安装页面评论书签"
             >
@@ -183,13 +183,13 @@ export const Header: React.FC<HeaderProps> = ({
               <button
                 type="button"
                 onClick={onOpenArchive}
-                className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs font-mono text-zinc-300 transition-colors"
+                className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs text-zinc-300 transition-colors"
                 title="查看已完成归档"
               >
                 <Archive className="w-3.5 h-3.5 text-emerald-400" />
                 <span className="hidden sm:inline">归档</span>
                 {typeof completedCount === "number" && (
-                  <span className="px-1.5 py-px rounded-full text-[10px] bg-zinc-800 border border-zinc-700/60 text-emerald-400 font-medium">
+                  <span className="px-1.5 py-px rounded-full text-[10px] font-mono bg-zinc-800 border border-zinc-700/60 text-emerald-400 font-medium">
                     {completedCount}
                   </span>
                 )}
@@ -200,7 +200,7 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               onClick={onRefresh}
               disabled={isRefreshing}
-              className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs font-mono text-zinc-300 transition-colors disabled:opacity-40"
+              className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs text-zinc-300 transition-colors disabled:opacity-40"
               title="刷新状态"
             >
               <RefreshCw className={`w-3 h-3 ${isRefreshing ? "animate-spin text-cyan-400" : ""}`} />
@@ -213,7 +213,7 @@ export const Header: React.FC<HeaderProps> = ({
               onClick={onOpenCreateModal}
               disabled={!isBackendConnected}
               title={isBackendConnected ? "新建任务" : "服务离线，无法新建任务"}
-              className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-mono font-semibold transition-colors shadow-xs disabled:bg-zinc-800 disabled:text-zinc-500 disabled:shadow-none"
+              className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-colors shadow-xs disabled:bg-zinc-800 disabled:text-zinc-500 disabled:shadow-none"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>新建任务</span>

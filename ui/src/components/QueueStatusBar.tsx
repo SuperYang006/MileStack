@@ -61,13 +61,13 @@ export const QueueStatusBar: React.FC<QueueStatusBarProps> = ({
 
   return (
     <section
-      className={`flex items-center gap-2 rounded-lg border px-4 py-2.5 font-mono ${styles.section}`}
+      className={`flex items-center gap-2 rounded-lg border px-4 py-2.5 ${styles.section}`}
     >
       <span className={`w-2 h-2 shrink-0 rounded-full ${styles.dot}`} />
       <h2
-        className={`shrink-0 text-xs font-bold tracking-wider uppercase ${styles.title}`}
+        className={`shrink-0 text-[13px] font-bold tracking-wider uppercase ${styles.title}`}
       >
-        {title} ({count})
+        {title} <span className="font-mono">({count})</span>
       </h2>
       <span className="min-w-0 truncate text-[11px] text-zinc-500">{status}</span>
       {action && (

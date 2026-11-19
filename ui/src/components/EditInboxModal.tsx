@@ -272,12 +272,12 @@ export const EditInboxModal: React.FC<EditInboxModalProps> = ({
 
   return createPortal(
     <div className="fixed inset-0 z-50 overflow-y-auto bg-black/75 backdrop-blur-xs flex items-center justify-center p-4">
-      <div className="bg-zinc-950 rounded-lg border border-zinc-800 max-w-lg w-full max-h-[85vh] flex flex-col overflow-hidden shadow-2xl font-mono">
+      <div className="bg-zinc-950 rounded-lg border border-zinc-800 max-w-lg w-full max-h-[85vh] flex flex-col overflow-hidden shadow-2xl">
         {/* Header */}
         <div className="shrink-0 px-5 py-3 border-b border-zinc-800 flex items-center justify-between">
           <div className="flex items-center space-x-2">
             <Edit3 className="w-4 h-4 text-amber-400" />
-            <h2 className="text-xs font-bold text-zinc-100 uppercase tracking-wider">
+            <h2 className="text-[13px] font-bold text-zinc-100 uppercase tracking-wider">
               编辑草稿
             </h2>
           </div>
@@ -306,7 +306,7 @@ export const EditInboxModal: React.FC<EditInboxModalProps> = ({
                 <span className="text-zinc-500 font-normal">点击复制</span>
               </label>
               <div className="flex items-center justify-between px-3 py-1.5 rounded bg-zinc-900/80 border border-zinc-800 text-zinc-400">
-                <span className="truncate">{taskId}</span>
+                <span className="truncate font-mono">{taskId}</span>
                 <CopyTaskIdButton taskId={taskId} className="ml-2" />
               </div>
             </div>
@@ -359,9 +359,9 @@ export const EditInboxModal: React.FC<EditInboxModalProps> = ({
                   resizeLongTextArea(e.currentTarget);
                 }}
                 placeholder="- 代码通过类型检查与单元测试&#10;- 完成功能验收..."
-                className="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded text-zinc-100 placeholder-zinc-600 focus:outline-hidden focus:border-cyan-500 transition-colors resize-none leading-relaxed font-mono"
+                className="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded text-zinc-100 placeholder-zinc-600 focus:outline-hidden focus:border-cyan-500 transition-colors resize-none leading-relaxed"
               />
-              <p className="mt-1 text-[10px] text-zinc-500 leading-relaxed">
+              <p className="mt-1 text-[11px] text-zinc-500 leading-relaxed">
                 {acceptanceCriteriaPreSubmissionReminder}
               </p>
             </div>
@@ -489,7 +489,7 @@ export const EditInboxModal: React.FC<EditInboxModalProps> = ({
                   )}
                 </div>
               </div>
-              <p className="mt-1 text-[10px] text-zinc-500 leading-relaxed">
+              <p className="mt-1 text-[11px] text-zinc-500 leading-relaxed">
                 点击列表项添加依赖；也可粘贴逗号或换行分隔的任务 ID。保存时仍由服务端校验。
               </p>
             </div>
@@ -518,7 +518,7 @@ export const EditInboxModal: React.FC<EditInboxModalProps> = ({
                     />
                     <span className="font-bold text-[11px]">低风险 (Low)</span>
                   </div>
-                  <span className="text-[10px] text-zinc-400 leading-tight">
+                  <span className="text-[11px] text-zinc-400 leading-tight">
                     AI 审核通过后自动完成
                   </span>
                 </label>
@@ -541,7 +541,7 @@ export const EditInboxModal: React.FC<EditInboxModalProps> = ({
                     />
                     <span className="font-bold text-[11px]">中风险 (Medium)</span>
                   </div>
-                  <span className="text-[10px] text-zinc-400 leading-tight">
+                  <span className="text-[11px] text-zinc-400 leading-tight">
                     默认等级，需开发者终审
                   </span>
                 </label>
@@ -564,7 +564,7 @@ export const EditInboxModal: React.FC<EditInboxModalProps> = ({
                     />
                     <span className="font-bold text-[11px]">高风险 (High)</span>
                   </div>
-                  <span className="text-[10px] text-zinc-400 leading-tight">
+                  <span className="text-[11px] text-zinc-400 leading-tight">
                     破坏性/敏感变更，需人工终审
                   </span>
                 </label>
@@ -577,7 +577,7 @@ export const EditInboxModal: React.FC<EditInboxModalProps> = ({
             ref={modalFooterRef}
             className="shrink-0 px-5 pt-3 pb-5 border-t border-zinc-800 flex items-center justify-between"
           >
-            <span className="text-[10px] text-zinc-600">保存不影响队列排位</span>
+            <span className="text-[11px] text-zinc-600">保存不影响队列排位</span>
             <div className="flex items-center space-x-2">
               <button
                 type="button"

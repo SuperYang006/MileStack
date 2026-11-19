@@ -23,35 +23,35 @@ function getStatusBadge(status: TaskStatus) {
   switch (status) {
     case "completed":
       return (
-        <span className="inline-flex items-center space-x-1 px-1.5 py-px rounded text-[10px] font-mono bg-emerald-950/60 text-emerald-300">
+        <span className="inline-flex items-center space-x-1 px-1.5 py-px rounded text-[10px] bg-emerald-950/60 text-emerald-300">
           <CheckCircle2 className="w-2.5 h-2.5 text-emerald-400" />
           <span>已完成</span>
         </span>
       );
     case "running":
       return (
-        <span className="inline-flex items-center space-x-1 px-1.5 py-px rounded text-[10px] font-mono bg-cyan-950/60 text-cyan-300">
+        <span className="inline-flex items-center space-x-1 px-1.5 py-px rounded text-[10px] bg-cyan-950/60 text-cyan-300">
           <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
           <span>执行中</span>
         </span>
       );
     case "in_review":
       return (
-        <span className="inline-flex items-center space-x-1 px-1.5 py-px rounded text-[10px] font-mono bg-violet-950/60 text-violet-300">
+        <span className="inline-flex items-center space-x-1 px-1.5 py-px rounded text-[10px] bg-violet-950/60 text-violet-300">
           <Clock className="w-2.5 h-2.5 text-violet-400" />
           <span>待审核</span>
         </span>
       );
     case "ready":
       return (
-        <span className="inline-flex items-center space-x-1 px-1.5 py-px rounded text-[10px] font-mono bg-indigo-950/60 text-indigo-300">
+        <span className="inline-flex items-center space-x-1 px-1.5 py-px rounded text-[10px] bg-indigo-950/60 text-indigo-300">
           <span className="w-1.5 h-1.5 rounded-full bg-indigo-400" />
           <span>就绪</span>
         </span>
       );
     case "blocked":
       return (
-        <span className="inline-flex items-center space-x-1 px-1.5 py-px rounded text-[10px] font-mono bg-rose-950/60 text-rose-300">
+        <span className="inline-flex items-center space-x-1 px-1.5 py-px rounded text-[10px] bg-rose-950/60 text-rose-300">
           <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
           <span>阻塞</span>
         </span>
@@ -59,7 +59,7 @@ function getStatusBadge(status: TaskStatus) {
     case "inbox":
     default:
       return (
-        <span className="inline-flex items-center space-x-1 px-1.5 py-px rounded text-[10px] font-mono bg-zinc-900 text-zinc-400">
+        <span className="inline-flex items-center space-x-1 px-1.5 py-px rounded text-[10px] bg-zinc-900 text-zinc-400">
           <span>草稿</span>
         </span>
       );
@@ -122,7 +122,7 @@ const QueueDraftButton: React.FC<{
           event.stopPropagation();
           setAnchor(anchor === null ? event.currentTarget : null);
         }}
-        className={`inline-flex items-center space-x-0.5 px-1.5 py-px rounded text-[10px] font-mono shrink-0 transition-colors cursor-pointer text-emerald-400 hover:text-emerald-300 bg-emerald-950/40 hover:bg-emerald-950/80 border border-emerald-900/60 focus-visible:opacity-100 group-hover/card:opacity-100 group-focus-visible/card:opacity-100 group-has-[:focus-visible]/card:opacity-100 [@media(hover:none)]:opacity-100 ${
+        className={`inline-flex items-center space-x-0.5 px-1.5 py-px rounded text-[10px] shrink-0 transition-colors cursor-pointer text-emerald-400 hover:text-emerald-300 bg-emerald-950/40 hover:bg-emerald-950/80 border border-emerald-900/60 focus-visible:opacity-100 group-hover/card:opacity-100 group-focus-visible/card:opacity-100 group-has-[:focus-visible]/card:opacity-100 [@media(hover:none)]:opacity-100 ${
           anchor === null ? "opacity-0" : "opacity-100"
         }`}
         title="选择风险等级并排入执行队列"
@@ -190,7 +190,7 @@ const GoalPathOverviewRow: React.FC<{
     >
       <span className="flex items-center space-x-2 min-w-0 flex-1 basis-40" title={graph.goalTitles.join("\n")}>
         <span className="w-2 h-2 rounded-full bg-indigo-400 shrink-0" />
-        <span className="font-semibold text-zinc-200 truncate text-xs">{graph.title}</span>
+        <span className="font-semibold text-zinc-200 truncate text-[13px]">{graph.title}</span>
       </span>
 
       <span
@@ -272,7 +272,7 @@ const GoalPathStages: React.FC<{
               {/* 移动端垂直流转指示 */}
               <div className="md:hidden py-1">
                 {stage.isParallel ? (
-                  <div className="flex items-center justify-center gap-2 text-zinc-600 text-[10px]">
+                  <div className="flex items-center justify-center gap-2 text-zinc-600 text-[11px]">
                     <div className="h-px bg-zinc-800 flex-1" />
                     <div className="flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full bg-zinc-900 border border-zinc-800 text-indigo-300 shrink-0">
                       <GitFork className="w-3 h-3 text-indigo-400" />
@@ -281,7 +281,7 @@ const GoalPathStages: React.FC<{
                     <div className="h-px bg-zinc-800 flex-1" />
                   </div>
                 ) : stage.isFinalGoal ? (
-                  <div className="flex items-center justify-center gap-2 text-zinc-600 text-[10px]">
+                  <div className="flex items-center justify-center gap-2 text-zinc-600 text-[11px]">
                     <div className="h-px bg-zinc-800 flex-1" />
                     <div className="flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full bg-zinc-900 border border-zinc-800 text-amber-300 shrink-0">
                       <GitMerge className="w-3 h-3 text-amber-400" />
@@ -290,7 +290,7 @@ const GoalPathStages: React.FC<{
                     <div className="h-px bg-zinc-800 flex-1" />
                   </div>
                 ) : (
-                  <div className="flex items-center justify-center gap-2 text-zinc-600 text-[10px]">
+                  <div className="flex items-center justify-center gap-2 text-zinc-600 text-[11px]">
                     <div className="h-px bg-zinc-800/80 flex-1" />
                     <ArrowDown className="w-3 h-3 text-zinc-600 shrink-0" />
                     <div className="h-px bg-zinc-800/80 flex-1" />
@@ -335,12 +335,12 @@ const GoalPathStages: React.FC<{
                     stage.isParallel ? "bg-indigo-400" : stage.isFinalGoal ? "bg-amber-400" : "bg-zinc-500"
                   }`}
                 />
-                <span className="font-semibold text-zinc-300 truncate text-[11px]" title={stage.label}>
+                <span className="font-semibold text-zinc-300 truncate text-[12px]" title={stage.label}>
                   {stage.label}
                 </span>
               </div>
               {stage.isParallel && (
-                <span className="text-[9px] px-1.5 py-px rounded bg-indigo-950/70 border border-indigo-800/60 text-indigo-300 shrink-0">
+                <span className="text-[10px] px-1.5 py-px rounded bg-indigo-950/70 border border-indigo-800/60 text-indigo-300 shrink-0">
                   并行
                 </span>
               )}
@@ -397,12 +397,12 @@ const GoalPathStages: React.FC<{
   
                   {/* 组内直接前置：短码，悬停显示标题 */}
                   {task.prerequisites.length > 0 && (
-                    <div className="flex items-center flex-wrap gap-x-1.5 gap-y-0.5 text-[10px] text-zinc-500">
+                    <div className="flex items-center flex-wrap gap-x-1.5 gap-y-0.5 text-[11px] text-zinc-500">
                       <span className="shrink-0">前置</span>
                       {task.prerequisites.map((dep) => (
                         <span
                           key={dep.id}
-                          className="px-1.5 py-px rounded font-mono text-zinc-400 bg-zinc-900/60 border border-zinc-800/70"
+                          className="px-1.5 py-px rounded font-mono text-[10px] text-zinc-400 bg-zinc-900/60 border border-zinc-800/70"
                           title={dep.title}
                         >
                           #{dep.id.slice(0, 8)}
@@ -415,16 +415,16 @@ const GoalPathStages: React.FC<{
                     task.isParallelCandidate ||
                     task.deferrableSteps > 0 ||
                     task.waitingCount > 0) && (
-                    <div className="flex items-center flex-wrap gap-1.5 text-[10px] text-zinc-500">
+                    <div className="flex items-center flex-wrap gap-1.5 text-[11px] text-zinc-500">
                       {task.isRunnable && (
-                        <span className="inline-flex items-center space-x-0.5 px-1.5 py-px rounded text-[9px] bg-emerald-950/80 border border-emerald-700/60 text-emerald-300">
+                        <span className="inline-flex items-center space-x-0.5 px-1.5 py-px rounded text-[10px] bg-emerald-950/80 border border-emerald-700/60 text-emerald-300">
                           <Zap className="w-2.5 h-2.5 text-emerald-400" />
                           <span>{task.isParallelStageTask ? "可并行" : "可推进"}</span>
                         </span>
                       )}
                       {task.isParallelCandidate && (
                         <span
-                          className="inline-flex items-center space-x-0.5 px-1.5 py-px rounded text-[9px] bg-indigo-950/50 border border-indigo-900/60 text-indigo-300"
+                          className="inline-flex items-center space-x-0.5 px-1.5 py-px rounded text-[10px] bg-indigo-950/50 border border-indigo-900/60 text-indigo-300"
                           title="无未完成前置依赖，排入就绪队列后可并行执行"
                         >
                           <Zap className="w-2.5 h-2.5 text-indigo-400" />
@@ -433,7 +433,7 @@ const GoalPathStages: React.FC<{
                       )}
                       {task.deferrableSteps > 0 && (
                         <span
-                          className="px-1.5 py-px rounded bg-zinc-800/60 border border-zinc-700/60 text-zinc-400"
+                          className="px-1.5 py-px rounded text-[10px] bg-zinc-800/60 border border-zinc-700/60 text-zinc-400"
                           title="不在关键路径上，晚点做也不会增加整组完成所需的步数"
                         >
                           可延后 {task.deferrableSteps} 步
@@ -484,15 +484,15 @@ export const ExecutionFlowView: React.FC<ExecutionFlowViewProps> = ({
       >
         <div className="flex items-center space-x-2">
           <GitFork className="w-3.5 h-3.5 text-indigo-400" />
-          <h2 className="text-xs font-mono font-bold tracking-wider text-zinc-200 uppercase">
-            目标路径 ({graphs.length})
+          <h2 className="text-[13px] font-bold tracking-wider text-zinc-200 uppercase">
+            目标路径 <span className="font-mono">({graphs.length})</span>
           </h2>
-          <span className="text-[11px] font-mono text-zinc-500 hidden sm:inline">
+          <span className="text-[11px] text-zinc-500 hidden sm:inline">
             · 相互关联的未完成任务，按先后分步
           </span>
         </div>
         <div className="flex items-center space-x-2">
-          <span className="text-[10px] font-mono text-zinc-500">
+          <span className="text-[11px] text-zinc-500">
             {isExpanded ? "收起" : "展开"}
           </span>
           {isExpanded ? (
@@ -508,7 +508,7 @@ export const ExecutionFlowView: React.FC<ExecutionFlowViewProps> = ({
           {graphs.map((graph: ConnectedDagGraph) => {
             const isOpen = graph.id === openGraphId;
             return (
-              <div key={graph.id} className="rounded-md bg-zinc-950/70 border border-zinc-800 font-mono text-xs">
+              <div key={graph.id} className="rounded-md bg-zinc-950/70 border border-zinc-800 text-xs">
                 <GoalPathOverviewRow
                   graph={graph}
                   isOpen={isOpen}

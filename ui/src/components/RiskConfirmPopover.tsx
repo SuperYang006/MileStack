@@ -111,12 +111,12 @@ export const RiskConfirmPopover: React.FC<RiskConfirmPopoverProps> = ({
         top: position.top,
         left: position.left,
       }}
-      className="fixed z-50 w-64 max-w-[calc(100vw-1rem)] sm:w-72 bg-zinc-950 border border-zinc-800 rounded-lg shadow-2xl p-1.5 backdrop-blur-md font-mono animate-in fade-in-0 zoom-in-95 duration-100 ring-1 ring-white/5"
+      className="fixed z-50 w-64 max-w-[calc(100vw-1rem)] sm:w-72 bg-zinc-950 border border-zinc-800 rounded-lg shadow-2xl p-1.5 backdrop-blur-md animate-in fade-in-0 zoom-in-95 duration-100 ring-1 ring-white/5"
       onClick={(e) => e.stopPropagation()}
     >
-      <div className="px-2 py-1.5 mb-1 border-b border-zinc-800/80 flex items-center justify-between text-[10px] text-zinc-400">
+      <div className="px-2 py-1.5 mb-1 border-b border-zinc-800/80 flex items-center justify-between text-[11px] text-zinc-400">
         <span className="font-semibold tracking-wider text-zinc-300 uppercase">选择风险并排队</span>
-        <span className="text-[9px] text-zinc-500">点击立即入队</span>
+        <span className="text-[10px] text-zinc-500">点击立即入队</span>
       </div>
 
       <div className="space-y-1">
@@ -138,12 +138,12 @@ export const RiskConfirmPopover: React.FC<RiskConfirmPopoverProps> = ({
                     {opt.label} ({opt.tag})
                   </span>
                   {isPreset ? (
-                    <span className="text-[9px] text-zinc-500">当前设定</span>
+                    <span className="text-[10px] text-zinc-500">当前设定</span>
                   ) : isDefault ? (
-                    <span className="text-[9px] text-amber-500/80">默认</span>
+                    <span className="text-[10px] text-amber-500/80">默认</span>
                   ) : null}
                 </div>
-                <p className="text-[10px] text-zinc-400 group-hover/item:text-zinc-300 leading-tight mt-0.5">
+                <p className="text-[11px] text-zinc-400 group-hover/item:text-zinc-300 leading-tight mt-0.5">
                   {opt.description}
                 </p>
               </div>

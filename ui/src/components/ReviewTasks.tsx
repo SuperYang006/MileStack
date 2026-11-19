@@ -68,7 +68,7 @@ const ReviewTaskItem: React.FC<{
   const getStatusLabel = () => {
     if (isPending) {
       return (
-        <span className="inline-flex items-center space-x-1 text-[10px] font-mono text-zinc-400">
+        <span className="inline-flex items-center space-x-1 text-[11px] text-zinc-400">
           <span className="text-zinc-600">·</span>
           <Clock className="w-2.5 h-2.5 text-zinc-500" />
           <span>未领取 · 等待 AI 审核</span>
@@ -77,7 +77,7 @@ const ReviewTaskItem: React.FC<{
     }
     if (reviewStatus === "in_progress") {
       return (
-        <span className="inline-flex items-center space-x-1 text-[10px] font-mono text-cyan-300">
+        <span className="inline-flex items-center space-x-1 text-[11px] text-cyan-300">
           <span className="text-zinc-600">·</span>
           <Bot className="w-2.5 h-2.5 text-cyan-400 animate-pulse" />
           <span>AI 审核中</span>
@@ -87,23 +87,23 @@ const ReviewTaskItem: React.FC<{
     if (isPassed) {
       if (needsDeveloperApproval) {
         return (
-          <span className="inline-flex items-center space-x-1 text-[10px] font-mono text-emerald-300 font-bold">
+          <span className="inline-flex items-center space-x-1 text-[11px] text-emerald-300 font-bold">
             <CheckCircle2 className="w-2.5 h-2.5 text-emerald-400" />
             <span>AI 已通过 · 待开发者批准</span>
           </span>
         );
       }
       if (!digest?.integrationRequired) {
-        return <span className="text-[10px] font-mono text-cyan-300">无需 Git 集成 · 待完成</span>;
+        return <span className="text-[11px] text-cyan-300">无需 Git 集成 · 待完成</span>;
       }
       if (digest?.integrationStatus === "integrated") {
-        return <span className="text-[10px] font-mono text-emerald-300">本地集成已确认</span>;
+        return <span className="text-[11px] text-emerald-300">本地集成已确认</span>;
       }
       if (digest?.integrationStatus === "unavailable") {
-        return <span className="text-[10px] font-mono text-amber-300">已验收 · 无法检查</span>;
+        return <span className="text-[11px] text-amber-300">已验收 · 无法检查</span>;
       }
       return (
-        <span className="inline-flex items-center space-x-1 text-[10px] font-mono text-cyan-300 font-bold">
+        <span className="inline-flex items-center space-x-1 text-[11px] text-cyan-300 font-bold">
           <GitBranch className="w-2.5 h-2.5" />
           <span>已验收 · 待本地集成</span>
         </span>
@@ -111,12 +111,12 @@ const ReviewTaskItem: React.FC<{
     }
     if (reviewStatus === "waived") {
       if (digest?.integrationStatus === "unavailable") {
-        return <span className="text-[10px] font-mono text-amber-300">直接验收 · 无法检查</span>;
+        return <span className="text-[11px] text-amber-300">直接验收 · 无法检查</span>;
       }
-      return <span className="text-[10px] font-mono text-violet-300">直接验收 · 待本地集成</span>;
+      return <span className="text-[11px] text-violet-300">直接验收 · 待本地集成</span>;
     }
     return (
-      <span className="inline-flex items-center space-x-1 text-[10px] font-mono text-amber-300">
+      <span className="inline-flex items-center space-x-1 text-[11px] text-amber-300">
         <span className="text-zinc-600">·</span>
         <ShieldAlert className="w-2.5 h-2.5 text-amber-400" />
         <span>要求修改</span>
@@ -150,7 +150,7 @@ const ReviewTaskItem: React.FC<{
     : [];
 
   return (
-    <div className="p-3.5 rounded-lg bg-zinc-950/80 border border-zinc-800 hover:border-violet-900/60 transition-colors space-y-2 font-mono">
+    <div className="p-3.5 rounded-lg bg-zinc-950/80 border border-zinc-800 hover:border-violet-900/60 transition-colors space-y-2">
       {/* Layer 1: identity on its own row, then the passive review state on the left and the
           review actions on the right. The card only reaches about 550px of content width in the
           two-column dashboard, so the action group wraps as a unit and stays right-aligned. */}
@@ -171,7 +171,7 @@ const ReviewTaskItem: React.FC<{
           <span className="w-[5.5rem] min-w-0 shrink-0">
             <TaskIdBadge taskId={task.id} variant="muted" displayLength={8} className="w-full" />
           </span>
-          <h3 className="min-w-0 flex-1 text-xs font-medium text-zinc-100 line-clamp-2 break-words hover:text-violet-300 transition-colors">
+          <h3 className="min-w-0 flex-1 text-[13px] font-medium text-zinc-100 line-clamp-2 break-words hover:text-violet-300 transition-colors">
             {task.title}
           </h3>
         </div>
@@ -238,15 +238,19 @@ const ReviewTaskItem: React.FC<{
           {reviewMeta.map((item) => (
             <React.Fragment key={item.text}>
               <span className="px-1">·</span>
-              <span className={item.alert ? "text-amber-400/90" : undefined}>{item.text}</span>
+              <span className={`font-mono ${item.alert ? "text-amber-400/90" : undefined}`}>{item.text}</span>
             </React.Fragment>
           ))}
           {digest?.integrationRequired && (
             <>
               <span className="px-1">·</span>
-              <span>本地 {digest.integrationTargetBranch}</span>
+              <span>
+                本地 <span className="font-mono">{digest.integrationTargetBranch}</span>
+              </span>
               <span className="px-1">·</span>
-              <span className="text-zinc-400">审核提交 {digest.commitSha.slice(0, 8)}</span>
+              <span className="text-zinc-400">
+                审核提交 <span className="font-mono">{digest.commitSha.slice(0, 8)}</span>
+              </span>
             </>
           )}
           {digest?.integrationMessage && (
@@ -343,8 +347,8 @@ export const ReviewTasks: React.FC<ReviewTasksProps> = ({
         <div className="px-4 py-2.5 border-b border-violet-900/40 flex items-center justify-between gap-2 shrink-0">
           <div className="flex min-w-0 items-center space-x-2">
             <span className="w-2 h-2 rounded-full bg-violet-400 shrink-0" />
-            <h2 className="text-xs font-mono font-bold tracking-wider text-violet-200 uppercase">
-              待审核队列 ({tasks.length})
+            <h2 className="text-[13px] font-bold tracking-wider text-violet-200 uppercase">
+              待审核队列 <span className="font-mono">({tasks.length})</span>
             </h2>
           </div>
         </div>

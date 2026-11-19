@@ -35,7 +35,7 @@ export const OperationErrorNotice: React.FC<OperationErrorNoticeProps> = ({
       role="alert"
       aria-live="assertive"
     >
-      <div className="pointer-events-auto flex w-full max-w-xl items-start gap-2 rounded-md border border-rose-800/70 bg-rose-950/95 px-3 py-2 font-mono text-[11px] text-rose-100 shadow-lg">
+      <div className="pointer-events-auto flex w-full max-w-xl items-start gap-2 rounded-md border border-rose-800/70 bg-rose-950/95 px-3 py-2 text-[11px] text-rose-100 shadow-lg">
         <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-rose-400" />
         <div className="min-w-0 flex-1">
           <span className="font-bold text-rose-200">{error.operation}失败</span>

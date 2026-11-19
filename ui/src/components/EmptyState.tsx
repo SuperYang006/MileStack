@@ -81,7 +81,8 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
   if (compact) {
     return (
       <div
-        className={`group flex items-center justify-center gap-2.5 py-4 px-3 rounded border border-dashed border-zinc-800/80 bg-zinc-950/30 font-mono text-xs ${className}`}
+        className={`group flex items-center justify-center gap-2.5 py-4 px-3 rounded border border-dashed border-zinc-800/80 bg-zinc-950/30 text-xs ${className}`
+        }
       >
         <div
           className={`w-6 h-6 rounded flex items-center justify-center border shrink-0 ${styles.iconBg}`}
@@ -91,7 +92,7 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
         <div className="flex items-center gap-2 text-zinc-400">
           {tag && (
             <span
-              className={`text-[10px] uppercase px-1.5 py-px rounded border font-mono ${styles.tag}`}
+              className={`text-[10px] uppercase px-1.5 py-px rounded border ${styles.tag}`}
             >
               {tag}
             </span>
@@ -106,7 +107,7 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
         {action && (
           <button
             onClick={action.onClick}
-            className={`ml-2 inline-flex items-center space-x-1 px-2 py-0.5 text-[11px] font-mono rounded border transition-colors cursor-pointer ${styles.actionBtn}`}
+            className={`ml-2 inline-flex items-center space-x-1 px-2 py-0.5 text-[11px] rounded border transition-colors cursor-pointer ${styles.actionBtn}`}
           >
             {action.icon && <action.icon className="w-3 h-3" />}
             <span>{action.label}</span>
@@ -118,7 +119,7 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
 
   return (
     <div
-      className={`group relative flex flex-col items-center justify-center text-center p-6 sm:p-7 rounded-lg border border-dashed border-zinc-800/90 bg-zinc-950/40 backdrop-blur-xs font-mono transition-colors hover:border-zinc-700/80 ${className}`}
+      className={`group relative flex flex-col items-center justify-center text-center p-6 sm:p-7 rounded-lg border border-dashed border-zinc-800/90 bg-zinc-950/40 backdrop-blur-xs transition-colors hover:border-zinc-700/80 ${className}`}
     >
       {/* Icon Badge */}
       <div className="relative mb-3">
@@ -133,7 +134,7 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
       {tag && (
         <div className="mb-2">
           <span
-            className={`inline-block text-[10px] font-mono uppercase px-2 py-0.5 rounded border tracking-wider ${styles.tag}`}
+            className={`inline-block text-[10px] uppercase px-2 py-0.5 rounded border tracking-wider ${styles.tag}`}
           >
             {tag}
           </span>
@@ -158,7 +159,7 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
           {action && (
             <button
               onClick={action.onClick}
-              className={`inline-flex items-center space-x-1.5 px-3 py-1.5 text-xs font-mono rounded-md border transition-colors cursor-pointer shadow-xs ${styles.actionBtn}`}
+              className={`inline-flex items-center space-x-1.5 px-3 py-1.5 text-xs rounded-md border transition-colors cursor-pointer shadow-xs ${styles.actionBtn}`}
             >
               {action.icon && <action.icon className="w-3.5 h-3.5" />}
               <span>{action.label}</span>
@@ -168,7 +169,7 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
           {secondaryAction && (
             <button
               onClick={secondaryAction.onClick}
-              className="inline-flex items-center space-x-1.5 px-2.5 py-1.5 text-xs font-mono text-zinc-400 hover:text-zinc-200 bg-zinc-900/60 hover:bg-zinc-800 border border-zinc-800 hover:border-zinc-700 rounded-md transition-colors cursor-pointer"
+              className="inline-flex items-center space-x-1.5 px-2.5 py-1.5 text-xs text-zinc-400 hover:text-zinc-200 bg-zinc-900/60 hover:bg-zinc-800 border border-zinc-800 hover:border-zinc-700 rounded-md transition-colors cursor-pointer"
             >
               {secondaryAction.icon && <secondaryAction.icon className="w-3.5 h-3.5" />}
               <span>{secondaryAction.label}</span>
