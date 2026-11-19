@@ -252,6 +252,30 @@ describe("UI API client", () => {
     expect(storage.setItem).not.toHaveBeenCalled();
   });
 
+  it("reports a structured validation error with its field instead of a bare status", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            error: [
+              {
+                code: "too_small",
+                path: ["runId"],
+                message: "Too small: expected string to have >=1 characters",
+              },
+            ],
+          }),
+          { status: 400, headers: { "Content-Type": "application/json" } },
+        ),
+      ),
+    );
+
+    await expect(apiClient.releaseTask("task-demo")).rejects.toThrow(
+      "runId: Too small: expected string to have >=1 characters",
+    );
+  });
+
   it("returns the authoritative status again after the service recovers", async () => {
     stubLocalStorageWithDemoData();
     const recovered = {

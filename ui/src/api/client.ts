@@ -44,17 +44,33 @@ async function send(path: string, options: RequestOptions = {}): Promise<Respons
   }
 }
 
+/** Zod validation failures arrive as issue lists; keep the field path so the UI
+ *  can show the service's reason instead of a bare status code. */
+function describeErrorBody(body: unknown): string | null {
+  if (typeof body !== "object" || body === null || !("error" in body)) return null;
+  const error = (body as { error: unknown }).error;
+  if (typeof error === "string") return error;
+  if (!Array.isArray(error)) return null;
+
+  const messages: string[] = [];
+  for (const rawIssue of error as unknown[]) {
+    if (typeof rawIssue !== "object" || rawIssue === null) continue;
+    const issue = rawIssue as { message?: unknown; path?: unknown };
+    if (typeof issue.message !== "string" || !issue.message) continue;
+    const path = Array.isArray(issue.path)
+      ? issue.path
+          .filter((segment): segment is string => typeof segment === "string")
+          .join(".")
+      : "";
+    messages.push(path ? `${path}: ${issue.message}` : issue.message);
+  }
+  return messages.length > 0 ? messages.join("; ") : null;
+}
+
 /** Turns a non-success response into the server's own message when it has one. */
 async function toRequestError(res: Response): Promise<Error> {
   const body: unknown = await res.json().catch(() => null);
-  const message =
-    typeof body === "object" &&
-    body !== null &&
-    "error" in body &&
-    typeof body.error === "string"
-      ? body.error
-      : `HTTP ${res.status}`;
-  return new Error(message);
+  return new Error(describeErrorBody(body) ?? `HTTP ${res.status}`);
 }
 
 async function sendJson<T>(path: string, options: RequestOptions = {}): Promise<T> {
