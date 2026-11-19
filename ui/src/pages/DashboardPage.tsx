@@ -66,6 +66,12 @@ function createEmptyProjectStatus(project: ProjectSummary): ProjectStatus {
   };
 }
 
+/** Wide screens keep the dashboard in one viewport: queues with tasks split the
+ *  remaining height, while empty queues hold a single status row. */
+function queueSlotClass(taskCount: number): string {
+  return taskCount > 0 ? "lg:min-h-0 lg:flex-1" : "lg:shrink-0";
+}
+
 function useDocumentVisible(): boolean {
   const [isVisible, setIsVisible] = useState(
     () => typeof document === "undefined" || document.visibilityState === "visible",
@@ -381,7 +387,7 @@ export const DashboardPage: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-zinc-950 text-zinc-100 pb-16 lg:pb-0 selection:bg-cyan-500/30 selection:text-cyan-200">
+    <div className="min-h-screen flex flex-col bg-zinc-950 text-zinc-100 pb-16 lg:h-screen lg:pb-0 selection:bg-cyan-500/30 selection:text-cyan-200">
       {/* Header */}
       <Header
         project={visibleStatus.project}
@@ -426,7 +432,7 @@ export const DashboardPage: React.FC = () => {
       )}
 
       {/* Main Content Area */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 w-full space-y-6 lg:flex lg:h-[calc(100vh-4rem)] lg:min-h-0 lg:flex-col lg:space-y-3 lg:overflow-hidden">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 w-full space-y-6 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:space-y-3 lg:overflow-hidden lg:pb-3">
         {/* Blocked Section (Top priority when tasks are blocked) */}
         <BlockedTasks
           tasks={visibleStatus.blocked}
@@ -440,10 +446,11 @@ export const DashboardPage: React.FC = () => {
           onConfirmTask={(id, riskLevel) => confirmInboxMutation.mutate({ taskId: id, riskLevel })}
         />
 
-        {/* Four active queue regions: symmetric 2x2 grid on wide screens; natural stack on mobile. */}
-        <div className="grid grid-cols-1 gap-6 lg:flex-1 lg:min-h-0 lg:grid-cols-2 lg:grid-rows-2 lg:items-stretch lg:gap-3">
-          {/* Top-left: 已就绪 */}
-          <div className="lg:h-full lg:min-h-0">
+        {/* Four active queue regions share one column: an empty queue keeps a single
+            status row, and populated queues split the remaining dashboard height. */}
+        <div className="flex flex-col gap-6 lg:flex-1 lg:min-h-0 lg:gap-3">
+          {/* First: 已就绪 */}
+          <div className={queueSlotClass(visibleStatus.next.length)}>
             <NextTasks
               tasks={visibleStatus.next}
               allTasks={allTasks}
@@ -457,8 +464,8 @@ export const DashboardPage: React.FC = () => {
             />
           </div>
 
-          {/* Top-right: 正在进行 */}
-          <div className="lg:h-full lg:min-h-0">
+          {/* Second: 正在进行 */}
+          <div className={queueSlotClass(visibleStatus.current.length)}>
             <CurrentTasks
               tasks={visibleStatus.current}
               allTasks={allTasks}
@@ -468,8 +475,8 @@ export const DashboardPage: React.FC = () => {
             />
           </div>
 
-          {/* Bottom-left: 待审核 */}
-          <div className="lg:h-full lg:min-h-0">
+          {/* Third: 待审核 */}
+          <div className={queueSlotClass(visibleStatus.inReview.length)}>
             <ReviewTasks
               tasks={visibleStatus.inReview}
               onApprove={(id) => approveTaskMutation.mutate(id)}
@@ -491,8 +498,8 @@ export const DashboardPage: React.FC = () => {
             />
           </div>
 
-          {/* Bottom-right: 草稿箱 */}
-          <div className="lg:h-full lg:min-h-0">
+          {/* Last: 草稿箱 */}
+          <div className={queueSlotClass(visibleStatus.inbox.length)}>
             <InboxTasks
               tasks={visibleStatus.inbox}
               allTasks={allTasks}

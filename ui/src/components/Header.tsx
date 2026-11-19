@@ -108,19 +108,29 @@ export const Header: React.FC<HeaderProps> = ({
               </div>
             )}
 
-            {/* Connection Status indicator */}
-            <div className="flex items-center space-x-2 px-2.5 py-1 rounded-md bg-zinc-900/90 border border-zinc-800 text-[11px] font-mono text-zinc-400">
+            {/* Connection status: a quiet breathing dot while the service is
+                reachable; the full offline notice keeps the existing pill. */}
+            {isBackendConnected ? (
               <span
-                className={`w-1.5 h-1.5 rounded-full ${
-                  isBackendConnected
-                    ? "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]"
-                    : "bg-rose-400 shadow-[0_0_8px_rgba(251,113,133,0.8)]"
-                }`}
-              />
-              <span className="text-zinc-300">
-                {isBackendConnected ? "服务在线" : "服务离线"}
+                className="group/status relative flex items-center justify-center p-1 rounded-md focus-visible:outline-2 focus-visible:outline-emerald-400"
+                role="status"
+                aria-label="服务在线"
+                tabIndex={0}
+              >
+                <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
+                <span
+                  role="tooltip"
+                  className="pointer-events-none invisible absolute left-1/2 top-full z-50 mt-1 -translate-x-1/2 whitespace-nowrap rounded border border-zinc-700 bg-zinc-900 px-2 py-1 font-mono text-[11px] text-zinc-200 shadow-lg group-hover/status:visible group-focus-within/status:visible"
+                >
+                  服务在线
+                </span>
               </span>
-            </div>
+            ) : (
+              <div className="flex items-center space-x-2 px-2.5 py-1 rounded-md bg-zinc-900/90 border border-zinc-800 text-[11px] font-mono text-zinc-400">
+                <span className="w-1.5 h-1.5 rounded-full bg-rose-400 shadow-[0_0_8px_rgba(251,113,133,0.8)]" />
+                <span className="text-zinc-300">服务离线</span>
+              </div>
+            )}
 
             {/* Page comments bookmark installer, kept secondary to the task controls. */}
             <button

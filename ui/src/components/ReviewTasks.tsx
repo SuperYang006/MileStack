@@ -14,7 +14,7 @@ import {
 import type { FindingClosureInput, TaskSummary } from "../types";
 import { apiClient } from "../api/client";
 import { TaskIdBadge } from "./CopyTaskIdButton";
-import { EmptyState } from "./EmptyState";
+import { QueueStatusBar } from "./QueueStatusBar";
 import {
   FeedbackModal,
   useFeedbackDialog,
@@ -338,54 +338,39 @@ export const ReviewTasks: React.FC<ReviewTasksProps> = ({
     });
   };
 
-  // Empty and populated states share one section skeleton so the two-column grid
-  // cell keeps the same flex height split instead of collapsing to a title row.
-  const isEmpty = tasks.length === 0;
+  // An empty queue collapses to a one-line status bar so populated queues keep
+  // the dashboard's remaining height.
+  if (tasks.length === 0) {
+    return (
+      <QueueStatusBar tone="violet" title="待审核队列" count={0} status="队列清空" />
+    );
+  }
 
   return (
     <>
       <section className="rounded-lg border border-violet-900/50 bg-violet-950/15 backdrop-blur-xs overflow-hidden lg:h-full lg:min-h-0 lg:flex lg:flex-col">
-      <div className="px-4 py-2.5 border-b border-violet-900/40 flex items-center justify-between gap-2 shrink-0">
-        <div className="flex min-w-0 items-center space-x-2">
+        <div className="px-4 py-2.5 border-b border-violet-900/40 flex items-center justify-between gap-2 shrink-0">
+          <div className="flex min-w-0 items-center space-x-2">
             <span className="w-2 h-2 rounded-full bg-violet-400 shrink-0" />
             <h2 className="text-xs font-mono font-bold tracking-wider text-violet-200 uppercase">
               待审核队列 ({tasks.length})
             </h2>
-            {isEmpty && (
-              <span className="text-[11px] font-mono text-violet-400/80 truncate">
-                · 暂无待审核任务
-              </span>
-            )}
           </div>
-          <span className="hidden sm:inline shrink-0 text-[11px] font-mono text-violet-300/70">
-            {isEmpty ? "所有阶段性输出已完成验收" : "任务定义验证、AI 审核证据与开发者终审"}
-          </span>
         </div>
 
         <div className="p-3 space-y-2.5 lg:flex-1 lg:min-h-0 lg:overflow-y-auto">
-          {isEmpty ? (
-            <EmptyState
-              icon={ShieldCheck}
-              title="暂无待审核任务"
-              description="当前没有等待开发者终审的任务。任务提交 AI 审核结论后会出现在此处"
-              tag="队列清空"
-              variant="violet"
-              className="lg:h-full"
+          {tasks.map((task) => (
+            <ReviewTaskItem
+              key={task.id}
+              task={task}
+              onApprove={onApprove}
+              onOpenWaive={handleOpenWaive}
+              onOpenRequestChanges={handleOpenRequestChanges}
+              onCheckIntegration={onCheckIntegration}
+              isCheckingIntegration={checkingTaskId === task.id}
+              onSelectTask={onSelectTask}
             />
-          ) : (
-            tasks.map((task) => (
-              <ReviewTaskItem
-                key={task.id}
-                task={task}
-                onApprove={onApprove}
-                onOpenWaive={handleOpenWaive}
-      onOpenRequestChanges={handleOpenRequestChanges}
-      onCheckIntegration={onCheckIntegration}
-      isCheckingIntegration={checkingTaskId === task.id}
-      onSelectTask={onSelectTask}
-              />
-            ))
-          )}
+          ))}
         </div>
       </section>
 
