@@ -5,6 +5,7 @@ import type {
   TaskSummary,
   EditInboxTaskPayload,
   TaskDetails,
+  TaskStatus,
   RiskLevel,
 } from "../types";
 import { CopyTaskIdButton } from "./CopyTaskIdButton";
@@ -13,9 +14,24 @@ import {
   acceptanceCriteriaPreSubmissionReminder,
   reconcileCriteriaLines,
 } from "../utils/acceptanceCriteria";
+import {
+  filterDependencyCandidates,
+  parseDependencyIds,
+  shortTaskId,
+} from "../utils/dependencyPicker";
 
 const MIN_TEXTAREA_ROWS = 3;
 const MAX_TEXTAREA_ROWS = 12;
+const MAX_DEPENDENCY_CANDIDATES = 8;
+
+const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
+  inbox: "草稿",
+  ready: "就绪",
+  running: "执行中",
+  blocked: "阻塞",
+  in_review: "待审核",
+  completed: "已完成",
+};
 
 function resizeLongTextArea(textarea: HTMLTextAreaElement): void {
   textarea.style.height = "auto";
@@ -58,19 +74,83 @@ export const EditInboxModal: React.FC<EditInboxModalProps> = ({
   const [objective, setObjective] = useState("");
   const [criteriaText, setCriteriaText] = useState("");
   const [initialCriteria, setInitialCriteria] = useState<AcceptanceCriterion[]>([]);
-  const [dependencyIdsText, setDependencyIdsText] = useState("");
+  const [dependencyIds, setDependencyIds] = useState<string[]>([]);
+  const [dependencyQuery, setDependencyQuery] = useState("");
+  const [isDependencyPickerOpen, setIsDependencyPickerOpen] = useState(false);
   const [riskLevel, setRiskLevel] = useState<RiskLevel>("medium");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const objectiveRef = useRef<HTMLTextAreaElement>(null);
   const criteriaRef = useRef<HTMLTextAreaElement>(null);
+  const dependencyInputRef = useRef<HTMLInputElement>(null);
 
   const taskId = task ? ("task" in task ? task.task.id : task.id) : "";
+
+  const tasksById = new Map(availableTasks.map((availableTask) => [availableTask.id, availableTask]));
+  const dependencyCandidates = filterDependencyCandidates(availableTasks, {
+    currentTaskId: taskId,
+    selectedIds: dependencyIds,
+    query: dependencyQuery,
+    limit: MAX_DEPENDENCY_CANDIDATES,
+  });
+
+  const addDependencyIds = (ids: string[]) => {
+    setDependencyIds((current) => {
+      const next = [...current];
+      for (const id of ids) {
+        if (!next.includes(id)) next.push(id);
+      }
+      return next;
+    });
+    setDependencyQuery("");
+    setIsDependencyPickerOpen(false);
+  };
+
+  const removeDependencyId = (id: string) => {
+    setDependencyIds((current) => current.filter((currentId) => currentId !== id));
+  };
+
+  const handleDependencyPaste = (event: React.ClipboardEvent<HTMLInputElement>) => {
+    const pastedIds = parseDependencyIds(event.clipboardData.getData("text"));
+    if (pastedIds.length === 0 || pastedIds.some((id) => /\s/.test(id))) return;
+    event.preventDefault();
+    addDependencyIds(pastedIds);
+  };
+
+  const handleDependencyKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      const [firstCandidate] = dependencyCandidates;
+      if (dependencyQuery.trim().length > 0 && firstCandidate) {
+        addDependencyIds([firstCandidate.id]);
+        return;
+      }
+      const typedIds = parseDependencyIds(dependencyQuery);
+      if (typedIds.length > 0 && typedIds.every((id) => !/\s/.test(id))) {
+        addDependencyIds(typedIds);
+      }
+      return;
+    }
+    if (
+      event.key === "Backspace" &&
+      dependencyQuery.length === 0 &&
+      dependencyIds.length > 0
+    ) {
+      const lastId = dependencyIds[dependencyIds.length - 1];
+      if (lastId) removeDependencyId(lastId);
+      return;
+    }
+    if (event.key === "Escape") {
+      setIsDependencyPickerOpen(false);
+    }
+  };
 
   useEffect(() => {
     if (!task || !isOpen) return;
     const currentTaskId = "task" in task ? task.task.id : task.id;
     setError(null);
+    setDependencyQuery("");
+    setIsDependencyPickerOpen(false);
     if ("task" in task) {
       setTitle(task.task.title || "");
       setObjective(task.task.objective || "");
@@ -78,12 +158,12 @@ export const EditInboxModal: React.FC<EditInboxModalProps> = ({
       setCriteriaText(
         task.task.acceptanceCriteria?.map((criterion) => criterion.text).join("\n") || "",
       );
-      setDependencyIdsText(task.task.dependencyIds?.join(", ") || "");
+      setDependencyIds(task.task.dependencyIds ?? []);
       setRiskLevel(task.task.riskLevel || "medium");
     } else {
       setTitle(task.title || "");
       setRiskLevel(task.riskLevel || "medium");
-      setDependencyIdsText(task.dependencyIds?.join(", ") || "");
+      setDependencyIds(task.dependencyIds ?? []);
       let cancelled = false;
       apiClient
         .getTaskDetails(currentTaskId)
@@ -97,7 +177,7 @@ export const EditInboxModal: React.FC<EditInboxModalProps> = ({
                 ?.map((criterion) => criterion.text)
                 .join("\n") || "",
             );
-            setDependencyIdsText(details.task.dependencyIds?.join(", ") || "");
+            setDependencyIds(details.task.dependencyIds ?? []);
             setRiskLevel(details.task.riskLevel || "medium");
           }
         })
@@ -131,11 +211,6 @@ export const EditInboxModal: React.FC<EditInboxModalProps> = ({
       initialCriteria,
       criteriaLines,
     );
-
-    const dependencyIds = dependencyIdsText
-      .split(/[\n,]/)
-      .map((id) => id.trim())
-      .filter((id) => id.length > 0);
 
     setIsSubmitting(true);
     setError(null);
@@ -254,16 +329,127 @@ export const EditInboxModal: React.FC<EditInboxModalProps> = ({
             {/* Dependencies */}
             <div>
               <label className="block text-[11px] font-semibold text-zinc-400 mb-1 flex items-center justify-between">
-                <span>前置依赖任务 ID (逗号或换行分隔)</span>
+                <span>
+                  前置依赖任务
+                  {dependencyIds.length > 0 && (
+                    <span className="ml-1 text-zinc-500 font-normal">
+                      (已选 {dependencyIds.length})
+                    </span>
+                  )}
+                </span>
                 <Link2 className="w-3.5 h-3.5 text-zinc-500" />
               </label>
-              <input
-                type="text"
-                value={dependencyIdsText}
-                onChange={(e) => setDependencyIdsText(e.target.value)}
-                placeholder="task-001, task-002..."
-                className="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded text-zinc-100 placeholder-zinc-600 focus:outline-hidden focus:border-cyan-500 transition-colors"
-              />
+              <div className="rounded bg-zinc-900 border border-zinc-800 p-2 space-y-2">
+                {dependencyIds.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {dependencyIds.map((dependencyId) => {
+                      const dependencyTask = tasksById.get(dependencyId);
+                      return (
+                        <span
+                          key={dependencyId}
+                          className="inline-flex max-w-full items-center gap-1 rounded border border-zinc-700 bg-zinc-800/80 px-1.5 py-0.5 text-[11px]"
+                          title={dependencyTask ? `${dependencyTask.id} ${dependencyTask.title}` : dependencyId}
+                        >
+                          <span className="font-mono text-cyan-300">
+                            #{shortTaskId(dependencyId)}
+                          </span>
+                          <span className="truncate text-zinc-200 max-w-48">
+                            {dependencyTask?.title ?? "未知任务"}
+                          </span>
+                          <span className="shrink-0 text-zinc-500">
+                            {dependencyTask
+                              ? TASK_STATUS_LABELS[dependencyTask.status]
+                              : "未找到"}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => removeDependencyId(dependencyId)}
+                            aria-label={`移除依赖 ${dependencyTask?.title ?? dependencyId}`}
+                            className="shrink-0 rounded p-0.5 text-zinc-500 hover:text-rose-300 hover:bg-zinc-700/60 transition-colors"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+
+                <div
+                  className="relative"
+                  onBlur={(event) => {
+                    if (
+                      event.relatedTarget instanceof Node &&
+                      event.currentTarget.contains(event.relatedTarget)
+                    ) {
+                      return;
+                    }
+                    setIsDependencyPickerOpen(false);
+                  }}
+                >
+                  <input
+                    ref={dependencyInputRef}
+                    type="text"
+                    role="combobox"
+                    aria-expanded={isDependencyPickerOpen}
+                    aria-controls="dependency-picker-options"
+                    aria-autocomplete="list"
+                    value={dependencyQuery}
+                    onChange={(event) => {
+                      setDependencyQuery(event.target.value);
+                      setIsDependencyPickerOpen(true);
+                    }}
+                    onFocus={() => setIsDependencyPickerOpen(true)}
+                    onPaste={handleDependencyPaste}
+                    onKeyDown={handleDependencyKeyDown}
+                    placeholder="搜索标题或 8 位短 ID，或粘贴完整任务 ID"
+                    className="w-full px-3 py-2 bg-zinc-950/60 border border-zinc-800 rounded text-zinc-100 placeholder-zinc-600 focus:outline-hidden focus:border-cyan-500 transition-colors"
+                  />
+                  {isDependencyPickerOpen && (
+                    <div
+                      id="dependency-picker-options"
+                      role="listbox"
+                      className="absolute bottom-full left-0 right-0 z-10 mb-1 max-h-56 overflow-y-auto rounded border border-zinc-700 bg-zinc-950 shadow-xl"
+                    >
+                      {dependencyCandidates.length === 0 ? (
+                        <p className="px-3 py-2 text-[11px] text-zinc-500">
+                          {dependencyQuery.trim().length > 0
+                            ? "没有匹配的任务；按回车仍可将输入作为任务 ID 添加。"
+                            : "没有可添加的任务"}
+                        </p>
+                      ) : (
+                        dependencyCandidates.map((candidate) => (
+                          <button
+                            key={candidate.id}
+                            type="button"
+                            role="option"
+                            aria-selected={false}
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => {
+                              addDependencyIds([candidate.id]);
+                              dependencyInputRef.current?.focus();
+                            }}
+                            className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-[11px] hover:bg-zinc-800/80 transition-colors"
+                          >
+                            <span className="shrink-0 font-mono text-cyan-300">
+                              #{shortTaskId(candidate.id)}
+                            </span>
+                            <span className="min-w-0 flex-1 truncate text-zinc-200">
+                              {candidate.title}
+                            </span>
+                            <span className="shrink-0 text-zinc-500">
+                              {TASK_STATUS_LABELS[candidate.status]}
+                            </span>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <p className="mt-1 text-[10px] text-zinc-500 leading-relaxed">
+                点击列表项添加依赖；也可粘贴逗号或换行分隔的任务 ID。保存时仍由服务端校验。
+              </p>
             </div>
 
             {/* Risk Level */}
