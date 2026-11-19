@@ -27,7 +27,8 @@ export const BriefingModal: React.FC<BriefingModalProps> = ({
     enabled: isOpen && !!task?.id,
   });
 
-  useEscapeToClose(isOpen, onClose);
+  // 50 must match the z-50 of the overlay root rendered below.
+  useEscapeToClose(isOpen, onClose, 50);
 
   if (!isOpen || !task) return null;
 

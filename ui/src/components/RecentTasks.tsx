@@ -76,8 +76,8 @@ export const RecentTasks: React.FC<RecentTasksProps> = ({
     };
   }, [isOpen]);
 
-  // Close on Escape key
-  useEscapeToClose(isMounted, onClose);
+  // Close on Escape key; 40 must match the z-40 of the overlay root rendered below.
+  useEscapeToClose(isMounted, onClose, 40);
 
   // Lock body scroll while drawer is open
   useEffect(() => {

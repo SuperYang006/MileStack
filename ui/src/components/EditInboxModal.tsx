@@ -115,7 +115,8 @@ export const EditInboxModal: React.FC<EditInboxModalProps> = ({
     if (criteriaRef.current) resizeLongTextArea(criteriaRef.current);
   }, [isOpen, objective, criteriaText]);
 
-  useEscapeToClose(isOpen, onClose);
+  // 50 must match the z-50 of the overlay root rendered below.
+  useEscapeToClose(isOpen, onClose, 50);
 
   if (!isOpen || !task) return null;
 

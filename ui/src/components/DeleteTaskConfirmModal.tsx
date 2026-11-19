@@ -62,8 +62,9 @@ export const DeleteTaskConfirmModal: React.FC<DeleteTaskConfirmModalProps> = ({
     }, CLOSE_ANIMATION_MS);
   };
 
-  // Capture phase so Escape closes this confirmation before any lower overlay.
-  useEscapeToClose(isOpen, requestClose);
+  // Capture phase so Escape closes this confirmation before any lower overlay;
+  // 70 must match the z-[70] of the overlay root rendered below.
+  useEscapeToClose(isOpen, requestClose, 70);
 
   if (!isOpen) return null;
 

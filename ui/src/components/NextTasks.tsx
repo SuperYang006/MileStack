@@ -145,7 +145,7 @@ export const NextTasks: React.FC<NextTasksProps> = ({
                 >
                   {/* Reorder and Index */}
                   <div className="flex items-center space-x-2 shrink-0 pt-0.5 lg:col-start-1 lg:row-start-1">
-                    <div className="flex flex-col opacity-20 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                    <div className="flex flex-col opacity-20 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
                       <button
                         onClick={() => onReorder(task.id, "up")}
                         disabled={isFirst}

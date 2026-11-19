@@ -160,7 +160,8 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
     return () => clearInterval(interval);
   }, [isRunning]);
 
-  useEscapeToClose(isOpen, onClose);
+  // 50 must match the z-50 of the overlay root rendered below.
+  useEscapeToClose(isOpen, onClose, 50);
 
   const latestClaim = details
     ? [...details.events].reverse().find((event) => event.type === "started")

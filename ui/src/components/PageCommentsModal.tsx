@@ -37,7 +37,8 @@ export const PageCommentsModal: React.FC<PageCommentsModalProps> = ({
     setCopyFailed(false);
   }, [isOpen]);
 
-  useEscapeToClose(isOpen, onClose);
+  // 60 must match the z-[60] of the overlay root rendered below.
+  useEscapeToClose(isOpen, onClose, 60);
 
   useEffect(() => {
     if (!copied) return;

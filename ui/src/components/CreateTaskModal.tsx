@@ -26,7 +26,8 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
   const [batchText, setBatchText] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  useEscapeToClose(isOpen, onClose);
+  // 50 must match the z-50 of the overlay root rendered below.
+  useEscapeToClose(isOpen, onClose, 50);
 
   if (!isOpen) return null;
 

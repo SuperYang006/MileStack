@@ -108,7 +108,8 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({
     }
   }, [isOpen, initialValue]);
 
-  useEscapeToClose(isOpen, onClose);
+  // 60 must match the z-[60] of the overlay root rendered below.
+  useEscapeToClose(isOpen, onClose, 60);
 
   if (!isOpen) return null;
 
