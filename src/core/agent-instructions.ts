@@ -8,6 +8,10 @@ const taskClaimValidationRule =
   "start_task is the final atomic claim boundary: the server validates task status, developer-confirmed risk, completed dependencies, and concurrent claims. Do not expect get_task to expose runnable.";
 const taskCreationReadinessRule =
   "Before creating a task, confirm you can state what the developer will observe when it is done, what is explicitly out of scope, and how to verify it. If unclear requirements prevent any of these, ask the developer instead of filling them in. Ask a small batch of targeted questions at once and give each a recommended default answer; do not re-ask what is already clear or can be discovered from code or documentation. If an answer is unavailable, record the unconfirmed point as an explicitly labeled assumption in the objective or acceptance criteria for inbox review instead of silently treating it as agreed.";
+const proposedTaskRule =
+  "When implementation or review finds work outside the current task, do not call create_task or create_tasks yourself. List it as a proposed new task with a title and a one-sentence reason: an implementation agent records it in the progress handoff or submission summary, a review agent records it in the review conclusion summary, and both list it in the final reply to the developer. Create the task only after the developer confirms it in the conversation. When the developer explicitly asks you to create tasks, for example during planning or after confirming page comments, create them as usual; the task-creation readiness check still applies.";
+const scopeExpansionRule =
+  "Do not expand scope silently. Put related work into the active task only when it fits the objective and acceptance criteria; otherwise propose it as a new task instead of creating it yourself.";
 const taskCreationRule = `${taskCreationReadinessRule} Create inbox tasks only for independently verifiable outcomes. State a verifiable objective and acceptance criteria that each describe one independently checkable result as scenario, expected result, and verification. Scale the number of criteria to the task's size and risk, and do not add separate criteria for generic regression checks already required by the root AGENTS.md or review. Preserve developer-confirmed examples and UI hierarchy, ordering, and state behavior as acceptance constraints. Include same-project dependencyIds and explain each dependency in the objective or acceptance criteria. State file or module ownership and exclusions only for planned parallel work, and do not copy the general workflow, review, risk, or Git rules into each task.`;
 const pageCommentsRule =
   "When the developer pastes page comments, organize them first and ask the developer to confirm decision points, each with a recommended answer, before creating tasks or editing code.";
@@ -63,7 +67,7 @@ export function formatProjectAgentInstructions(version: string): string {
     "## Create well-scoped tasks",
     "",
     `- ${taskCreationReadinessRule}`,
-    "- Record newly discovered independent work with create_task or create_tasks. Agent-created tasks enter inbox for developer review and prioritization.",
+    `- ${proposedTaskRule}`,
     "- Every task must state a verifiable objective, complete acceptance criteria, and same-project dependencyIds.",
     "- Put the task-specific execution boundary in the objective or acceptance criteria: required verification commands and expected results, and the delivery form such as a local commit or review artifact. For planned parallel work, also define non-overlapping file or module ownership and explicitly excluded areas. Do not copy the general workflow, review, risk, or Git rules from this file into every task.",
     "",
@@ -112,7 +116,7 @@ export function formatProjectAgentInstructions(version: string): string {
     "- If start_task fails, do not begin implementation. Report the returned state, dependency, risk, or ownership error and wait for the required action.",
     "- Use the current runId for update_task and submit_for_review. Never reuse a credential after submission, requested changes, or reopen.",
     "- Record meaningful milestones and handoffs, not every command, tool call, or individual file edit.",
-    "- Do not expand scope silently. Put related work into the active task only when it fits the objective and acceptance criteria; otherwise create an inbox task.",
+    `- ${scopeExpansionRule}`,
     "- To correct an inbox task definition, call get_task for the latest updatedAt, then call edit_inbox_task with the complete definition and that updatedAt as expectedUpdatedAt. The edit is rejected if the task changed since it was read. This tool cannot change risk level or risk confirmation and cannot edit ready or later tasks; use update_task for run-scoped progress instead.",
     "- actorLabel is optional. Use agent when no model label is available. Labels are audit metadata only and do not establish identity, authority, or reviewer independence.",
     "",
@@ -179,7 +183,7 @@ export function formatMcpInstructions(): string {
   return [
     `Local instructions file: ${missingInstructionsFileRule}`,
     `Page comments: ${pageCommentsRule}`,
-    `Task creation: ${taskCreationRule} Record newly discovered independent work with create_task or create_tasks; agent-created work enters inbox for developer review and prioritization.`,
+    `Task creation: ${taskCreationRule} ${proposedTaskRule}`,
     `Inbox edits: ${inboxEditRule}`,
     `Task discovery: ${taskDiscoveryRule}`,
     `Known task: ${knownTaskRule}`,

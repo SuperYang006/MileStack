@@ -182,6 +182,29 @@ describe("CLI entry point", () => {
     expect(generatedInstructions).toContain("create_task");
     expect(generatedInstructions).toContain("create_tasks");
     expect(generatedInstructions).toContain(
+      "do not call create_task or create_tasks yourself",
+    );
+    expect(generatedInstructions).toContain(
+      "List it as a proposed new task with a title and a one-sentence reason",
+    );
+    expect(generatedInstructions).toContain(
+      "an implementation agent records it in the progress handoff or submission summary",
+    );
+    expect(generatedInstructions).toContain(
+      "a review agent records it in the review conclusion summary",
+    );
+    expect(generatedInstructions).toContain("list it in the final reply to the developer");
+    expect(generatedInstructions).toContain(
+      "Create the task only after the developer confirms it in the conversation",
+    );
+    expect(generatedInstructions).toContain(
+      "When the developer explicitly asks you to create tasks",
+    );
+    expect(generatedInstructions).not.toContain(
+      "Record newly discovered independent work",
+    );
+    expect(generatedInstructions).not.toContain("otherwise create an inbox task");
+    expect(generatedInstructions).toContain(
       "Before creating a task, confirm you can state what the developer will observe when it is done, what is explicitly out of scope, and how to verify it.",
     );
     expect(
@@ -563,6 +586,17 @@ describe("CLI entry point", () => {
     expect(mcpInstructions).toContain("ask the developer instead of filling them in");
     expect(mcpInstructions).toContain("give each a recommended default answer");
     expect(mcpInstructions).toContain("explicitly labeled assumption");
+    expect(mcpInstructions).toContain(
+      "do not call create_task or create_tasks yourself",
+    );
+    expect(mcpInstructions).toContain(
+      "List it as a proposed new task with a title and a one-sentence reason",
+    );
+    expect(mcpInstructions).toContain(
+      "a review agent records it in the review conclusion summary",
+    );
+    expect(mcpInstructions).not.toContain("Record newly discovered independent work");
+    expect(mcpInstructions).not.toContain("otherwise create an inbox task");
     expect(mcpInstructions).toContain("Inbox edits:");
     expect(mcpInstructions).toContain("edit_inbox_task");
     expect(mcpInstructions).toContain("pass the returned updatedAt as expectedUpdatedAt");

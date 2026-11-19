@@ -148,6 +148,18 @@ describe("MCP task tools", () => {
     );
     expect(instructions).toContain("call get_agent_instructions");
     expect(instructions).toContain("Task creation:");
+    expect(instructions).toContain(
+      "do not call create_task or create_tasks yourself",
+    );
+    expect(instructions).toContain(
+      "List it as a proposed new task with a title and a one-sentence reason",
+    );
+    expect(instructions).toContain(
+      "a review agent records it in the review conclusion summary",
+    );
+    expect(instructions).toContain("list it in the final reply to the developer");
+    expect(instructions).not.toContain("Record newly discovered independent work");
+    expect(instructions).not.toContain("otherwise create an inbox task");
     expect(instructions).toContain("Page comments:");
     expect(instructions).toContain(
       "When the developer pastes page comments, organize them first",
