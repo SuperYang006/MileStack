@@ -181,25 +181,16 @@ const ReviewTaskItem: React.FC<{
 
           {/* Action Buttons */}
           <div className="flex flex-wrap items-center gap-1.5 ml-auto">
-            <button
-              onClick={() => {
-                if (!needsDeveloperApproval) {
-                  alert("当前 AI 审核尚未通过，仅通过后可由开发者执行最终批准。");
-                  return;
-                }
-                onApprove(task.id);
-              }}
-              disabled={!needsDeveloperApproval}
-              className={`inline-flex items-center space-x-1 px-2.5 py-1 text-[11px] rounded border transition-colors ${
-                needsDeveloperApproval
-                  ? "text-emerald-300 hover:text-emerald-200 bg-emerald-950/60 hover:bg-emerald-900/80 border-emerald-700/80 cursor-pointer shadow-xs font-bold"
-                  : "text-zinc-600 bg-zinc-900/40 border-zinc-800 cursor-not-allowed opacity-50"
-              }`}
-              title={needsDeveloperApproval ? "记录开发者批准并继续检查本地集成" : "当前无需开发者批准"}
-            >
-              <Check className="w-3 h-3" />
-              <span>批准</span>
-            </button>
+            {needsDeveloperApproval && (
+              <button
+                onClick={() => onApprove(task.id)}
+                className="inline-flex items-center space-x-1 px-2.5 py-1 text-[11px] text-emerald-300 hover:text-emerald-200 bg-emerald-950/60 hover:bg-emerald-900/80 border border-emerald-700/80 rounded transition-colors cursor-pointer shadow-xs font-bold"
+                title="记录开发者批准并继续检查本地集成"
+              >
+                <Check className="w-3 h-3" />
+                <span>批准</span>
+              </button>
+            )}
 
             {canCheckIntegration && digest && (
               <button
