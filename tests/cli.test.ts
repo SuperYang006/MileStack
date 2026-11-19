@@ -317,11 +317,36 @@ describe("CLI entry point", () => {
     expect(generatedInstructions).not.toContain(
       "确认任务状态为 ready 且 runnable=true 后调用 start_task",
     );
+    expect(generatedInstructions).toContain("## Default branch and worktree");
     expect(generatedInstructions).toContain(
+      "Implement every claimed task in its own Git worktree by default",
+    );
+    expect(generatedInstructions).toContain(
+      "create a local branch named task/<short task ID>-<short description> together with a linked Git worktree, based on the local latest commit of the task's integration target branch, or of the main checkout's current branch when the task does not require integration",
+    );
+    expect(generatedInstructions).toContain(
+      "Work directly in the current checkout instead of creating a branch and worktree only when the developer explicitly asks for it, or when the project is not a Git repository.",
+    );
+    expect(generatedInstructions).not.toContain(
       "Give every concurrently executing task its own local branch and worktree",
     );
     expect(generatedInstructions).toContain(
-      "Never run two writing agents in the same working tree",
+      "Rework after requested changes: do not create a new branch. Return to the branch and worktree recorded by the previous round's submission and append commits there",
+    );
+    expect(generatedInstructions).toContain(
+      "the get_task working view exposes them as latestSubmission.review.branch and latestSubmission.review.worktree",
+    );
+    expect(generatedInstructions).toContain(
+      "When that worktree no longer exists, recreate a worktree for the same branch",
+    );
+    expect(generatedInstructions).toContain(
+      "pnpm install --frozen-lockfile --offline, falling back to pnpm install --frozen-lockfile --prefer-offline, or npm ci --prefer-offline for npm projects",
+    );
+    expect(generatedInstructions).toContain(
+      "Go online only when the lockfile needs packages the local cache does not have",
+    );
+    expect(generatedInstructions).toContain(
+      "never run two writing agents in the same working tree",
     );
     expect(generatedInstructions).toContain("submit_for_review");
     expect(generatedInstructions).toContain("start_review");
