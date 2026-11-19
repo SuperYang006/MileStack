@@ -1569,6 +1569,7 @@ describe("TaskService", () => {
       runId: run1.runId,
       commitSha: "1111111111111111111111111111111111111111",
       branch: "main",
+      worktree: "/tmp/review-round-1",
       summary: "First implementation ready for review.",
       completedWork: ["Added working response fields", "Completed round 1."],
       criteriaResults: [
@@ -1592,6 +1593,8 @@ describe("TaskService", () => {
       review: {
         reviewRound: 1,
         commitSha: "1111111111111111111111111111111111111111",
+        branch: "main",
+        worktree: "/tmp/review-round-1",
         status: "pending",
       },
     });
@@ -1664,6 +1667,9 @@ describe("TaskService", () => {
     });
     expect(returnedWorking.latestSubmission?.review).toMatchObject({
       reviewRound: 1,
+      commitSha: "1111111111111111111111111111111111111111",
+      branch: "main",
+      worktree: "/tmp/review-round-1",
       status: "changes_requested",
       findings: [{ issue: "Defect found", suggestion: "Fix defect", severity: "high" }],
     });
