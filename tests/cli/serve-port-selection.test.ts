@@ -84,6 +84,45 @@ async function isListening(port: number): Promise<boolean> {
   });
 }
 
+// Holds a port that the OS picked as free and never releases it mid-test: the
+// listen(0) socket serves the responder directly, so no concurrent allocator
+// can take the port between a probe and a bind. Ports within 10 of the top of
+// the port space are re-drawn so a test range above the hold still fits.
+async function holdEphemeralPort(responder: Responder): Promise<number> {
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    const server = http.createServer(responder);
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const { port } = server.address() as net.AddressInfo;
+    if (port <= 65525) {
+      closers.push(async () => {
+        server.closeAllConnections();
+        await new Promise((resolve) => server.close(resolve));
+      });
+      return port;
+    }
+    await new Promise((resolve) => server.close(resolve));
+  }
+  throw new Error("could not hold an ephemeral port with room for a range above it");
+}
+
+// Takes an exact port for our own use, waiting out short-lived occupants. A
+// persistent listener never yields within the budget, which is fine: the
+// ascending scan skips it all the same. The answer only tells the caller who
+// will be holding the port when the scan runs; either way it stays occupied.
+async function holdExactPort(port: number, responder: Responder): Promise<void> {
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    try {
+      await occupy(port, responder);
+      return;
+    } catch (error) {
+      if (!(error instanceof Error && (error as NodeJS.ErrnoException).code === "EADDRINUSE")) {
+        throw error;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+  }
+}
+
 type ServeRun = {
   exitCode: number;
   stdout: string;
@@ -161,49 +200,97 @@ describe("milestack serve port selection", () => {
   });
 
   it("moves past ports held by other programs and by another project's serve, and says so", async () => {
-    const base = await freeBasePort();
-    const range = { first: base, last: base + 5 };
+    // `base` is held by our own socket with no probe-to-bind gap, so no other
+    // process on this machine can take it. The other project's serve then
+    // takes the first bindable port above it: every port it could not take
+    // stays occupied, so the ascending scan reaches the held serve before any
+    // free port and skips both occupant types.
+    const base = await holdEphemeralPort(unrelatedProgram);
     const other = createProject();
-    const otherServe = await startHttpServer({
-      projectRoot: other.projectRoot,
-      staticDir: other.staticDir,
-      port: range,
-    });
-    closers.push(() => otherServe.app.close());
-    expect(otherServe.url).toBe(`http://127.0.0.1:${base}`);
-    await occupy(base + 1, unrelatedProgram);
+    const lastPort = base + 10;
+    type OtherServe = Awaited<ReturnType<typeof startHttpServer>>;
+    let otherServe: OtherServe | null = null;
+    let otherPort = 0;
+    for (let port = base + 1; port <= lastPort; port += 1) {
+      if (await isListening(port)) {
+        // The squatter may be short-lived and free the port before the scan,
+        // which would let the scan land below the real serve. Hold it
+        // ourselves, or confirm its occupant is persistent; either way the
+        // scan will skip this port.
+        await holdExactPort(port, unrelatedProgram);
+        continue;
+      }
+      try {
+        otherServe = await startHttpServer({
+          projectRoot: other.projectRoot,
+          staticDir: other.staticDir,
+          port,
+        });
+        otherPort = port;
+        break;
+      } catch (error) {
+        // Lost a race with an allocator that appeared during startup; hold
+        // the port so the skipped prefix stays stable, then try the next one.
+        // A failed explicit-port start leaks its project context, so this
+        // loop normally stops at the first bindable port: base + 1.
+        if (!(error instanceof Error && (error as NodeJS.ErrnoException).code === "EADDRINUSE")) {
+          throw error;
+        }
+        await holdExactPort(port, unrelatedProgram);
+      }
+    }
+    if (otherServe === null) {
+      throw new Error(`could not place the other project's serve above ${base}`);
+    }
+    const heldServe = otherServe;
+    closers.push(() => heldServe.app.close());
     const project = createProject();
 
-    const run = await serveInRange(project, range);
+    const run = await serveInRange(project, { first: base, last: lastPort });
 
     expect(run.exitCode).toBe(0);
-    expect(run.server?.url).toBe(`http://127.0.0.1:${base + 2}`);
+    // Unrelated processes may take further ports at any moment, so the exact
+    // landing port is not asserted. The scan is ascending, so landing above
+    // the held serve still proves that the other program and the other
+    // project's serve were both skipped, and the notice must name the actual
+    // landing port.
+    const servedUrl = run.server?.url ?? "";
+    expect(servedUrl).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
+    const servedPort = Number(new URL(servedUrl).port);
+    expect(servedPort).toBeGreaterThan(otherPort);
     const lines = run.stdout.trim().split("\n");
-    expect(lines).toEqual([
-      `端口 ${base}、${base + 1} 已被占用，改用 ${base + 2}。`,
-      `MileStack HTTP service running at http://127.0.0.1:${base + 2}`,
-    ]);
+    expect(lines[0]).toMatch(new RegExp(`^端口 ${base}(?:、\\d+)*、${otherPort}(?:、\\d+)* 已被占用，改用 ${servedPort}。$`));
+    expect(lines[1]).toBe(`MileStack HTTP service running at http://127.0.0.1:${servedPort}`);
     expect(run.health).toMatchObject({ status: "ok" });
-  });
+  }, 15_000); // real servers and SQLite inits on a machine shared with other agents
 
   it("keeps the generated-file refresh and the version check working on a fallback port", async () => {
-    const base = await freeBasePort();
-    await occupy(base, unrelatedProgram);
+    const base = await holdEphemeralPort(unrelatedProgram);
     const project = createProject();
     mkdirSync(path.dirname(project.instructionsPath), { recursive: true });
     writeFileSync(project.instructionsPath, formatProjectAgentInstructions("0.2.2"));
 
-    const run = await serveInRange(project, { first: base, last: base + 3 }, {
+    const run = await serveInRange(project, { first: base, last: base + 9 }, {
       currentVersion: "0.2.3",
       latestVersion: "9.9.9",
     });
 
-    expect(run.server?.url).toBe(`http://127.0.0.1:${base + 1}`);
+    // Unrelated processes may take ports next to the controlled occupant at
+    // any moment, so the exact landing port is not asserted. The scan is
+    // ascending, so landing above `base` still proves the real fallback
+    // happened, on whatever port this machine left free.
+    const servedUrl = run.server?.url ?? "";
+    expect(servedUrl).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
+    const servedPort = Number(new URL(servedUrl).port);
+    expect(servedPort).toBeGreaterThan(base);
+    const lines = run.stdout.trim().split("\n");
+    expect(lines[0]).toMatch(new RegExp(`^端口 ${base}(?:、\\d+)* 已被占用，改用 ${servedPort}。$`));
+    expect(lines[1]).toBe(`MileStack HTTP service running at http://127.0.0.1:${servedPort}`);
     expect(readFileSync(project.instructionsPath, "utf8")).toBe(formatProjectAgentInstructions("0.2.3"));
     expect(run.stdout).toContain("从 0.2.2 刷新到 0.2.3");
     expect(run.stdout).toContain("MileStack 0.2.3 → 9.9.9 可用；");
     expect(run.health?.update?.latestVersion).toBe("9.9.9");
-  });
+  }, 15_000); // real servers and SQLite inits on a machine shared with other agents
 
   it("does not wait on a silent or unrelated occupant before trying the next port", async () => {
     const base = await freeBasePort();
