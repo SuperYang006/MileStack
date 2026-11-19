@@ -9,7 +9,6 @@ import {
   Zap,
   Play,
   Clock,
-  CheckCircle2,
   ListOrdered,
 } from "lucide-react";
 import type { TaskSummary } from "../types";
@@ -180,62 +179,39 @@ export const NextTasks: React.FC<NextTasksProps> = ({
                       className="w-28 lg:col-start-2 lg:row-start-1 lg:w-full"
                     />
                     <div className="min-w-0 flex-1 lg:col-start-3 lg:row-start-1">
-                      <div className="flex items-start space-x-2 min-w-0">
-                        {/* Status indicator dot */}
-                        <span
-                          className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                            isRunnable
-                              ? "bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.7)]"
-                              : "bg-amber-400/80"
-                          }`}
-                          title={isRunnable ? "可直接执行" : "等待前置依赖"}
-                        />
+                      <h3 className="min-w-0 text-xs font-mono font-medium text-zinc-200 line-clamp-2 break-words group-hover:text-indigo-300 transition-colors">
+                        {task.title}
+                      </h3>
 
-                        <h3 className="min-w-0 flex-1 text-xs font-mono font-medium text-zinc-200 line-clamp-2 break-words group-hover:text-indigo-300 transition-colors">
-                          {task.title}
-                        </h3>
-                      </div>
-
-                      <div className="mt-1 flex items-center flex-wrap gap-1.5">
-                        {/* 可并行 / 可领取徽标 */}
-                        {isRunnable && (
+                      {/* 可执行状态只占一行：可并行/可领取并附已完成依赖数，否则列出等待中的依赖 */}
+                      <div className="mt-1 flex items-center flex-wrap gap-1.5 text-[10px] font-mono">
+                        {isRunnable ? (
                           <span
-                            className={`inline-flex items-center space-x-0.5 px-1.5 py-px rounded text-[10px] font-mono shrink-0 ${
+                            className={`inline-flex items-center space-x-1 px-1.5 py-px rounded shrink-0 ${
                               isParallelizable
                                 ? "bg-emerald-950/80 border border-emerald-700/60 text-emerald-300"
                                 : "bg-cyan-950/80 border border-cyan-700/60 text-cyan-300"
                             }`}
                           >
                             {isParallelizable ? (
-                              <>
-                                <Zap className="w-2.5 h-2.5 text-emerald-400" />
-                                <span>可并行</span>
-                              </>
+                              <Zap className="w-2.5 h-2.5 text-emerald-400" />
                             ) : (
-                              <>
-                                <Play className="w-2.5 h-2.5 text-cyan-400" />
-                                <span>可领取</span>
-                              </>
+                              <Play className="w-2.5 h-2.5 text-cyan-400" />
+                            )}
+                            <span className="font-bold">{isParallelizable ? "可并行" : "可领取"}</span>
+                            {detail.dependencies.length > 0 && (
+                              <span className={isParallelizable ? "text-emerald-400/70" : "text-cyan-400/70"}>
+                                · 前置依赖已完成 ({detail.dependencies.length})
+                              </span>
                             )}
                           </span>
-                        )}
-                      </div>
-
-                      {/* 直接依赖展示 */}
-                      {detail.dependencies.length > 0 && (
-                        <div className="mt-1.5 flex items-center flex-wrap gap-1.5 text-[10px] font-mono">
-                          {isRunnable ? (
-                            <span className="inline-flex items-center space-x-1 text-emerald-400/90">
-                              <CheckCircle2 className="w-2.5 h-2.5 text-emerald-400" />
-                              <span>前置依赖已全部完成 ({detail.dependencies.length})</span>
+                        ) : (
+                          <>
+                            <span className="text-amber-400/90 inline-flex items-center space-x-1 shrink-0">
+                              <Clock className="w-2.5 h-2.5 text-amber-400" />
+                              <span>等待前置 ({detail.waitingFor.length}):</span>
                             </span>
-                          ) : (
-                            <>
-                              <span className="text-amber-400/90 inline-flex items-center space-x-1 shrink-0">
-                                <span className="w-1.5 h-1.5 rounded-full bg-amber-400/90 animate-pulse" />
-                                <span>等待前置 ({detail.waitingFor.length}):</span>
-                              </span>
-                              {visibleDeps.map((dep: DependencyItem) => (
+                            {visibleDeps.map((dep: DependencyItem) => (
                                 <button
                                   key={dep.id}
                                   type="button"
@@ -270,10 +246,9 @@ export const NextTasks: React.FC<NextTasksProps> = ({
                                   {isDepsExpanded ? "收起" : `等共 ${detail.dependencies.length} 项`}
                                 </button>
                               )}
-                            </>
-                          )}
-                        </div>
-                      )}
+                          </>
+                        )}
+                      </div>
                     </div>
                   </div>
 
