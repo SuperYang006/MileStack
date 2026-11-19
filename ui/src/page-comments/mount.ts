@@ -48,7 +48,7 @@ export function mountPageComments(): PageCommentsHandle {
     .hl-label{position:absolute;left:-2px;top:-22px;background:#2563eb;color:#fff;font-size:11px;line-height:16px;padding:2px 6px;border-radius:4px;white-space:nowrap;max-width:360px;overflow:hidden;text-overflow:ellipsis}
     .badge{position:fixed;width:22px;height:22px;margin:-11px 0 0 -11px;border-radius:50%;background:#dc2626;color:#fff;font-size:12px;font-weight:600;display:flex;align-items:center;justify-content:center;pointer-events:auto;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.3);border:2px solid #fff}
     .mark{position:fixed;border:2px dashed #d97706;background:rgba(217,119,6,.1);border-radius:4px;color:#b45309;font-size:11px;font-weight:600;display:flex;align-items:center;justify-content:center;pointer-events:auto;cursor:pointer;min-width:26px;min-height:20px}
-    .pop{position:fixed;width:320px;max-width:calc(100vw - 16px);background:#fff;border-radius:10px;box-shadow:0 8px 28px rgba(15,23,42,.25);padding:12px;pointer-events:auto;color:#0f172a;font-size:13px}
+    .pop{position:fixed;z-index:1;width:320px;max-width:calc(100vw - 16px);background:#fff;border-radius:10px;box-shadow:0 8px 28px rgba(15,23,42,.25);padding:12px;pointer-events:auto;color:#0f172a;font-size:13px}
     .pop-head{display:flex;align-items:center;gap:6px;margin-bottom:8px}
     .pop-target{flex:1;min-width:0;color:#64748b;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     button.locate{flex:none;height:22px;padding:0 6px;font-size:11px}
@@ -70,6 +70,7 @@ export function mountPageComments(): PageCommentsHandle {
     .num{flex:none;width:20px;height:20px;border-radius:50%;background:#dc2626;color:#fff;font-weight:600;display:flex;align-items:center;justify-content:center;font-size:11px}
     .item-body{flex:1;min-width:0}
     .item-body.clickable{cursor:pointer}
+    .item-body.clickable:hover .text{color:#2563eb}
     .meta{color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .item-warn{color:#b45309;margin-top:4px}
     .empty{padding:12px;color:#64748b;text-align:center}
@@ -304,7 +305,8 @@ export function mountPageComments(): PageCommentsHandle {
     }
     const route = currentRoute();
     comments.forEach((comment, index) => {
-      const changed = comment.route === route && (placements.get(comment.id) ?? null) === null;
+      const onRoute = comment.route === route;
+      const changed = onRoute && (placements.get(comment.id) ?? null) === null;
       const item = document.createElement("div");
       item.className = "item";
 
@@ -313,7 +315,7 @@ export function mountPageComments(): PageCommentsHandle {
       number.textContent = String(index + 1);
 
       const body = document.createElement("div");
-      body.className = `item-body${changed ? " clickable" : ""}`;
+      body.className = `item-body${onRoute ? " clickable" : ""}`;
       const meta = document.createElement("div");
       meta.className = "meta";
       meta.textContent = `${comment.route} · ${comment.target.description}`;
@@ -326,7 +328,10 @@ export function mountPageComments(): PageCommentsHandle {
         warning.className = "item-warn";
         warning.textContent = "原元素已变化，点击可修改或重新指定";
         body.appendChild(warning);
-        body.addEventListener("click", () => openEditor(index));
+      }
+      if (onRoute) {
+        body.title = "点击定位到该元素";
+        body.addEventListener("click", () => locateComment(index));
       }
 
       const remove = document.createElement("button");
@@ -467,6 +472,20 @@ export function mountPageComments(): PageCommentsHandle {
       rect: () => elementRect(element),
       reveal: () => element.scrollIntoView({ block: "center", behavior: "smooth" }),
     });
+  }
+
+  // Opens the comment's editor and scrolls its element into view unless it is
+  // already fully visible; the editor follows the element while it scrolls.
+  function locateComment(index: number): void {
+    openEditor(index);
+    if (!editorTarget) return;
+    const rect = editorTarget.rect();
+    const fullyVisible =
+      rect.top >= 0 &&
+      rect.left >= 0 &&
+      rect.top + rect.height <= window.innerHeight &&
+      rect.left + rect.width <= window.innerWidth;
+    if (!fullyVisible) editorTarget.reveal();
   }
 
   function closeEditor(): void {
