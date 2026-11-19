@@ -71,10 +71,12 @@ function createEmptyProjectStatus(project: ProjectSummary): ProjectStatus {
 }
 
 /** Wide screens keep the dashboard in one viewport: inside each queue column,
- *  populated queues split the remaining height while empty queues hold a single
- *  status row. */
+ *  populated queues take their content height and only compress — then scroll
+ *  internally, in proportion to their content — when the column together
+ *  overflows, while empty queues hold a single status row. Leftover space stays
+ *  below the column, never inside a panel. */
 function queueSlotClass(taskCount: number): string {
-  return taskCount > 0 ? "lg:min-h-0 lg:flex-1" : "lg:shrink-0";
+  return taskCount > 0 ? "lg:min-h-0" : "lg:shrink-0";
 }
 
 function useDocumentVisible(): boolean {
@@ -477,7 +479,8 @@ export const DashboardPage: React.FC = () => {
         {/* Four active queue regions keep their 2x2 positions on wide screens:
             left column 已就绪 + 待审核, right column 正在进行 + 草稿箱. Each column
             is a flex stack — an empty queue holds a single status row and
-            populated queues split the remaining column height. Below lg the
+            populated queues take their content height, compressing with
+            internal scroll only when the column together overflows. Below lg the
             column wrappers flatten to display:contents and the order utilities
             restore the original natural stack order. */}
         <div className="flex flex-col gap-6 lg:min-h-0 lg:flex-1 lg:flex-row lg:gap-3">
