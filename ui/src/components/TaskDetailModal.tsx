@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
-import { X, GitCommit, CheckCircle2, Clock, Timer, Edit3, GitFork, ArrowRight, Zap, ShieldAlert, ShieldCheck, Terminal, Bot, Check, MessageSquare, GitBranch, RefreshCw } from "lucide-react";
+import { X, GitCommit, CheckCircle2, Clock, Timer, Edit3, GitFork, ArrowRight, Zap, ShieldAlert, ShieldCheck, Terminal, Bot, Check, MessageSquare, GitBranch, RefreshCw, ChevronDown, ChevronRight } from "lucide-react";
 import { EmptyState } from "./EmptyState";
-import type { FindingClosureInput, TaskDetails, TaskEvent, TaskSummary } from "../types";
+import type { FindingClosureInput, TaskDetails, TaskEvent, TaskReview, TaskSummary } from "../types";
 import { TaskIdBadge } from "./CopyTaskIdButton";
 import { FeedbackModal, useFeedbackDialog } from "./FeedbackModal";
 import { buildDownstreamMap } from "../utils/dependencyGraph";
@@ -28,6 +28,36 @@ const toneBadgeClass = (tone: DisplayTone): string => {
       return "bg-amber-950 border border-amber-800 text-amber-300";
     default:
       return "bg-zinc-900 border border-zinc-700 text-zinc-300";
+  }
+};
+
+const reviewStatusBadgeClass = (status: TaskReview["status"]): string => {
+  switch (status) {
+    case "passed":
+      return "bg-emerald-950/80 border border-emerald-800 text-emerald-300 font-bold";
+    case "in_progress":
+      return "bg-cyan-950/80 border border-cyan-800 text-cyan-300";
+    case "changes_requested":
+      return "bg-rose-950/80 border border-rose-800 text-rose-300";
+    case "waived":
+      return "bg-violet-950/80 border border-violet-800 text-violet-300 font-bold";
+    default:
+      return "bg-zinc-800 border border-zinc-700 text-zinc-400";
+  }
+};
+
+const reviewStatusLabel = (status: TaskReview["status"]): string => {
+  switch (status) {
+    case "passed":
+      return "审核通过 (PASSED)";
+    case "in_progress":
+      return "审核中 (IN_PROGRESS)";
+    case "changes_requested":
+      return "要求修改 (CHANGES_REQUESTED)";
+    case "waived":
+      return "开发者直接验收 (WAIVED)";
+    default:
+      return "未领取 (PENDING)";
   }
 };
 
@@ -77,7 +107,16 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
   const [integrationRequired, setIntegrationRequired] = useState(true);
   const [integrationTargetBranch, setIntegrationTargetBranch] = useState("main");
   const [integrationNotRequiredReason, setIntegrationNotRequiredReason] = useState("");
+  const [isEditingIntegrationPolicy, setIsEditingIntegrationPolicy] = useState(false);
+  const [expandedReviewIds, setExpandedReviewIds] = useState<Record<string, boolean>>({});
+  const [eventsExpanded, setEventsExpanded] = useState(false);
   const { openFeedbackDialog, feedbackDialogProps } = useFeedbackDialog();
+
+  useEffect(() => {
+    setExpandedReviewIds({});
+    setEventsExpanded(false);
+    setIsEditingIntegrationPolicy(false);
+  }, [details?.task.id]);
 
   useEffect(() => {
     if (!details) return;
@@ -141,6 +180,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
     : [];
 
   const executionRuns = runs.filter((r) => r.kind !== "review");
+  const reviews = details?.reviews ?? [];
 
   const isRunning =
     isOpen &&
@@ -296,66 +336,101 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
               )}
 
               <section className="p-3 rounded bg-zinc-950/60 border border-zinc-800 space-y-2">
-                <div className="flex items-center gap-1.5 text-zinc-200 font-semibold">
-                  <GitBranch className="w-3.5 h-3.5 text-cyan-400" />
-                  <span>本地交付要求</span>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 text-zinc-200 font-semibold">
+                    <GitBranch className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>本地交付要求</span>
+                  </div>
+                  {(details.task.status === "inbox" || details.task.status === "ready") &&
+                    onSetIntegrationPolicy &&
+                    !isEditingIntegrationPolicy && (
+                      <button
+                        type="button"
+                        onClick={() => setIsEditingIntegrationPolicy(true)}
+                        className="inline-flex items-center space-x-1 rounded border border-zinc-700 bg-zinc-900 px-2 py-0.5 text-[11px] text-zinc-300 hover:border-zinc-600 hover:text-zinc-100 transition-colors"
+                      >
+                        <Edit3 className="w-3 h-3" />
+                        <span>修改</span>
+                      </button>
+                    )}
                 </div>
-                {details.task.integrationRequired ? (
+                {!isEditingIntegrationPolicy && (
                   <div className="text-[11px] text-zinc-400">
-                    目标分支：<span className="text-cyan-300">本地 {details.task.integrationTargetBranch}</span>
-                  </div>
-                ) : (
-                  <div className="text-[11px] text-zinc-400">
-                    无需 Git 集成：<span className="text-zinc-200">{details.task.integrationNotRequiredReason}</span>
+                    {details.task.integrationRequired ? (
+                      <>
+                        目标分支：<span className="text-cyan-300">本地 {details.task.integrationTargetBranch}</span>
+                      </>
+                    ) : (
+                      <>
+                        无需 Git 集成：<span className="text-zinc-200">{details.task.integrationNotRequiredReason}</span>
+                      </>
+                    )}
                   </div>
                 )}
-                {(details.task.status === "inbox" || details.task.status === "ready") && onSetIntegrationPolicy && (
-                  <form
-                    className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2 pt-1"
-                    onSubmit={(event) => {
-                      event.preventDefault();
-                      onSetIntegrationPolicy(details.task.id, {
-                        integrationRequired,
-                        integrationTargetBranch: integrationTargetBranch.trim() || "main",
-                        integrationNotRequiredReason: integrationRequired ? null : integrationNotRequiredReason.trim(),
-                      });
-                    }}
-                  >
-                    <div className="space-y-2">
-                      <label className="flex items-center gap-2 text-[11px] text-zinc-300">
-                        <input
-                          type="checkbox"
-                          checked={integrationRequired}
-                          onChange={(event) => setIntegrationRequired(event.target.checked)}
-                        />
-                        要求审核提交进入本地目标分支
-                      </label>
-                      <input
-                        value={integrationTargetBranch}
-                        onChange={(event) => setIntegrationTargetBranch(event.target.value)}
-                        aria-label="本地目标分支"
-                        placeholder="main"
-                        className="w-full rounded border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-[11px] text-zinc-200"
-                      />
-                      {!integrationRequired && (
-                        <textarea
-                          value={integrationNotRequiredReason}
-                          onChange={(event) => setIntegrationNotRequiredReason(event.target.value)}
-                          aria-label="无需 Git 集成的原因"
-                          placeholder="说明此任务无需 Git 集成的原因"
-                          className="w-full min-h-14 rounded border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-[11px] text-zinc-200"
-                        />
-                      )}
-                    </div>
-                    <button
-                      type="submit"
-                      disabled={isSavingIntegrationPolicy || (!integrationRequired && !integrationNotRequiredReason.trim())}
-                      className="self-start rounded border border-cyan-800 bg-cyan-950/50 px-2.5 py-1.5 text-[11px] text-cyan-200 disabled:opacity-50"
+                {(details.task.status === "inbox" || details.task.status === "ready") &&
+                  onSetIntegrationPolicy &&
+                  isEditingIntegrationPolicy && (
+                    <form
+                      className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2 pt-1"
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        onSetIntegrationPolicy(details.task.id, {
+                          integrationRequired,
+                          integrationTargetBranch: integrationTargetBranch.trim() || "main",
+                          integrationNotRequiredReason: integrationRequired ? null : integrationNotRequiredReason.trim(),
+                        });
+                        setIsEditingIntegrationPolicy(false);
+                      }}
                     >
-                      {isSavingIntegrationPolicy ? "保存中" : "保存交付要求"}
-                    </button>
-                  </form>
-                )}
+                      <div className="space-y-2">
+                        <label className="flex items-center gap-2 text-[11px] text-zinc-300">
+                          <input
+                            type="checkbox"
+                            checked={integrationRequired}
+                            onChange={(event) => setIntegrationRequired(event.target.checked)}
+                          />
+                          要求审核提交进入本地目标分支
+                        </label>
+                        <input
+                          value={integrationTargetBranch}
+                          onChange={(event) => setIntegrationTargetBranch(event.target.value)}
+                          aria-label="本地目标分支"
+                          placeholder="main"
+                          className="w-full rounded border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-[11px] text-zinc-200"
+                        />
+                        {!integrationRequired && (
+                          <textarea
+                            value={integrationNotRequiredReason}
+                            onChange={(event) => setIntegrationNotRequiredReason(event.target.value)}
+                            aria-label="无需 Git 集成的原因"
+                            placeholder="说明此任务无需 Git 集成的原因"
+                            className="w-full min-h-14 rounded border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-[11px] text-zinc-200"
+                          />
+                        )}
+                      </div>
+                      <div className="flex flex-col gap-2 self-start">
+                        <button
+                          type="submit"
+                          disabled={isSavingIntegrationPolicy || (!integrationRequired && !integrationNotRequiredReason.trim())}
+                          className="rounded border border-cyan-800 bg-cyan-950/50 px-2.5 py-1.5 text-[11px] text-cyan-200 disabled:opacity-50"
+                        >
+                          {isSavingIntegrationPolicy ? "保存中" : "保存交付要求"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIntegrationRequired(details.task.integrationRequired);
+                            setIntegrationTargetBranch(details.task.integrationTargetBranch);
+                            setIntegrationNotRequiredReason(details.task.integrationNotRequiredReason ?? "");
+                            setIsEditingIntegrationPolicy(false);
+                          }}
+                          className="rounded border border-zinc-700 bg-zinc-900 px-2.5 py-1.5 text-[11px] text-zinc-400 hover:text-zinc-200"
+                        >
+                          取消
+                        </button>
+                      </div>
+                    </form>
+                  )}
               </section>
 
               {/* In-Review Decision Controls */}
@@ -735,262 +810,317 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
               <div>
                 <h3 className="text-[11px] font-bold text-zinc-500 uppercase tracking-wider mb-2 flex items-center space-x-1.5">
                   <Bot className="w-3.5 h-3.5 text-violet-400" />
-                  <span>AI 审核记录与证据 ({details.reviews?.length || 0})</span>
+                  <span>AI 审核记录与证据 ({reviews.length})</span>
                 </h3>
 
-                {!details.reviews || details.reviews.length === 0 ? (
+                {reviews.length === 0 ? (
                   <div className="bg-zinc-900/30 p-3 rounded border border-zinc-800 text-zinc-500 text-[11px]">
                     该任务尚未产生 AI 审核会话记录
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {details.reviews.map((rev) => (
-                      <div
-                        key={rev.id}
-                        className="bg-zinc-900/70 border border-zinc-800 rounded p-3 space-y-2.5 font-mono text-xs"
-                      >
-                        {/* Review Header */}
-                        <div className="flex items-center justify-between border-b border-zinc-800/80 pb-2">
-                          <div className="flex items-center space-x-2">
-                            <span className="font-bold text-zinc-200">
-                              第 {rev.reviewRound} 轮审核
-                            </span>
-                            <span
-                              className={`px-1.5 py-px rounded text-[10px] ${
-                                rev.status === "passed"
-                                  ? "bg-emerald-950/80 border border-emerald-800 text-emerald-300 font-bold"
-                                  : rev.status === "in_progress"
-                                  ? "bg-cyan-950/80 border border-cyan-800 text-cyan-300"
-                                  : rev.status === "changes_requested"
-                                  ? "bg-rose-950/80 border border-rose-800 text-rose-300"
-                                  : rev.status === "waived"
-                                  ? "bg-violet-950/80 border border-violet-800 text-violet-300 font-bold"
-                                  : "bg-zinc-800 border border-zinc-700 text-zinc-400"
-                              }`}
-                            >
-                              {rev.status === "passed"
-                                ? "审核通过 (PASSED)"
-                                : rev.status === "in_progress"
-                                ? "审核中 (IN_PROGRESS)"
-                                : rev.status === "changes_requested"
-                                ? "要求修改 (CHANGES_REQUESTED)"
-                                : rev.status === "waived"
-                                ? "开发者直接验收 (WAIVED)"
-                                : "未领取 (PENDING)"}
-                            </span>
-                            {rev.reviewerActorLabel && (
-                              <span className="text-[10px] text-violet-300 bg-violet-950/40 px-1.5 py-px rounded border border-violet-900/50">
-                                审核代理: {rev.reviewerActorLabel}
+                    {reviews.map((rev, index) => {
+                      const isLatestReview = index === reviews.length - 1;
+                      const isCollapsible = reviews.length > 1 && !isLatestReview;
+                      const isExpanded = !isCollapsible || Boolean(expandedReviewIds[rev.id]);
+                      if (isCollapsible && !isExpanded) {
+                        return (
+                          <button
+                            key={rev.id}
+                            type="button"
+                            onClick={() =>
+                              setExpandedReviewIds((prev) => ({ ...prev, [rev.id]: true }))
+                            }
+                            aria-expanded={false}
+                            className="w-full flex items-center justify-between gap-2 bg-zinc-900/50 hover:bg-zinc-900/80 border border-zinc-800 rounded px-3 py-2 text-left font-mono text-xs transition-colors cursor-pointer"
+                          >
+                            <span className="flex items-center space-x-2 min-w-0">
+                              <ChevronRight className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+                              <span className="font-bold text-zinc-300 shrink-0">
+                                第 {rev.reviewRound} 轮审核
                               </span>
+                              <span className={`px-1.5 py-px rounded text-[10px] ${reviewStatusBadgeClass(rev.status)}`}>
+                                {reviewStatusLabel(rev.status)}
+                              </span>
+                              {rev.reviewerActorLabel && (
+                                <span className="text-[10px] text-zinc-500 truncate">
+                                  审核代理: {rev.reviewerActorLabel}
+                                </span>
+                              )}
+                            </span>
+                            <span className="text-[10px] text-zinc-500 shrink-0">
+                              {new Date(rev.createdAt).toLocaleString()}
+                            </span>
+                          </button>
+                        );
+                      }
+                      return (
+                        <div
+                          key={rev.id}
+                          className="bg-zinc-900/70 border border-zinc-800 rounded p-3 space-y-2.5 font-mono text-xs"
+                        >
+                          {/* Review Header */}
+                          <div className="flex items-center justify-between border-b border-zinc-800/80 pb-2">
+                            <div className="flex items-center space-x-2">
+                              <span className="font-bold text-zinc-200">
+                                第 {rev.reviewRound} 轮审核
+                              </span>
+                              <span
+                                className={`px-1.5 py-px rounded text-[10px] ${reviewStatusBadgeClass(rev.status)}`}
+                              >
+                                {reviewStatusLabel(rev.status)}
+                              </span>
+                              {rev.reviewerActorLabel && (
+                                <span className="text-[10px] text-violet-300 bg-violet-950/40 px-1.5 py-px rounded border border-violet-900/50">
+                                  审核代理: {rev.reviewerActorLabel}
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center space-x-2 shrink-0">
+                              <span className="text-[10px] text-zinc-500">
+                                {new Date(rev.createdAt).toLocaleString()}
+                              </span>
+                              {isCollapsible && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setExpandedReviewIds((prev) => ({ ...prev, [rev.id]: false }))
+                                  }
+                                  aria-expanded={true}
+                                  className="inline-flex items-center space-x-1 text-[10px] text-zinc-400 hover:text-zinc-200 cursor-pointer"
+                                >
+                                  <span>收起</span>
+                                  <ChevronDown className="w-3 h-3" />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Git Commit & Worktree Artifact */}
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-[11px] bg-zinc-950/50 p-2 rounded border border-zinc-800">
+                            <div className="flex items-center space-x-1.5 truncate">
+                              <GitCommit className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+                              <span className="text-zinc-500">Commit SHA:</span>
+                              <span className="text-cyan-400 select-all font-mono truncate" title={rev.commitSha}>
+                                {rev.commitSha}
+                              </span>
+                            </div>
+                            {(rev.branch || rev.worktree) && (
+                              <div className="flex items-center space-x-1.5 truncate">
+                                <span className="text-zinc-500">Branch/Worktree:</span>
+                                <span className="text-zinc-300 truncate">
+                                  {rev.branch || rev.worktree}
+                                </span>
+                              </div>
                             )}
                           </div>
-                          <span className="text-[10px] text-zinc-500">
-                            {new Date(rev.createdAt).toLocaleString()}
-                          </span>
-                        </div>
 
-                        {/* Git Commit & Worktree Artifact */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-[11px] bg-zinc-950/50 p-2 rounded border border-zinc-800">
-                          <div className="flex items-center space-x-1.5 truncate">
-                            <GitCommit className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
-                            <span className="text-zinc-500">Commit SHA:</span>
-                            <span className="text-cyan-400 select-all font-mono truncate" title={rev.commitSha}>
-                              {rev.commitSha}
-                            </span>
+                          <div className="text-[11px] bg-zinc-950/40 p-2 rounded border border-zinc-800 space-y-1">
+                            <div>
+                              <span className="text-zinc-500">交付要求：</span>
+                              {rev.integrationRequired
+                                ? <span className="text-cyan-300">需要进入本地 {rev.integrationTargetBranch}</span>
+                                : <span className="text-zinc-300">无需 Git 集成：{rev.integrationNotRequiredReason}</span>}
+                            </div>
+                            {rev.approvedAt && (
+                              <div className="text-emerald-300">
+                                开发者批准：{rev.approvedBy ?? "开发者"} · {new Date(rev.approvedAt).toLocaleString()}
+                              </div>
+                            )}
+                            {rev.integrationStatus && (
+                              <div className={rev.integrationStatus === "integrated" || rev.integrationStatus === "not_required" ? "text-emerald-300" : "text-amber-300"}>
+                                集成检查：{rev.integrationStatus === "integrated"
+                                  ? `已确认审核提交进入本地 ${rev.integrationTargetBranch}`
+                                  : rev.integrationStatus === "not_required"
+                                  ? "按开发者确认的策略无需 Git 检查"
+                                  : rev.integrationStatus === "not_integrated"
+                                  ? "尚未检测到审核提交进入目标分支"
+                                  : "无法检查"}
+                                {rev.integrationTargetCommitSha ? ` · 目标提交 ${rev.integrationTargetCommitSha.slice(0, 12)}` : ""}
+                                {rev.integrationCheckedAt ? ` · ${new Date(rev.integrationCheckedAt).toLocaleString()}` : ""}
+                              </div>
+                            )}
+                            {rev.integrationMessage && (
+                              <div className="text-amber-300/90 whitespace-pre-wrap">{rev.integrationMessage}</div>
+                            )}
                           </div>
-                          {(rev.branch || rev.worktree) && (
-                            <div className="flex items-center space-x-1.5 truncate">
-                              <span className="text-zinc-500">Branch/Worktree:</span>
-                              <span className="text-zinc-300 truncate">
-                                {rev.branch || rev.worktree}
-                              </span>
-                            </div>
-                          )}
-                        </div>
 
-                        <div className="text-[11px] bg-zinc-950/40 p-2 rounded border border-zinc-800 space-y-1">
-                          <div>
-                            <span className="text-zinc-500">交付要求：</span>
-                            {rev.integrationRequired
-                              ? <span className="text-cyan-300">需要进入本地 {rev.integrationTargetBranch}</span>
-                              : <span className="text-zinc-300">无需 Git 集成：{rev.integrationNotRequiredReason}</span>}
-                          </div>
-                          {rev.approvedAt && (
-                            <div className="text-emerald-300">
-                              开发者批准：{rev.approvedBy ?? "开发者"} · {new Date(rev.approvedAt).toLocaleString()}
+                          {/* Summary */}
+                          {rev.summary && (
+                            <div className="text-[11px] bg-zinc-950/30 p-2 rounded border border-zinc-800 leading-relaxed text-zinc-300">
+                              <span className="text-zinc-500 font-semibold block mb-0.5">审核摘要：</span>
+                              {rev.summary}
                             </div>
                           )}
-                          {rev.integrationStatus && (
-                            <div className={rev.integrationStatus === "integrated" || rev.integrationStatus === "not_required" ? "text-emerald-300" : "text-amber-300"}>
-                              集成检查：{rev.integrationStatus === "integrated"
-                                ? `已确认审核提交进入本地 ${rev.integrationTargetBranch}`
-                                : rev.integrationStatus === "not_required"
-                                ? "按开发者确认的策略无需 Git 检查"
-                                : rev.integrationStatus === "not_integrated"
-                                ? "尚未检测到审核提交进入目标分支"
-                                : "无法检查"}
-                              {rev.integrationTargetCommitSha ? ` · 目标提交 ${rev.integrationTargetCommitSha.slice(0, 12)}` : ""}
-                              {rev.integrationCheckedAt ? ` · ${new Date(rev.integrationCheckedAt).toLocaleString()}` : ""}
-                            </div>
-                          )}
-                          {rev.integrationMessage && (
-                            <div className="text-amber-300/90 whitespace-pre-wrap">{rev.integrationMessage}</div>
-                          )}
-                        </div>
 
-                        {/* Summary */}
-                        {rev.summary && (
-                          <div className="text-[11px] bg-zinc-950/30 p-2 rounded border border-zinc-800 leading-relaxed text-zinc-300">
-                            <span className="text-zinc-500 font-semibold block mb-0.5">审核摘要：</span>
-                            {rev.summary}
-                          </div>
-                        )}
-
-                        {/* Verification Evidence */}
-                        {rev.verificationEvidence && rev.verificationEvidence.length > 0 && (
-                          <div className="space-y-1.5">
-                            <div className="text-[10px] font-semibold text-zinc-400 flex items-center space-x-1">
-                              <Terminal className="w-3 h-3 text-emerald-400" />
-                              <span>验证命令与执行结果 ({rev.verificationEvidence.length})：</span>
-                            </div>
-                            <div className="space-y-1 bg-zinc-950/80 p-2 rounded border border-zinc-800 font-mono text-[11px]">
-                              {rev.verificationEvidence.map((ev, i) => (
-                                <div key={i} className="space-y-0.5 border-b border-zinc-900 last:border-b-0 pb-1 last:pb-0">
-                                  <div className="text-cyan-300 flex items-center space-x-1">
-                                    <span className="text-zinc-600 select-none">$</span>
-                                    <span>{ev.command}</span>
+                          {/* Verification Evidence */}
+                          {rev.verificationEvidence && rev.verificationEvidence.length > 0 && (
+                            <div className="space-y-1.5">
+                              <div className="text-[10px] font-semibold text-zinc-400 flex items-center space-x-1">
+                                <Terminal className="w-3 h-3 text-emerald-400" />
+                                <span>验证命令与执行结果 ({rev.verificationEvidence.length})：</span>
+                              </div>
+                              <div className="space-y-1 bg-zinc-950/80 p-2 rounded border border-zinc-800 font-mono text-[11px]">
+                                {rev.verificationEvidence.map((ev, i) => (
+                                  <div key={i} className="space-y-0.5 border-b border-zinc-900 last:border-b-0 pb-1 last:pb-0">
+                                    <div className="text-cyan-300 flex items-center space-x-1">
+                                      <span className="text-zinc-600 select-none">$</span>
+                                      <span>{ev.command}</span>
+                                    </div>
+                                    <div className="text-zinc-400 text-[10px] pl-3 whitespace-pre-wrap">
+                                      {ev.result}
+                                    </div>
                                   </div>
-                                  <div className="text-zinc-400 text-[10px] pl-3 whitespace-pre-wrap">
-                                    {ev.result}
-                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Findings */}
+                          {(() => {
+                            const findingDisplays = buildFindingDisplays(rev);
+                            if (findingDisplays.length === 0) return null;
+                            return (
+                              <div className="space-y-1.5">
+                                <div className="text-[10px] font-semibold text-amber-400 flex items-center space-x-1">
+                                  <ShieldAlert className="w-3 h-3 text-amber-400" />
+                                  <span>发现的问题与改进建议 ({findingDisplays.length})：</span>
                                 </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
+                                <div className="space-y-1">
+                                  {findingDisplays.map((f) => (
+                                    <div
+                                      key={f.key}
+                                      className="p-2 rounded bg-amber-950/20 border border-amber-900/40 text-[11px] space-y-1"
+                                    >
+                                      <div className="flex items-center space-x-1.5">
+                                        <span
+                                          className={`px-1 py-px rounded text-[9px] uppercase font-bold ${
+                                            f.severity === "high"
+                                              ? "bg-rose-950 border border-rose-800 text-rose-300"
+                                              : f.severity === "low"
+                                              ? "bg-emerald-950 border border-emerald-800 text-emerald-300"
+                                              : "bg-amber-950 border border-amber-800 text-amber-300"
+                                          }`}
+                                        >
+                                          {f.severity}
+                                        </span>
+                                        <span className="text-zinc-200 font-medium">{f.issue}</span>
+                                      </div>
+                                      <div className="text-zinc-400 text-[10px] pl-2">
+                                        建议：{f.suggestion}
+                                      </div>
+                                      {f.trigger && (
+                                        <div className="text-zinc-400 text-[10px] pl-2">
+                                          触发条件：{f.trigger}
+                                        </div>
+                                      )}
+                                      {f.impact && (
+                                        <div className="text-zinc-400 text-[10px] pl-2">
+                                          可观察影响：{f.impact}
+                                        </div>
+                                      )}
+                                      {f.evidence && (
+                                        <div className="text-zinc-400 text-[10px] pl-2">
+                                          证据：{f.evidence}
+                                        </div>
+                                      )}
+                                      {f.location && (
+                                        <div className="text-zinc-500 text-[10px] pl-2">
+                                          位置：{f.location}
+                                        </div>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          })()}
 
-                        {/* Findings */}
-                        {(() => {
-                          const findingDisplays = buildFindingDisplays(rev);
-                          if (findingDisplays.length === 0) return null;
-                          return (
-                            <div className="space-y-1.5">
-                              <div className="text-[10px] font-semibold text-amber-400 flex items-center space-x-1">
-                                <ShieldAlert className="w-3 h-3 text-amber-400" />
-                                <span>发现的问题与改进建议 ({findingDisplays.length})：</span>
-                              </div>
-                              <div className="space-y-1">
-                                {findingDisplays.map((f) => (
-                                  <div
-                                    key={f.key}
-                                    className="p-2 rounded bg-amber-950/20 border border-amber-900/40 text-[11px] space-y-1"
-                                  >
-                                    <div className="flex items-center space-x-1.5">
-                                      <span
-                                        className={`px-1 py-px rounded text-[9px] uppercase font-bold ${
-                                          f.severity === "high"
-                                            ? "bg-rose-950 border border-rose-800 text-rose-300"
-                                            : f.severity === "low"
-                                            ? "bg-emerald-950 border border-emerald-800 text-emerald-300"
-                                            : "bg-amber-950 border border-amber-800 text-amber-300"
-                                        }`}
-                                      >
-                                        {f.severity}
-                                      </span>
-                                      <span className="text-zinc-200 font-medium">{f.issue}</span>
+                          {/* Finding Closures */}
+                          {(() => {
+                            const closureDisplays = buildFindingClosureDisplays(
+                              reviews,
+                              rev,
+                            );
+                            if (closureDisplays.length === 0) return null;
+                            return (
+                              <div className="space-y-1.5">
+                                <div className="text-[10px] font-semibold text-cyan-300 flex items-center space-x-1">
+                                  <ShieldCheck className="w-3 h-3 text-cyan-300" />
+                                  <span>上一轮发现关闭情况 ({closureDisplays.length})：</span>
+                                </div>
+                                <div className="space-y-1">
+                                  {closureDisplays.map((closure) => (
+                                    <div
+                                      key={closure.key}
+                                      className="p-2 rounded bg-cyan-950/20 border border-cyan-900/40 text-[11px] space-y-1"
+                                    >
+                                      <div className="flex items-center space-x-1.5">
+                                        <span
+                                          className={`shrink-0 px-1 py-px rounded text-[9px] font-bold ${toneBadgeClass(closure.tone)}`}
+                                        >
+                                          {closure.statusLabel}
+                                        </span>
+                                        <span className="text-zinc-200 font-medium">
+                                          {closure.issue ??
+                                            `上一轮发现 #${closure.findingIndex + 1}`}
+                                        </span>
+                                      </div>
+                                      {closure.evidence.length > 0 && (
+                                        <div className="pl-2 space-y-0.5">
+                                          {closure.evidence.map((evidence, evidenceIndex) => (
+                                            <div
+                                              key={`${closure.key}-evidence-${evidenceIndex}`}
+                                              className="text-[10px] text-zinc-400"
+                                            >
+                                              <span className="text-zinc-600 select-none">$ </span>
+                                              <span className="text-cyan-300/80">{evidence.command}</span>
+                                              <span className="text-zinc-500"> · {evidence.result}</span>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )}
                                     </div>
-                                    <div className="text-zinc-400 text-[10px] pl-2">
-                                      建议：{f.suggestion}
-                                    </div>
-                                    {f.trigger && (
-                                      <div className="text-zinc-400 text-[10px] pl-2">
-                                        触发条件：{f.trigger}
-                                      </div>
-                                    )}
-                                    {f.impact && (
-                                      <div className="text-zinc-400 text-[10px] pl-2">
-                                        可观察影响：{f.impact}
-                                      </div>
-                                    )}
-                                    {f.evidence && (
-                                      <div className="text-zinc-400 text-[10px] pl-2">
-                                        证据：{f.evidence}
-                                      </div>
-                                    )}
-                                    {f.location && (
-                                      <div className="text-zinc-500 text-[10px] pl-2">
-                                        位置：{f.location}
-                                      </div>
-                                    )}
-                                  </div>
-                                ))}
+                                  ))}
+                                </div>
                               </div>
-                            </div>
-                          );
-                        })()}
-
-                        {/* Finding Closures */}
-                        {(() => {
-                          const closureDisplays = buildFindingClosureDisplays(
-                            details.reviews ?? [],
-                            rev,
-                          );
-                          if (closureDisplays.length === 0) return null;
-                          return (
-                            <div className="space-y-1.5">
-                              <div className="text-[10px] font-semibold text-cyan-300 flex items-center space-x-1">
-                                <ShieldCheck className="w-3 h-3 text-cyan-300" />
-                                <span>上一轮发现关闭情况 ({closureDisplays.length})：</span>
-                              </div>
-                              <div className="space-y-1">
-                                {closureDisplays.map((closure) => (
-                                  <div
-                                    key={closure.key}
-                                    className="p-2 rounded bg-cyan-950/20 border border-cyan-900/40 text-[11px] space-y-1"
-                                  >
-                                    <div className="flex items-center space-x-1.5">
-                                      <span
-                                        className={`shrink-0 px-1 py-px rounded text-[9px] font-bold ${toneBadgeClass(closure.tone)}`}
-                                      >
-                                        {closure.statusLabel}
-                                      </span>
-                                      <span className="text-zinc-200 font-medium">
-                                        {closure.issue ??
-                                          `上一轮发现 #${closure.findingIndex + 1}`}
-                                      </span>
-                                    </div>
-                                    {closure.evidence.length > 0 && (
-                                      <div className="pl-2 space-y-0.5">
-                                        {closure.evidence.map((evidence, evidenceIndex) => (
-                                          <div
-                                            key={`${closure.key}-evidence-${evidenceIndex}`}
-                                            className="text-[10px] text-zinc-400"
-                                          >
-                                            <span className="text-zinc-600 select-none">$ </span>
-                                            <span className="text-cyan-300/80">{evidence.command}</span>
-                                            <span className="text-zinc-500"> · {evidence.result}</span>
-                                          </div>
-                                        ))}
-                                      </div>
-                                    )}
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          );
-                        })()}
-                      </div>
-                    ))}
+                            );
+                          })()}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
 
               {/* Event Stream */}
               <div>
-                <h3 className="text-[11px] font-bold text-zinc-500 uppercase tracking-wider mb-3 flex items-center space-x-1.5">
-                  <GitCommit className="w-3.5 h-3.5 text-zinc-400" />
-                  <span>事件历史流水 ({details.events.length})</span>
-                </h3>
+                {details.events.length === 0 ? (
+                  <h3 className="text-[11px] font-bold text-zinc-500 uppercase tracking-wider mb-3 flex items-center space-x-1.5">
+                    <GitCommit className="w-3.5 h-3.5 text-zinc-400" />
+                    <span>事件历史流水 ({details.events.length})</span>
+                  </h3>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setEventsExpanded((expanded) => !expanded)}
+                    aria-expanded={eventsExpanded}
+                    className="w-full text-[11px] font-bold text-zinc-500 uppercase tracking-wider mb-3 flex items-center justify-between space-x-1.5 hover:text-zinc-300 transition-colors cursor-pointer"
+                  >
+                    <span className="flex items-center space-x-1.5">
+                      <GitCommit className="w-3.5 h-3.5 text-zinc-400" />
+                      <span>事件历史流水 ({details.events.length})</span>
+                    </span>
+                    <span className="flex items-center space-x-1.5 normal-case tracking-normal font-normal">
+                      <span>{eventsExpanded ? "收起" : "展开"}</span>
+                      {eventsExpanded ? (
+                        <ChevronDown className="w-3.5 h-3.5 text-zinc-500" />
+                      ) : (
+                        <ChevronRight className="w-3.5 h-3.5 text-zinc-500" />
+                      )}
+                    </span>
+                  </button>
+                )}
 
                 {details.events.length === 0 ? (
                   <EmptyState
@@ -1000,7 +1130,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                     tag="暂无流水"
                     compact
                   />
-                ) : (
+                ) : eventsExpanded ? (
                   <div className="relative pl-5 space-y-3 before:absolute before:left-1.5 before:top-2 before:bottom-2 before:w-px before:bg-zinc-800">
                     {details.events.map((evt) => (
                       <div key={evt.id} className="relative">
@@ -1087,7 +1217,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                       </div>
                     ))}
                   </div>
-                )}
+                ) : null}
               </div>
             </>
           )}
