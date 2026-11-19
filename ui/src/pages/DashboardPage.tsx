@@ -82,9 +82,11 @@ function createEmptyProjectStatus(project: ProjectSummary): ProjectStatus {
  *  internally, in proportion to their content — when the column together
  *  overflows, while empty queues hold a single status row. A populated queue
  *  never shrinks below its title row plus first card (a measured floor, see
- *  measureQueueSlotFloor), so a small queue keeps its only task visible while
- *  bigger queues absorb the compression. Leftover space stays below the
- *  column, never inside a panel. */
+ *  measureQueueSlotFloor) while the column can afford every floor; when the
+ *  floors together would overflow the column, each floor shrinks by one shared
+ *  factor (see measureColumnFloorBudget) so every queue keeps a visible,
+ *  scrollable area instead of pushing its neighbour out of the viewport.
+ *  Leftover space stays below the column, never inside a panel. */
 function queueSlotClass(taskCount: number): string {
   return taskCount > 0 ? "lg:min-h-0" : "lg:shrink-0";
 }
@@ -117,6 +119,29 @@ function measureQueueSlotFloor(slot: HTMLElement): number | null {
     parseFloat(listStyle.paddingBottom) +
     parseFloat(sectionStyle.borderBottomWidth);
   return Number.isFinite(floor) && floor > 0 ? floor : null;
+}
+
+/** Space a column can spend on its populated queues' floors: the column's own
+ *  height minus the inter-slot gaps and any empty status rows sharing it. The
+ *  column's height does not depend on the floors (its wrapper can shrink), so
+ *  the budget is stable across applications. Returns null when the column
+ *  generates no box — below lg it is display:contents, where an inline
+ *  min-height is inert and budgeting would read meaningless zeros. */
+function measureColumnFloorBudget(
+  column: HTMLElement,
+  slots: ReadonlyArray<{ slot: HTMLElement; populated: boolean }>,
+): number | null {
+  const columnStyle = window.getComputedStyle(column);
+  if (columnStyle.display === "contents") return null;
+  const columnHeight = column.clientHeight;
+  if (columnHeight <= 0) return null;
+  const gap = Number.parseFloat(columnStyle.rowGap) || 0;
+  const emptyHeight = slots
+    .filter((entry) => !entry.populated)
+    .reduce((sum, entry) => sum + entry.slot.offsetHeight, 0);
+  const budget =
+    columnHeight - gap * Math.max(0, slots.length - 1) - emptyHeight;
+  return Number.isFinite(budget) ? budget : null;
 }
 
 function useDocumentVisible(): boolean {
@@ -419,8 +444,12 @@ export const DashboardPage: React.FC = () => {
   // Populated queue slots keep their floor (title row + first card) as an
   // inline min-height, overriding the Tailwind lg:min-h-0 fallback so the
   // column's flex algorithm can never compress a small queue past its only
-  // visible task. Clearing the property restores the bare slot when a queue
-  // empties; below lg the slot is display:contents, where the value is inert.
+  // visible task. The floors are budgeted per column: when they together
+  // exceed the column's height, each one is scaled down by a shared factor so
+  // a very tall first card shrinks its own queue's guarantee instead of
+  // pushing the neighbouring queue out of the viewport. Clearing the property
+  // restores the bare slot when a queue empties; below lg the slot is
+  // display:contents, where the value is inert.
   const queueSlotRefs = useRef<Record<QueueSlotKey, HTMLElement | null>>({
     next: null,
     inReview: null,
@@ -436,12 +465,43 @@ export const DashboardPage: React.FC = () => {
       ["inbox", visibleStatus.inbox],
     ];
     const applySlotFloors = () => {
+      // Floors are budgeted per flex column: measured for every slot in that
+      // column first, then clamped together. While every populated queue's
+      // full floor fits, the floors hold as measured; when they overflow the
+      // column, each floor shrinks by the same factor so the column never
+      // overflows and every queue keeps a visible, internally scrollable area
+      // — a very tall first card can no longer push its neighbour out of the
+      // clipped viewport.
+      const columns = new Map<
+        HTMLElement,
+        Array<{ slot: HTMLElement; floor: number | null }>
+      >();
       for (const [key, tasks] of slots) {
         const slot = queueSlotRefs.current[key];
         if (!slot) continue;
-        const floor = tasks.length > 0 ? measureQueueSlotFloor(slot) : null;
-        if (floor === null) slot.style.removeProperty("min-height");
-        else slot.style.minHeight = `${floor}px`;
+        const column = slot.parentElement;
+        if (!(column instanceof HTMLElement)) continue;
+        const group = columns.get(column) ?? [];
+        group.push({
+          slot,
+          floor: tasks.length > 0 ? measureQueueSlotFloor(slot) : null,
+        });
+        columns.set(column, group);
+      }
+      for (const [column, group] of columns) {
+        const budget = measureColumnFloorBudget(
+          column,
+          group.map((entry) => ({ slot: entry.slot, populated: entry.floor !== null })),
+        );
+        const totalFloors = group.reduce((sum, entry) => sum + (entry.floor ?? 0), 0);
+        let scale = 1;
+        if (budget !== null && budget < totalFloors) {
+          scale = Math.max(budget, 0) / totalFloors;
+        }
+        for (const { slot, floor } of group) {
+          if (floor === null) slot.style.removeProperty("min-height");
+          else slot.style.minHeight = `${floor * scale}px`;
+        }
       }
     };
     applySlotFloors();
@@ -568,10 +628,11 @@ export const DashboardPage: React.FC = () => {
             left column 已就绪 + 待审核, right column 正在进行 + 草稿箱. Each column
             is a flex stack — an empty queue holds a single status row and
             populated queues take their content height, never shrinking below
-            their measured title-plus-first-card floor, compressing with
-            internal scroll only when the column together overflows. Below lg
-            the column wrappers flatten to display:contents and the order
-            utilities restore the original natural stack order. */}
+            their measured title-plus-first-card floor while the column can
+            afford every floor, compressing with internal scroll when the
+            floors together overflow the column. Below lg the column wrappers
+            flatten to display:contents and the order utilities restore the
+            original natural stack order. */}
         <div className="flex flex-col gap-6 lg:min-h-0 lg:flex-1 lg:flex-row lg:gap-3">
           {/* Wide screens: left column. Narrow screens: display contents. */}
           <div className="contents lg:flex lg:min-h-0 lg:min-w-0 lg:flex-1 lg:flex-col lg:gap-3">
