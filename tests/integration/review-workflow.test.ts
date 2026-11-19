@@ -174,7 +174,10 @@ afterEach(async () => {
 });
 
 describe("review workflow integration", () => {
-  it("runs the local delivery gate through a real MCP process, SQLite project, HTTP API, and temporary Git repository", async () => {
+  // The stdio MCP child recompiles the CLI through tsx on every spawn, so this
+  // end-to-end flow jitters between ~2.4s warm and 5.4s+ under load; give it an
+  // explicit budget instead of relying on vitest's 5000ms default.
+  it("runs the local delivery gate through a real MCP process, SQLite project, HTTP API, and temporary Git repository", { timeout: 20_000 }, async () => {
     const harness = await createHttpHarness();
     const projectRoot = harness.projectRoot;
     git(projectRoot, "init", "-b", "main");
