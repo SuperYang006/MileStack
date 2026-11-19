@@ -77,6 +77,17 @@ describe("MCP review tools", () => {
     await server.connect(serverTransport);
     await client.connect(clientTransport);
 
+    const firstRound = JSON.parse(
+      textContent(
+        await client.callTool({
+          name: "get_task",
+          arguments: { taskId: ready.task.id },
+        }),
+      ),
+    );
+    expect(firstRound.phase).toBe("review");
+    expect(firstRound.previousReview).toBeNull();
+
     const started = await client.callTool({
       name: "start_review",
       arguments: { taskId: ready.task.id, actorLabel: "review-model" },
@@ -172,6 +183,23 @@ describe("MCP review tools", () => {
         commitSha: "2222222222222222222222222222222222222222",
         summary: "Added the requested regression test.",
       },
+    });
+    const secondSubmission = JSON.parse(
+      textContent(
+        await client.callTool({
+          name: "get_task",
+          arguments: { taskId: ready.task.id },
+        }),
+      ),
+    );
+    expect(secondSubmission.phase).toBe("review");
+    expect(secondSubmission.previousReview).toEqual({
+      reviewRound: 1,
+      commitSha: "1111111111111111111111111111111111111111",
+    });
+    expect(secondSubmission.previousFindings[0]).toMatchObject({
+      findingIndex: 0,
+      issue: "The stale credential path is not covered.",
     });
     const secondReview = await client.callTool({
       name: "start_review",

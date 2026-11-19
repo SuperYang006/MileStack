@@ -342,6 +342,9 @@ describe("CLI entry point", () => {
       "Review work is assigned by the developer. Perform this section only after the developer sends the task ID to you as an independent review agent; do not select a pending review task from the queue yourself.",
     );
     expect(generatedInstructions).toContain(
+      "When re-reviewing after changes were requested, start from the incremental diff: the get_task default view returns the previous round's review round and commit SHA next to previousFindings, so first compare that previous commit with the current submission's commit to locate what changed. Close every previous finding one by one, and still independently verify every acceptance criterion. The incremental diff only locates changes; it never replaces the full verification.",
+    );
+    expect(generatedInstructions).toContain(
       "Review evidence, findings, and the risk conclusion belong to the independent review agent that receives this task ID from the developer.",
     );
     expect(generatedInstructions).not.toContain("resolvable commit SHA, review evidence");

@@ -128,6 +128,7 @@ describe("structured delivery and review records", () => {
     ]);
     expect(initial.currentRunEvents).toEqual([]);
     expect(initial.latestSubmission).toBeNull();
+    expect(initial.previousReview).toBeNull();
     expect(initial.previousFindings).toEqual([]);
     expect(initial.openFindings).toEqual([]);
 
@@ -180,6 +181,7 @@ describe("structured delivery and review records", () => {
       ["First criterion", "met"],
       ["Second criterion", "met"],
     ]);
+    expect(inReview.previousReview).toBeNull();
     expect(inReview.previousFindings).toEqual([]);
     expect(inReview.openFindings).toEqual([]);
 
@@ -244,6 +246,10 @@ describe("structured delivery and review records", () => {
     });
     const reReview = service.getTask({ projectId: "project-1", taskId });
     expect(reReview.phase).toBe("review");
+    expect(reReview.previousReview).toMatchObject({
+      reviewRound: 1,
+      commitSha: "1".repeat(40),
+    });
     expect(
       reReview.previousFindings.map((previous) => [
         previous.findingIndex,

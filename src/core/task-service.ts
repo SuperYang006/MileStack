@@ -280,14 +280,23 @@ function taskToWorkingDetails(
               : null,
         }
       : null;
-  const previousReview = reviews.length >= 2 ? reviews.at(-2) ?? null : null;
+  const previousRoundReview = reviews.length >= 2 ? reviews.at(-2) ?? null : null;
+  const previousRoundReturned =
+    previousRoundReview?.status === "changes_requested";
   const previousFindings =
-    phase === "review" && previousReview?.status === "changes_requested"
-      ? previousReview.findings.map((finding, findingIndex) => ({
+    phase === "review" && previousRoundReturned
+      ? previousRoundReview.findings.map((finding, findingIndex) => ({
           findingIndex,
           ...finding,
         }))
       : [];
+  const previousReview =
+    phase === "review" && previousRoundReturned
+      ? {
+          reviewRound: previousRoundReview.reviewRound,
+          commitSha: previousRoundReview.commitSha,
+        }
+      : null;
   const openFindings =
     phase === "implementation" && task.status !== "completed"
       ? collectOpenFindings(reviews)
@@ -299,6 +308,7 @@ function taskToWorkingDetails(
     dependencies,
     currentRunEvents,
     latestSubmission,
+    previousReview,
     previousFindings,
     openFindings,
   });
