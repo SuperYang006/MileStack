@@ -26,6 +26,14 @@ type ViewportRect = {
   height: number;
 };
 
+// The element (or saved anchor) an open editor belongs to. Read on every
+// scroll so the highlight and popover stay attached to it.
+type EditorTarget = {
+  label: string;
+  rect(): ViewportRect;
+  reveal(): void;
+};
+
 export function mountPageComments(): PageCommentsHandle {
   const host = document.createElement("div");
   host.id = "ms-page-comments-host";
@@ -36,11 +44,14 @@ export function mountPageComments(): PageCommentsHandle {
     *{box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif}
     [hidden]{display:none!important}
     .hl{position:fixed;border:2px solid #2563eb;background:rgba(37,99,235,.08);border-radius:4px;pointer-events:none}
+    .hl.locked{background:rgba(37,99,235,.14);box-shadow:0 0 0 3px rgba(37,99,235,.25)}
     .hl-label{position:absolute;left:-2px;top:-22px;background:#2563eb;color:#fff;font-size:11px;line-height:16px;padding:2px 6px;border-radius:4px;white-space:nowrap;max-width:360px;overflow:hidden;text-overflow:ellipsis}
     .badge{position:fixed;width:22px;height:22px;margin:-11px 0 0 -11px;border-radius:50%;background:#dc2626;color:#fff;font-size:12px;font-weight:600;display:flex;align-items:center;justify-content:center;pointer-events:auto;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.3);border:2px solid #fff}
     .mark{position:fixed;border:2px dashed #d97706;background:rgba(217,119,6,.1);border-radius:4px;color:#b45309;font-size:11px;font-weight:600;display:flex;align-items:center;justify-content:center;pointer-events:auto;cursor:pointer;min-width:26px;min-height:20px}
     .pop{position:fixed;width:320px;max-width:calc(100vw - 16px);background:#fff;border-radius:10px;box-shadow:0 8px 28px rgba(15,23,42,.25);padding:12px;pointer-events:auto;color:#0f172a;font-size:13px}
-    .pop-target{color:#64748b;font-size:12px;margin-bottom:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .pop-head{display:flex;align-items:center;gap:6px;margin-bottom:8px}
+    .pop-target{flex:1;min-width:0;color:#64748b;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    button.locate{flex:none;height:22px;padding:0 6px;font-size:11px}
     .pop-warn{color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:6px 8px;font-size:12px;line-height:1.4;margin-bottom:8px}
     textarea{width:100%;min-height:84px;resize:vertical;border:1px solid #cbd5e1;border-radius:8px;padding:8px;font-size:13px;line-height:1.5;outline:none;color:#0f172a}
     textarea:focus{border-color:#2563eb}
@@ -67,7 +78,10 @@ export function mountPageComments(): PageCommentsHandle {
   <div class="hl" hidden><span class="hl-label"></span></div>
   <div class="badges"></div>
   <div class="pop" hidden>
-    <div class="pop-target"></div>
+    <div class="pop-head">
+      <div class="pop-target"></div>
+      <button class="locate" hidden></button>
+    </div>
     <div class="pop-warn" hidden>原元素已变化。可以修改或删除评论，也可以重新指定一个新的元素。</div>
     <textarea placeholder="写下对这个元素的意见…"></textarea>
     <div class="pop-acts">
@@ -102,6 +116,7 @@ export function mountPageComments(): PageCommentsHandle {
   const pop = query<HTMLDivElement>(".pop");
   const popTarget = query<HTMLDivElement>(".pop-target");
   const popWarn = query<HTMLDivElement>(".pop-warn");
+  const locateButton = query<HTMLButtonElement>(".locate");
   const textarea = query<HTMLTextAreaElement>("textarea");
   const deleteButton = query<HTMLButtonElement>(".del");
   const reassignButton = query<HTMLButtonElement>(".respec");
@@ -116,6 +131,7 @@ export function mountPageComments(): PageCommentsHandle {
   let editingIndex: number | null = null;
   let draft: PageComment | null = null;
   let reassignIndex: number | null = null;
+  let editorTarget: EditorTarget | null = null;
 
   const placements = new Map<string, Element | null>();
   const missingRetry = new MissingTargetRetry({
@@ -218,16 +234,16 @@ export function mountPageComments(): PageCommentsHandle {
 
   // ---------- 绘制 ----------
 
-  function showHighlight(element: Element): void {
-    const rect = element.getBoundingClientRect();
+  function drawHighlight(rect: ViewportRect, label: string, locked: boolean): void {
     highlight.hidden = false;
+    highlight.classList.toggle("locked", locked);
     Object.assign(highlight.style, {
       left: `${rect.left}px`,
       top: `${rect.top}px`,
       width: `${rect.width}px`,
       height: `${rect.height}px`,
     });
-    highlightLabel.textContent = describeElement(element);
+    highlightLabel.textContent = label;
     highlightLabel.style.top = rect.top < 24 ? `${rect.height + 2}px` : "-22px";
   }
 
@@ -253,7 +269,7 @@ export function mountPageComments(): PageCommentsHandle {
         badge.style.top = `${Math.max(11, rect.top)}px`;
         badge.addEventListener("click", (event) => {
           event.stopPropagation();
-          openEditor(index, elementRect(element));
+          openEditor(index);
         });
         badges.appendChild(badge);
         return;
@@ -270,7 +286,7 @@ export function mountPageComments(): PageCommentsHandle {
       mark.style.height = `${Math.max(24, Math.min(rect.height || 24, 160))}px`;
       mark.addEventListener("click", (event) => {
         event.stopPropagation();
-        openEditor(index, markerRect(comment));
+        openEditor(index);
       });
       badges.appendChild(mark);
     });
@@ -310,7 +326,7 @@ export function mountPageComments(): PageCommentsHandle {
         warning.className = "item-warn";
         warning.textContent = "原元素已变化，点击可修改或重新指定";
         body.appendChild(warning);
-        body.addEventListener("click", () => openEditor(index, markerRect(comment)));
+        body.addEventListener("click", () => openEditor(index));
       }
 
       const remove = document.createElement("button");
@@ -345,20 +361,55 @@ export function mountPageComments(): PageCommentsHandle {
     renderMarkers();
     renderList();
     updateToolbar();
+    syncEditor();
   }
 
   // ---------- 评论编辑 ----------
 
   function positionEditor(rect: ViewportRect): void {
-    const width = 320;
-    const left = Math.min(Math.max(8, rect.left), Math.max(8, window.innerWidth - width - 8));
-    const below = rect.top + Math.max(rect.height, 0) + 8;
-    const top =
-      below + 210 < window.innerHeight ? below : Math.max(8, rect.top - 210);
+    const margin = 8;
+    const width = pop.offsetWidth;
+    const height = pop.offsetHeight;
+    const left = Math.min(Math.max(margin, rect.left), Math.max(margin, window.innerWidth - width - margin));
+    const maxTop = Math.max(margin, window.innerHeight - height - margin);
+    let top: number;
+    let offscreen: "above" | "below" | null = null;
+    if (rect.top + rect.height < 0) {
+      top = margin;
+      offscreen = "above";
+    } else if (rect.top > window.innerHeight) {
+      top = maxTop;
+      offscreen = "below";
+    } else {
+      const below = rect.top + rect.height + margin;
+      top =
+        below + height + margin <= window.innerHeight
+          ? below
+          : Math.min(maxTop, Math.max(margin, rect.top - height - margin));
+    }
     Object.assign(pop.style, { left: `${left}px`, top: `${top}px` });
+    locateButton.hidden = offscreen === null;
+    locateButton.textContent = offscreen === "above" ? "↑ 定位" : "↓ 定位";
   }
 
-  function openEditor(index: number, rect: ViewportRect): void {
+  // Keeps the locked highlight and the popover attached to the commented
+  // element while the page scrolls, resizes, or re-renders.
+  function syncEditor(): void {
+    if (!editorTarget || pop.hidden) return;
+    const rect = editorTarget.rect();
+    if (rect.width === 0 && rect.height === 0) highlight.hidden = true;
+    else drawHighlight(rect, editorTarget.label, true);
+    positionEditor(rect);
+  }
+
+  function showEditor(target: EditorTarget): void {
+    editorTarget = target;
+    pop.hidden = false;
+    syncEditor();
+    textarea.focus();
+  }
+
+  function openEditor(index: number): void {
     const comment = comments[index];
     if (!comment) return;
     closeEditor();
@@ -369,13 +420,31 @@ export function mountPageComments(): PageCommentsHandle {
     deleteButton.hidden = false;
     reassignButton.hidden = !changed;
     popWarn.hidden = !changed;
-    positionEditor(rect);
-    pop.hidden = false;
-    textarea.focus();
+    // Resolve through placements on every read: re-renders may replace the
+    // element while the editor is open.
+    const located = (): Element | null => {
+      const found = placements.get(comment.id) ?? null;
+      return found && found.isConnected ? found : null;
+    };
+    showEditor({
+      label: `正在编辑 #${index + 1}`,
+      rect: () => {
+        const found = located();
+        return found ? elementRect(found) : markerRect(comment);
+      },
+      reveal: () => {
+        const found = located();
+        if (found) found.scrollIntoView({ block: "center", behavior: "smooth" });
+        else
+          window.scrollTo({
+            top: comment.target.anchor.y - window.innerHeight / 2,
+            behavior: "smooth",
+          });
+      },
+    });
   }
 
   function openDraft(element: Element): void {
-    const rect = elementRect(element);
     draft = {
       id: createCommentId(),
       route: currentRoute(),
@@ -393,15 +462,19 @@ export function mountPageComments(): PageCommentsHandle {
     deleteButton.hidden = true;
     reassignButton.hidden = true;
     popWarn.hidden = true;
-    positionEditor(rect);
-    pop.hidden = false;
-    textarea.focus();
+    showEditor({
+      label: "正在评论",
+      rect: () => elementRect(element),
+      reveal: () => element.scrollIntoView({ block: "center", behavior: "smooth" }),
+    });
   }
 
   function closeEditor(): void {
     editingIndex = null;
     draft = null;
+    editorTarget = null;
     pop.hidden = true;
+    highlight.hidden = true;
   }
 
   function saveEditor(): void {
@@ -462,6 +535,10 @@ export function mountPageComments(): PageCommentsHandle {
     refresh();
   });
   reassignButton.addEventListener("click", startReassign);
+  locateButton.addEventListener("click", () => {
+    editorTarget?.reveal();
+    textarea.focus();
+  });
   query<HTMLButtonElement>(".ok").addEventListener("click", saveEditor);
   query<HTMLButtonElement>(".cancel").addEventListener("click", closeEditor);
 
@@ -535,9 +612,10 @@ export function mountPageComments(): PageCommentsHandle {
   }
 
   function onMove(event: MouseEvent): void {
-    if (!picking || isUiEvent(event)) return;
+    // While an editor is open the highlight stays locked on its element.
+    if (!picking || editorTarget || isUiEvent(event)) return;
     const target = event.target;
-    if (target instanceof Element) showHighlight(target);
+    if (target instanceof Element) drawHighlight(elementRect(target), describeElement(target), false);
   }
 
   function onClick(event: MouseEvent): void {
@@ -551,7 +629,10 @@ export function mountPageComments(): PageCommentsHandle {
     }
     if (!picking) return;
     block(event);
-    if (editingIndex !== null || draft) return;
+    if (editingIndex !== null || draft) {
+      showToast("请先保存或取消当前评论");
+      return;
+    }
     const target = event.target;
     if (target instanceof Element) openDraft(target);
   }
@@ -575,6 +656,7 @@ export function mountPageComments(): PageCommentsHandle {
     viewportFrame = window.requestAnimationFrame(() => {
       viewportFrame = 0;
       renderMarkersOnly();
+      syncEditor();
     });
   }
   window.addEventListener("scroll", onViewportChange, true);
