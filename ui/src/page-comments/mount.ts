@@ -60,6 +60,10 @@ export function mountPageComments(): PageCommentsHandle {
     button{font-size:12px;height:28px;padding:0 10px;border-radius:6px;border:1px solid #cbd5e1;background:#fff;color:#0f172a;cursor:pointer;white-space:nowrap}
     button.primary{background:#2563eb;border-color:#2563eb;color:#fff}
     button.danger{color:#dc2626}
+    .confirm-mask{position:fixed;inset:0;z-index:2;background:rgba(15,23,42,.25);display:flex;align-items:center;justify-content:center;pointer-events:auto}
+    .confirm{width:280px;max-width:calc(100vw - 32px);background:#fff;border-radius:10px;box-shadow:0 8px 28px rgba(15,23,42,.25);padding:16px;color:#0f172a;font-size:13px;line-height:1.5}
+    .confirm-acts{display:flex;justify-content:flex-end;gap:6px;margin-top:14px}
+    button.confirm-ok{background:#dc2626;border-color:#dc2626;color:#fff}
     .bar{position:fixed;right:16px;bottom:16px;display:flex;align-items:center;gap:6px;background:#0f172a;color:#fff;padding:8px 10px;border-radius:10px;pointer-events:auto;box-shadow:0 6px 20px rgba(0,0,0,.25);font-size:12px}
     .bar button{background:#1e293b;border-color:#334155;color:#fff}
     .bar button.on{background:#2563eb;border-color:#2563eb}
@@ -103,7 +107,16 @@ export function mountPageComments(): PageCommentsHandle {
     <button class="clear">清空</button>
     <button class="close">退出</button>
   </div>
-  <div class="toast" hidden></div>`;
+  <div class="toast" hidden></div>
+  <div class="confirm-mask" hidden>
+    <div class="confirm">
+      <div class="confirm-msg"></div>
+      <div class="confirm-acts">
+        <button class="confirm-cancel">取消</button>
+        <button class="confirm-ok"></button>
+      </div>
+    </div>
+  </div>`;
   document.documentElement.appendChild(host);
 
   function query<T extends Element>(selector: string): T {
@@ -126,6 +139,9 @@ export function mountPageComments(): PageCommentsHandle {
   const modeButton = query<HTMLButtonElement>(".mode");
   const countElement = query<HTMLSpanElement>(".count");
   const toast = query<HTMLDivElement>(".toast");
+  const confirmMask = query<HTMLDivElement>(".confirm-mask");
+  const confirmMessage = query<HTMLDivElement>(".confirm-msg");
+  const confirmOk = query<HTMLButtonElement>(".confirm-ok");
 
   let comments = loadComments(window.localStorage);
   let picking = true;
@@ -162,6 +178,37 @@ export function mountPageComments(): PageCommentsHandle {
       toast.hidden = true;
     }, 2200);
   }
+
+  // Native confirm() shows the page origin and OS styling, so destructive
+  // actions confirm inside the overlay instead.
+  let resolveConfirm: ((confirmed: boolean) => void) | null = null;
+  function askConfirm(message: string, confirmLabel: string): Promise<boolean> {
+    settleConfirm(false);
+    confirmMessage.textContent = message;
+    confirmOk.textContent = confirmLabel;
+    confirmMask.hidden = false;
+    confirmOk.focus();
+    return new Promise((resolve) => {
+      resolveConfirm = resolve;
+    });
+  }
+
+  function settleConfirm(confirmed: boolean): void {
+    confirmMask.hidden = true;
+    const resolve = resolveConfirm;
+    resolveConfirm = null;
+    resolve?.(confirmed);
+  }
+
+  confirmOk.addEventListener("click", () => settleConfirm(true));
+  query<HTMLButtonElement>(".confirm-cancel").addEventListener("click", () => settleConfirm(false));
+  confirmMask.addEventListener("click", (event) => {
+    if (event.target === confirmMask) settleConfirm(false);
+  });
+  confirmMask.addEventListener("keydown", (event) => {
+    event.stopPropagation();
+    if (event.key === "Escape") settleConfirm(false);
+  });
 
   // ---------- 元素定位 ----------
 
@@ -300,7 +347,7 @@ export function mountPageComments(): PageCommentsHandle {
     if (comments.length === 0) {
       const empty = document.createElement("div");
       empty.className = "empty";
-      empty.textContent = "还没有评论。开启“点选中”后点击页面元素即可添加。";
+      empty.textContent = "还没有评论。切换到“评论中”后点击页面元素即可添加。";
       list.appendChild(empty);
       return;
     }
@@ -345,10 +392,7 @@ export function mountPageComments(): PageCommentsHandle {
       remove.className = "danger";
       remove.textContent = "删除";
       remove.addEventListener("click", () => {
-        comments.splice(index, 1);
-        persist();
-        closeEditor();
-        refresh();
+        void deleteComment(index);
       });
 
       const actions = document.createElement("div");
@@ -361,7 +405,7 @@ export function mountPageComments(): PageCommentsHandle {
   }
 
   function updateToolbar(): void {
-    modeButton.textContent = picking ? "点选中" : "已暂停点选";
+    modeButton.textContent = picking ? "评论中" : "已暂停";
     modeButton.classList.toggle("on", picking);
     countElement.textContent = `${comments.length} 条评论`;
   }
@@ -556,13 +600,21 @@ export function mountPageComments(): PageCommentsHandle {
     showToast("已重新指定评论元素");
   }
 
-  deleteButton.addEventListener("click", () => {
-    if (editingIndex !== null) {
-      comments.splice(editingIndex, 1);
-      persist();
-    }
+  async function deleteComment(index: number): Promise<void> {
+    const comment = comments[index];
+    if (!comment) return;
+    if (!(await askConfirm(`删除第 ${index + 1} 条评论？`, "删除"))) return;
+    // The list may have changed while the confirmation was open.
+    const current = comments.indexOf(comment);
+    if (current === -1) return;
+    comments.splice(current, 1);
+    persist();
     closeEditor();
     refresh();
+  }
+
+  deleteButton.addEventListener("click", () => {
+    if (editingIndex !== null) void deleteComment(editingIndex);
   });
   reassignButton.addEventListener("click", startReassign);
   locateButton.addEventListener("click", () => {
@@ -616,17 +668,23 @@ export function mountPageComments(): PageCommentsHandle {
     }
     void copyComments(comments, `已复制 ${comments.length} 条评论，粘贴给 Agent 即可`);
   });
-  query<HTMLButtonElement>(".clear").addEventListener("click", () => {
+  query<HTMLButtonElement>(".clear").addEventListener("click", async () => {
     if (comments.length === 0) return;
-    if (window.confirm(`清空全部 ${comments.length} 条评论？`)) {
-      comments = [];
-      placements.clear();
-      persist();
-      closeEditor();
-      refresh();
-    }
+    if (!(await askConfirm(`清空全部 ${comments.length} 条评论？`, "清空"))) return;
+    comments = [];
+    placements.clear();
+    persist();
+    closeEditor();
+    refresh();
   });
-  query<HTMLButtonElement>(".close").addEventListener("click", teardown);
+  // Saved comments stay in localStorage after exit; only unsaved editor text
+  // would be lost.
+  query<HTMLButtonElement>(".close").addEventListener("click", async () => {
+    const comment = currentComment();
+    const unsaved = comment !== null && textarea.value.trim() !== comment.comment;
+    if (unsaved && !(await askConfirm("当前评论尚未保存，退出后会丢失。", "退出"))) return;
+    teardown();
+  });
 
   // ---------- 页面事件拦截 ----------
 
