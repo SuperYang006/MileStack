@@ -13,6 +13,7 @@ import {
   acceptanceCriteriaPreSubmissionReminder,
   reconcileCriteriaLines,
 } from "../utils/acceptanceCriteria";
+import { useEscapeToClose } from "../utils/overlayEscape";
 
 const MIN_TEXTAREA_ROWS = 3;
 const MAX_TEXTAREA_ROWS = 12;
@@ -113,6 +114,8 @@ export const EditInboxModal: React.FC<EditInboxModalProps> = ({
     if (objectiveRef.current) resizeLongTextArea(objectiveRef.current);
     if (criteriaRef.current) resizeLongTextArea(criteriaRef.current);
   }, [isOpen, objective, criteriaText]);
+
+  useEscapeToClose(isOpen, onClose);
 
   if (!isOpen || !task) return null;
 

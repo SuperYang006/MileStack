@@ -9,6 +9,7 @@ import {
   getFeedbackThemeConfig,
   isValidFeedback,
 } from "../utils/feedbackDialog.js";
+import { useEscapeToClose } from "../utils/overlayEscape.js";
 import type { FindingClosureStatus } from "../types.js";
 
 export type { FeedbackClosureOption, FeedbackClosureSelection, FeedbackTheme };
@@ -107,20 +108,7 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({
     }
   }, [isOpen, initialValue]);
 
-  // Handle global Escape key with capture phase so it takes precedence over lower overlays
-  useEffect(() => {
-    if (!isOpen) return;
-    const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        e.stopPropagation();
-        e.stopImmediatePropagation();
-        onClose();
-      }
-    };
-    window.addEventListener("keydown", handleGlobalKeyDown, true);
-    return () => window.removeEventListener("keydown", handleGlobalKeyDown, true);
-  }, [isOpen, onClose]);
+  useEscapeToClose(isOpen, onClose);
 
   if (!isOpen) return null;
 
@@ -148,11 +136,6 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({
   };
 
   const handleTextareaKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Escape") {
-      e.preventDefault();
-      onClose();
-      return;
-    }
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
       if (isValid && !isSubmitting) {

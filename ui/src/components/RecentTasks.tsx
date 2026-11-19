@@ -4,6 +4,7 @@ import { EmptyState } from "./EmptyState";
 import type { TaskSummary } from "../types";
 import { TaskIdBadge } from "./CopyTaskIdButton";
 import { FeedbackModal, useFeedbackDialog } from "./FeedbackModal";
+import { useEscapeToClose } from "../utils/overlayEscape";
 
 interface RecentTasksProps {
   isOpen: boolean;
@@ -76,16 +77,7 @@ export const RecentTasks: React.FC<RecentTasksProps> = ({
   }, [isOpen]);
 
   // Close on Escape key
-  useEffect(() => {
-    if (!isMounted) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        onClose();
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isMounted, onClose]);
+  useEscapeToClose(isMounted, onClose);
 
   // Lock body scroll while drawer is open
   useEffect(() => {

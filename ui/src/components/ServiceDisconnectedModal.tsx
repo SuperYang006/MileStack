@@ -1,5 +1,6 @@
-import React, { useEffect } from "react";
+import React from "react";
 import { RefreshCw, WifiOff, X } from "lucide-react";
+import { useEscapeToClose } from "../utils/overlayEscape";
 
 interface ServiceDisconnectedModalProps {
   isOpen: boolean;
@@ -16,18 +17,7 @@ export const ServiceDisconnectedModal: React.FC<ServiceDisconnectedModalProps> =
   onReconnect,
   onClose,
 }) => {
-  useEffect(() => {
-    if (!isOpen) return;
-    const handleGlobalKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        event.stopPropagation();
-        onClose();
-      }
-    };
-    window.addEventListener("keydown", handleGlobalKeyDown, true);
-    return () => window.removeEventListener("keydown", handleGlobalKeyDown, true);
-  }, [isOpen, onClose]);
+  useEscapeToClose(isOpen, onClose);
 
   if (!isOpen) return null;
 

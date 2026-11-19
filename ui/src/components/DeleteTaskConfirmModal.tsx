@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { AlertTriangle, Loader2, Trash2, X } from "lucide-react";
 import { TaskIdBadge } from "./CopyTaskIdButton";
+import { useEscapeToClose } from "../utils/overlayEscape";
 
 interface DeleteTaskConfirmModalProps {
   isOpen: boolean;
@@ -62,17 +63,7 @@ export const DeleteTaskConfirmModal: React.FC<DeleteTaskConfirmModalProps> = ({
   };
 
   // Capture phase so Escape closes this confirmation before any lower overlay.
-  useEffect(() => {
-    if (!isOpen) return;
-    const handleGlobalKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      event.stopPropagation();
-      requestClose();
-    };
-    window.addEventListener("keydown", handleGlobalKeyDown, true);
-    return () => window.removeEventListener("keydown", handleGlobalKeyDown, true);
-  }, [isOpen, onClose]);
+  useEscapeToClose(isOpen, requestClose);
 
   if (!isOpen) return null;
 

@@ -141,11 +141,11 @@ export const NextTasks: React.FC<NextTasksProps> = ({
                 <div
                   key={task.id}
                   id={`ready-task-${task.id}`}
-                  className="group grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2 gap-y-2 p-2.5 rounded-md bg-zinc-950/60 border border-zinc-800 hover:border-zinc-600 transition-colors lg:grid-cols-[2.75rem_minmax(0,7rem)_minmax(0,1fr)_auto] lg:gap-x-3"
+                  className="group grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2 gap-y-2 p-2.5 rounded-md bg-zinc-950/60 border border-zinc-800 hover:border-zinc-600 transition-colors lg:grid-cols-[2.75rem_minmax(0,5.5rem)_minmax(0,1fr)_auto] lg:gap-x-3"
                 >
                   {/* Reorder and Index */}
                   <div className="flex items-center space-x-2 shrink-0 pt-0.5 lg:col-start-1 lg:row-start-1">
-                    <div className="flex flex-col opacity-20 group-hover:opacity-100 transition-opacity">
+                    <div className="flex flex-col opacity-20 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
                       <button
                         onClick={() => onReorder(task.id, "up")}
                         disabled={isFirst}
@@ -177,7 +177,8 @@ export const NextTasks: React.FC<NextTasksProps> = ({
                     <TaskIdBadge
                       taskId={task.id}
                       variant="muted"
-                      className="w-28 lg:col-start-2 lg:row-start-1 lg:w-full"
+                      displayLength={8}
+                      className="w-[5.5rem] lg:col-start-2 lg:row-start-1 lg:w-full"
                     />
                     <div className="min-w-0 flex-1 lg:col-start-3 lg:row-start-1">
                       <div className="flex items-start space-x-2 min-w-0">

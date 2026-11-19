@@ -4,6 +4,7 @@ import { X, Copy, Check, Terminal, ShieldAlert, Clock } from "lucide-react";
 import { apiClient } from "../api/client";
 import type { TaskSummary, ProjectSummary, TaskDetails } from "../types";
 import { formatTaskBriefing } from "../utils/taskBriefing";
+import { useEscapeToClose } from "../utils/overlayEscape";
 
 interface BriefingModalProps {
   task: TaskSummary | null;
@@ -25,6 +26,8 @@ export const BriefingModal: React.FC<BriefingModalProps> = ({
     queryFn: () => (task?.id ? apiClient.getTaskDetails(task.id) : Promise.reject(new Error("No task id"))),
     enabled: isOpen && !!task?.id,
   });
+
+  useEscapeToClose(isOpen, onClose);
 
   if (!isOpen || !task) return null;
 

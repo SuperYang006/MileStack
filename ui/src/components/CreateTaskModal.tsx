@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { X, Plus, Terminal, ListPlus } from "lucide-react";
 import type { CreateTaskPayload, RiskLevel } from "../types";
 import { acceptanceCriteriaPreSubmissionReminder } from "../utils/acceptanceCriteria";
+import { useEscapeToClose } from "../utils/overlayEscape";
 
 interface CreateTaskModalProps {
   isOpen: boolean;
@@ -24,6 +25,8 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
   const [riskLevel, setRiskLevel] = useState<RiskLevel>("medium");
   const [batchText, setBatchText] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEscapeToClose(isOpen, onClose);
 
   if (!isOpen) return null;
 

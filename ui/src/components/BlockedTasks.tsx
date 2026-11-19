@@ -35,7 +35,7 @@ export const BlockedTasks: React.FC<BlockedTasksProps> = ({ tasks, onSelectTask 
             <div className="flex items-start justify-between gap-3">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center space-x-2.5 mb-1.5">
-                  <TaskIdBadge taskId={task.id} variant="rose" />
+                  <TaskIdBadge taskId={task.id} variant="rose" displayLength={8} />
                   <h3 className="flex-1 min-w-0 text-xs font-mono font-semibold text-zinc-100 group-hover:text-rose-300 transition-colors line-clamp-2 break-words">
                     {task.title}
                   </h3>

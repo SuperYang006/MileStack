@@ -88,7 +88,7 @@ export const InboxTasks: React.FC<InboxTasksProps> = ({
               return (
                 <div
                   key={task.id}
-                  className={`py-2.5 first:pt-0 last:pb-0 flex items-start justify-between gap-3 group lg:grid lg:grid-cols-[minmax(0,7rem)_minmax(0,1fr)_auto] lg:items-start lg:gap-x-3 ${
+                  className={`py-2.5 first:pt-0 last:pb-0 flex items-start justify-between gap-3 group lg:grid lg:grid-cols-[minmax(0,5.5rem)_minmax(0,1fr)_auto] lg:items-start lg:gap-x-3 ${
                     confirmingTaskId === task.id ? "relative z-30" : ""
                   }`}
                 >
@@ -96,7 +96,7 @@ export const InboxTasks: React.FC<InboxTasksProps> = ({
                     className="flex flex-1 min-w-0 items-start gap-2 cursor-pointer lg:contents"
                     onClick={() => onSelectTask(task.id)}
                   >
-                    <TaskIdBadge taskId={task.id} variant="muted" className="lg:w-full" />
+                    <TaskIdBadge taskId={task.id} variant="muted" displayLength={8} className="lg:w-full" />
                     <div className="min-w-0 flex-1">
                       <h3 className="min-w-0 text-xs font-mono text-zinc-300 line-clamp-2 break-words group-hover:text-amber-300 transition-colors">
                         {task.title}
@@ -210,7 +210,7 @@ export const InboxTasks: React.FC<InboxTasksProps> = ({
                           e.stopPropagation();
                           onEditTask(task);
                         }}
-                        className="p-1 text-zinc-500 hover:text-amber-300 rounded transition-all opacity-0 group-hover:opacity-100"
+                        className="p-1 text-zinc-500 hover:text-amber-300 rounded transition-all opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
                         title="编辑任务草稿"
                       >
                         <Edit3 className="w-3.5 h-3.5" />
@@ -221,7 +221,7 @@ export const InboxTasks: React.FC<InboxTasksProps> = ({
                         e.stopPropagation();
                         onRequestDelete(task);
                       }}
-                      className="p-1 text-zinc-500 hover:text-rose-400 rounded transition-all opacity-0 group-hover:opacity-100"
+                      className="p-1 text-zinc-500 hover:text-rose-400 rounded transition-all opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
                       title="删除任务"
                     >
                       <Trash2 className="w-3.5 h-3.5" />

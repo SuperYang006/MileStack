@@ -80,11 +80,11 @@ export const CurrentTasks: React.FC<CurrentTasksProps> = ({
               return (
                 <div
                   key={task.id}
-                  className="p-3.5 rounded-md bg-zinc-950/70 border border-zinc-800 hover:border-zinc-700 transition-colors lg:grid lg:grid-cols-[minmax(0,7rem)_minmax(0,1fr)_minmax(0,9rem)_auto] lg:items-start lg:gap-x-3"
+                  className="p-3.5 rounded-md bg-zinc-950/70 border border-zinc-800 hover:border-zinc-700 transition-colors lg:grid lg:grid-cols-[minmax(0,5.5rem)_minmax(0,1fr)_minmax(0,9rem)_auto] lg:items-start lg:gap-x-3"
                 >
                   {/* Top bar: ID and Heartbeat status */}
                   <div className="flex items-center justify-between gap-2 pb-2 lg:contents">
-                    <TaskIdBadge taskId={task.id} variant="cyan" className="lg:w-full" />
+                    <TaskIdBadge taskId={task.id} variant="cyan" displayLength={8} className="lg:w-full" />
 
                     <div className="flex items-center space-x-1.5 text-[11px] font-mono shrink-0 lg:col-start-3 lg:row-start-1 lg:justify-self-end">
                       <span
