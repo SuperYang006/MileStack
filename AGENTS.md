@@ -138,6 +138,25 @@ Do not repeatedly run the entire suite after every small edit. Fix focused failu
 
 Report the exact verification commands and results. Never claim a test passed if it was not run.
 
+### UI verification
+
+Browser checks are slow and flaky on this shared machine, so agents do not run them by default:
+
+- Put branching UI logic that decides what the developer sees, such as grouping, ordering, visibility conditions, and generated text, in a testable function, and test it under `tests/ui`. Add those cases to the existing test file for that UI area instead of creating a file per component or task.
+- Do not extract or test trivial logic, such as a one-line template string, merely to have a test. It may stay in the component.
+- Leave visual and layout results to the developer. Tell them what to look at and where, and record that acceptance criterion as `unverifiable` when no runnable check covers it.
+
+### Browser checks on request
+
+Run a browser check only when the developer explicitly asks for one. The developer's desktop and other agents share this machine:
+
+- Run the browser headless only (for example Chrome with `--headless=new`). Never open a visible browser window or tab, never run `open <url>`, and never use the developer's browser profile. Built-in browser, Chrome-control, or computer-use tools of the agent client count as visible browsers.
+- If headless Chrome cannot start in your environment, do not fall back to a visible browser. Report the launch error and treat the browser check as unavailable.
+- Create one private temporary directory per run with `mktemp -d` outside the checkout. Put the Chrome `--user-data-dir`, throwaway scripts, temporary projects, and screenshots there. Never write screenshots or scripts into the checkout, and confirm output paths are defined before writing.
+- Do not assume fixed ports. Let Chrome choose its debugging port with `--remote-debugging-port=0` and read it from `DevToolsActivePort` in the private profile; use the address that `milestack serve` actually prints.
+- Check the built UI through `milestack serve` on a temporary project. The Vite dev server always proxies `/api` to port 7331, which may belong to another agent or to the developer's real project.
+- Stop only the processes you started, and remove the temporary directory when the check is done.
+
 ## Database and filesystem safety
 
 - Never require deletion of an existing MileStack database to apply a schema change.
