@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { X, GitCommit, CheckCircle2, Clock, Timer, Edit3, GitFork, ArrowRight, Zap, ShieldAlert, ShieldCheck, Terminal, Bot, Check, MessageSquare, GitBranch, RefreshCw } from "lucide-react";
 import { EmptyState } from "./EmptyState";
 import type { FindingClosureInput, TaskDetails, TaskEvent, TaskSummary } from "../types";
@@ -181,7 +182,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
     runs[runs.length - 1];
   if (!isOpen) return null;
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 overflow-y-auto bg-black/75 backdrop-blur-xs flex items-center justify-center p-4">
       <div className="bg-zinc-950 rounded-lg border border-zinc-800 max-w-2xl w-full max-h-[85vh] flex flex-col overflow-hidden shadow-2xl">
         {/* Header */}
@@ -1111,6 +1112,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
       </div>
 
       <FeedbackModal {...feedbackDialogProps} />
-    </div>
+    </div>,
+    document.body
   );
 };

@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { Bookmark, Check, Copy, MessageSquare, X } from "lucide-react";
 
 import {
@@ -67,7 +68,7 @@ export const PageCommentsModal: React.FC<PageCommentsModalProps> = ({
     }
   };
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-[60] overflow-y-auto bg-black/80 backdrop-blur-xs flex items-center justify-center p-4"
       onClick={onClose}
@@ -173,6 +174,7 @@ export const PageCommentsModal: React.FC<PageCommentsModalProps> = ({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

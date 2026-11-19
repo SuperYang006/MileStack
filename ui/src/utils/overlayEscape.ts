@@ -6,20 +6,21 @@ export interface EscapeOverlay {
   /** Mirrors the z-index of the overlay root so Esc agrees with what the user
    *  sees, e.g. 70 for a `z-[70]` root. */
   zIndex: number;
-  /** Opening-order counter: same-z portals stack in mount order, so the most
-   *  recently opened overlay is the one rendered on top. */
+  /** Opening-order counter. Overlay roots are portaled to <body> in open
+   *  order, so for equal z-index the most recently opened overlay also paints
+   *  last — the tiebreak below matches the browser's paint rule exactly. */
   seq: number;
 }
 
 const openOverlays: EscapeOverlay[] = [];
 let overlaySeq = 0;
-/** IME compositions observed at window level. Some engines hand Esc to the
- *  input method without marking the keydown itself, so composition state is
- *  also tracked instead of relying only on `event.isComposing`. */
-let activeCompositions = 0;
+/** The editable element with an open IME composition, tracked at window level.
+ *  Some engines hand Esc to the input method without marking the keydown
+ *  itself, so composition state is tracked in addition to `event.isComposing`. */
+let compositionTarget: Element | null = null;
 
 /** Decides whether a keydown may dismiss an overlay. Escape events inside an
- *  IME composition (event flag, legacy keyCode 229, or an open composition)
+ *  IME composition (event flag, legacy keyCode 229, or a live composition)
  *  belong to the input method — Esc cancels candidate words and must not close
  *  a dialog — and auto-repeat must not peel off several layers in one long
  *  press. Pure so the rule stays unit-testable without a DOM. */
@@ -51,8 +52,22 @@ export function pickTopmostOverlay(
   return topmost;
 }
 
+/** True while an IME composition is live on a connected, still-focused target.
+ *  A composition whose target was unmounted or blurred without compositionend
+ *  (e.g. the offline notice replacing an editor mid-composition) must not keep
+ *  swallowing Escape, so stale state is dropped here. */
+function isCompositionActive(): boolean {
+  const target = compositionTarget;
+  if (!target) return false;
+  if (!target.isConnected || document.activeElement !== target) {
+    compositionTarget = null;
+    return false;
+  }
+  return true;
+}
+
 function handleEscapeKey(event: KeyboardEvent): void {
-  if (!shouldHandleEscapeKey(event, activeCompositions > 0)) return;
+  if (!shouldHandleEscapeKey(event, isCompositionActive())) return;
   const topmost = pickTopmostOverlay(openOverlays);
   if (!topmost) return;
   event.preventDefault();
@@ -61,18 +76,19 @@ function handleEscapeKey(event: KeyboardEvent): void {
   topmost.close();
 }
 
-function handleCompositionStart(): void {
-  activeCompositions += 1;
+function handleCompositionStart(event: CompositionEvent): void {
+  compositionTarget = event.target instanceof Element ? event.target : null;
 }
 
 function handleCompositionEnd(): void {
-  activeCompositions = Math.max(0, activeCompositions - 1);
+  compositionTarget = null;
 }
 
 /** Closes the overlay on Escape while it is the visually topmost open layer.
- *  `zIndex` must match the z-index of the rendered overlay root so Esc closes
- *  the layer the user actually sees, not just the one opened last. The callback
- *  is read through a ref so re-renders never change the stack. */
+ *  The overlay root must be rendered through a portal on <body> (as every
+ *  modal here does) so its paint order is exactly (zIndex, open order), and
+ *  `zIndex` must match the z-index of that root, e.g. 70 for `z-[70]`. The
+ *  callback is read through a ref so re-renders never change the stack. */
 export function useEscapeToClose(
   isOpen: boolean,
   onClose: () => void,
@@ -104,6 +120,7 @@ export function useEscapeToClose(
         window.removeEventListener("keydown", handleEscapeKey, true);
         window.removeEventListener("compositionstart", handleCompositionStart, true);
         window.removeEventListener("compositionend", handleCompositionEnd, true);
+        compositionTarget = null;
       }
     };
   }, [isOpen, zIndex]);

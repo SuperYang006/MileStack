@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { createPortal } from "react-dom";
 import { useQuery } from "@tanstack/react-query";
 import { X, Copy, Check, Terminal, ShieldAlert, Clock } from "lucide-react";
 import { apiClient } from "../api/client";
@@ -47,7 +48,7 @@ export const BriefingModal: React.FC<BriefingModalProps> = ({
     }
   };
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 overflow-y-auto bg-black/75 backdrop-blur-xs flex items-center justify-center p-4">
       <div className="bg-zinc-950 rounded-lg border border-zinc-800 max-w-xl w-full flex flex-col max-h-[85vh] overflow-hidden shadow-2xl font-mono">
         <div className="px-5 py-3 border-b border-zinc-800 flex items-center justify-between">
@@ -123,6 +124,7 @@ export const BriefingModal: React.FC<BriefingModalProps> = ({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

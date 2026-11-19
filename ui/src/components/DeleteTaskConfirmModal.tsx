@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { AlertTriangle, Loader2, Trash2, X } from "lucide-react";
 import { TaskIdBadge } from "./CopyTaskIdButton";
 import { useEscapeToClose } from "../utils/overlayEscape";
@@ -93,7 +94,7 @@ export const DeleteTaskConfirmModal: React.FC<DeleteTaskConfirmModalProps> = ({
 
   const controlsDisabled = isDeleting || isClosing;
 
-  return (
+  return createPortal(
     <div
       className={`fixed inset-0 z-[70] overflow-y-auto bg-black/80 backdrop-blur-xs flex items-center justify-center p-4 transition-opacity duration-150 ease-out motion-reduce:transition-none ${
         isClosing ? "opacity-0" : "opacity-100"
@@ -201,6 +202,7 @@ export const DeleteTaskConfirmModal: React.FC<DeleteTaskConfirmModalProps> = ({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

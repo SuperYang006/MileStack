@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { ArrowUpRight, RotateCcw, Archive, X } from "lucide-react";
 import { EmptyState } from "./EmptyState";
 import type { TaskSummary } from "../types";
@@ -91,7 +92,7 @@ export const RecentTasks: React.FC<RecentTasksProps> = ({
 
   if (!isMounted) return null;
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-40 overflow-hidden">
       {/* Backdrop */}
       <div
@@ -235,6 +236,7 @@ export const RecentTasks: React.FC<RecentTasksProps> = ({
       </div>
 
       <FeedbackModal {...feedbackDialogProps} />
-    </div>
+    </div>,
+    document.body
   );
 };

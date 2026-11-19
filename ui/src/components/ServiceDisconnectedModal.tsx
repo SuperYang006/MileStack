@@ -1,4 +1,5 @@
 import React from "react";
+import { createPortal } from "react-dom";
 import { RefreshCw, WifiOff, X } from "lucide-react";
 import { useEscapeToClose } from "../utils/overlayEscape";
 
@@ -22,7 +23,7 @@ export const ServiceDisconnectedModal: React.FC<ServiceDisconnectedModalProps> =
 
   if (!isOpen) return null;
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[60] overflow-y-auto bg-black/80 backdrop-blur-xs flex items-center justify-center p-4">
       <div
         className="bg-zinc-950 rounded-lg border border-rose-900/70 max-w-md w-full flex flex-col overflow-hidden shadow-2xl font-mono text-xs"
@@ -75,6 +76,7 @@ export const ServiceDisconnectedModal: React.FC<ServiceDisconnectedModalProps> =
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
