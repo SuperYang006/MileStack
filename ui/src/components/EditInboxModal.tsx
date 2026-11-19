@@ -23,6 +23,8 @@ import {
 const MIN_TEXTAREA_ROWS = 3;
 const MAX_TEXTAREA_ROWS = 12;
 const MAX_DEPENDENCY_CANDIDATES = 8;
+const DEFAULT_DEPENDENCY_LIST_MAX_HEIGHT = 224;
+const MIN_DEPENDENCY_LIST_MAX_HEIGHT = 24;
 
 const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
   inbox: "草稿",
@@ -77,12 +79,18 @@ export const EditInboxModal: React.FC<EditInboxModalProps> = ({
   const [dependencyIds, setDependencyIds] = useState<string[]>([]);
   const [dependencyQuery, setDependencyQuery] = useState("");
   const [isDependencyPickerOpen, setIsDependencyPickerOpen] = useState(false);
+  const [dependencyListLayout, setDependencyListLayout] = useState({
+    maxHeight: DEFAULT_DEPENDENCY_LIST_MAX_HEIGHT,
+    rowBudget: MAX_DEPENDENCY_CANDIDATES,
+  });
   const [riskLevel, setRiskLevel] = useState<RiskLevel>("medium");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const objectiveRef = useRef<HTMLTextAreaElement>(null);
   const criteriaRef = useRef<HTMLTextAreaElement>(null);
   const dependencyInputRef = useRef<HTMLInputElement>(null);
+  const dependencyListRef = useRef<HTMLDivElement>(null);
+  const modalFooterRef = useRef<HTMLDivElement>(null);
 
   const taskId = task ? ("task" in task ? task.task.id : task.id) : "";
 
@@ -91,7 +99,7 @@ export const EditInboxModal: React.FC<EditInboxModalProps> = ({
     currentTaskId: taskId,
     selectedIds: dependencyIds,
     query: dependencyQuery,
-    limit: MAX_DEPENDENCY_CANDIDATES,
+    limit: dependencyListLayout.rowBudget,
   });
 
   const addDependencyIds = (ids: string[]) => {
@@ -193,6 +201,33 @@ export const EditInboxModal: React.FC<EditInboxModalProps> = ({
     if (objectiveRef.current) resizeLongTextArea(objectiveRef.current);
     if (criteriaRef.current) resizeLongTextArea(criteriaRef.current);
   }, [isOpen, objective, criteriaText]);
+
+  // Keep the open candidate list between the search input and the modal
+  // footer: cap the box to the measured space and only render the rows that
+  // fully fit, so every option stays completely clickable.
+  useLayoutEffect(() => {
+    if (!isOpen || !isDependencyPickerOpen) return;
+    const input = dependencyInputRef.current;
+    const footer = modalFooterRef.current;
+    const list = dependencyListRef.current;
+    if (!input || !footer || !list) return;
+    const available =
+      footer.getBoundingClientRect().top - input.getBoundingClientRect().bottom - 8;
+    const maxHeight = Math.max(
+      Math.min(available, DEFAULT_DEPENDENCY_LIST_MAX_HEIGHT),
+      MIN_DEPENDENCY_LIST_MAX_HEIGHT,
+    );
+    const row = list.querySelector<HTMLElement>("[role='option']");
+    const rowHeight = row?.getBoundingClientRect().height ?? 0;
+    const rowBudget =
+      rowHeight > 0
+        ? Math.max(
+            Math.min(Math.floor((available - 4) / rowHeight), MAX_DEPENDENCY_CANDIDATES),
+            1,
+          )
+        : MAX_DEPENDENCY_CANDIDATES;
+    setDependencyListLayout({ maxHeight, rowBudget });
+  }, [isOpen, isDependencyPickerOpen, dependencyIds.length]);
 
   if (!isOpen || !task) return null;
 
@@ -407,9 +442,11 @@ export const EditInboxModal: React.FC<EditInboxModalProps> = ({
                   />
                   {isDependencyPickerOpen && (
                     <div
+                      ref={dependencyListRef}
                       id="dependency-picker-options"
                       role="listbox"
-                      className="absolute top-full left-0 right-0 z-10 mt-1 max-h-56 overflow-y-auto rounded border border-zinc-700 bg-zinc-950 shadow-xl"
+                      style={{ maxHeight: dependencyListLayout.maxHeight }}
+                      className="absolute top-full left-0 right-0 z-10 mt-1 overflow-y-auto rounded border border-zinc-700 bg-zinc-950 shadow-xl"
                     >
                       {dependencyCandidates.length === 0 ? (
                         <p className="px-3 py-2 text-[11px] text-zinc-500">
@@ -531,7 +568,10 @@ export const EditInboxModal: React.FC<EditInboxModalProps> = ({
           </div>
 
           {/* Footer Controls */}
-          <div className="shrink-0 px-5 pt-3 pb-5 border-t border-zinc-800 flex items-center justify-between">
+          <div
+            ref={modalFooterRef}
+            className="shrink-0 px-5 pt-3 pb-5 border-t border-zinc-800 flex items-center justify-between"
+          >
             <span className="text-[10px] text-zinc-600">保存不影响队列排位</span>
             <div className="flex items-center space-x-2">
               <button
