@@ -21,6 +21,8 @@ const reviewEntryRule =
   "Review starts only when the developer sends the task ID to an independent review agent. Call get_task with that taskId and confirm phase=review, then call start_review and save the returned reviewRunId before inspecting the submitted artifact. Review the exact commit recorded in the latest submission, verify every acceptance criterion independently, and record a closure for every finding from a changes-requested previous round. Conclude with approve_review, request_changes, or complete_review using the reviewRunId, then stop.";
 const reviewDimensionRule =
   "Do not accept the submitter's criteriaResults as review evidence: independently reproduce the key verification for each acceptance criterion. Inspect the reviewed diff for changes outside the task objective and acceptance criteria, and check the work against the repository root AGENTS.md. Record each finding with a low, medium, or high severity for developer triage, but severity does not permit a pass: a review cannot pass while any submitted criterion is not_met or unverifiable or any previous finding remains not_fixed or partially_fixed.";
+const reReviewApproachRule =
+  "When re-reviewing after changes were requested, start from the incremental diff: the get_task default view returns the previous round's review round and commit SHA next to previousFindings, so first compare that previous commit with the current submission's commit to locate what changed. Close every previous finding one by one, and still independently verify every acceptance criterion. The incremental diff only locates changes; it never replaces the full verification.";
 const integrationRule =
   "Required local Git integration is checked against the fixed review commit and the developer-confirmed local target branch. A low-risk task may complete automatically only after that check; medium- and high-risk tasks require developer approval and the same integration gate.";
 const integrationRetryRule =
@@ -138,6 +140,7 @@ export function formatProjectAgentInstructions(version: string): string {
     "- A passing review must record the commands actually run and their results. Do not claim verification that was not performed. A review cannot pass while a submitted acceptance criterion is not_met or unverifiable.",
     "- Use approve_review(taskId, reviewRunId, summary, findings, verificationEvidence, actorLabel?) or complete_review with decision=passed to pass a review.",
     "- Use request_changes(taskId, reviewRunId, summary, findings, actorLabel?) or complete_review with decision=changes_requested to return work. Every new finding must record a concrete issue, an actionable suggestion, a severity, a trigger condition, an observable impact, and evidence; add a location when one can be identified.",
+    `- ${reReviewApproachRule}`,
     "- When re-reviewing a round that requested changes, record a closure status (fixed, partially_fixed, not_fixed, unverifiable, or invalidated) for every previous finding. A review cannot pass while a previous finding remains not_fixed or partially_fixed.",
     "- request_changes returns the task to ready and invalidates old execution and review credentials. Rework must be claimed with a new runId and submitted as a new fixed commit.",
     "",

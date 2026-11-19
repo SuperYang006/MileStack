@@ -315,6 +315,18 @@ export const taskWorkingPreviousFindingSchema = z
   })
   .strict();
 
+/**
+ * The immediately previous review round, exposed only when it requested
+ * changes so a fresh reviewer session can diff that commit against the
+ * current submission without requesting view=full.
+ */
+export const taskWorkingPreviousReviewSchema = z
+  .object({
+    reviewRound: z.number().int().positive(),
+    commitSha: z.string().regex(/^[0-9a-f]{40}$/i),
+  })
+  .strict();
+
 export const taskWorkingOpenFindingSchema = z
   .object({
     reviewRound: z.number().int().positive(),
@@ -331,6 +343,7 @@ export const taskWorkingDetailsSchema = z
     dependencies: z.array(taskWorkingDependencySchema),
     currentRunEvents: z.array(taskEventSchema),
     latestSubmission: taskWorkingSubmissionSchema.nullable(),
+    previousReview: taskWorkingPreviousReviewSchema.nullable(),
     previousFindings: z.array(taskWorkingPreviousFindingSchema),
     openFindings: z.array(taskWorkingOpenFindingSchema),
   })
