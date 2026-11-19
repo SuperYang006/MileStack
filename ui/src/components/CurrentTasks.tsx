@@ -73,6 +73,7 @@ export const CurrentTasks: React.FC<CurrentTasksProps> = ({
             return (
               <div
                 key={task.id}
+                data-queue-card
                 className="p-3.5 rounded-md bg-zinc-950/70 border border-zinc-800 hover:border-zinc-700 transition-colors lg:grid lg:grid-cols-[minmax(0,5.5rem)_minmax(0,1fr)_minmax(0,9rem)_auto] lg:items-start lg:gap-x-3"
               >
                 {/* Top bar: ID and Heartbeat status */}

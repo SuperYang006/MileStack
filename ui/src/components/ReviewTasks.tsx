@@ -150,7 +150,7 @@ const ReviewTaskItem: React.FC<{
     : [];
 
   return (
-    <div className="p-3.5 rounded-lg bg-zinc-950/80 border border-zinc-800 hover:border-violet-900/60 transition-colors space-y-2">
+    <div data-queue-card className="p-3.5 rounded-lg bg-zinc-950/80 border border-zinc-800 hover:border-violet-900/60 transition-colors space-y-2">
       {/* Layer 1: identity on its own row, then the passive review state on the left and the
           review actions on the right. The card only reaches about 550px of content width in the
           two-column dashboard, so the action group wraps as a unit and stays right-aligned. */}

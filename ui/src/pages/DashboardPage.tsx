@@ -1,4 +1,11 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { RefreshCw, WifiOff } from "lucide-react";
 import {
   useQuery,
@@ -73,10 +80,43 @@ function createEmptyProjectStatus(project: ProjectSummary): ProjectStatus {
 /** Wide screens keep the dashboard in one viewport: inside each queue column,
  *  populated queues take their content height and only compress — then scroll
  *  internally, in proportion to their content — when the column together
- *  overflows, while empty queues hold a single status row. Leftover space stays
- *  below the column, never inside a panel. */
+ *  overflows, while empty queues hold a single status row. A populated queue
+ *  never shrinks below its title row plus first card (a measured floor, see
+ *  measureQueueSlotFloor), so a small queue keeps its only task visible while
+ *  bigger queues absorb the compression. Leftover space stays below the
+ *  column, never inside a panel. */
 function queueSlotClass(taskCount: number): string {
   return taskCount > 0 ? "lg:min-h-0" : "lg:shrink-0";
+}
+
+type QueueSlotKey = "next" | "inReview" | "current" | "inbox";
+
+/** Height a populated panel needs to fully show its title row and first card,
+ *  measured from the rendered panel: real font metrics and card content set
+ *  the floor, not hardcoded pixels. The scrollable list is the section's
+ *  second child and the first card carries data-queue-card. Returns null when
+ *  the slot does not hold the populated section layout. */
+function measureQueueSlotFloor(slot: HTMLElement): number | null {
+  const section = slot.firstElementChild;
+  if (!(section instanceof HTMLElement)) return null;
+  const list = section.children[1];
+  if (!(list instanceof HTMLElement)) return null;
+  const firstCard = list.querySelector<HTMLElement>("[data-queue-card]");
+  if (!firstCard) return null;
+  const listStyle = window.getComputedStyle(list);
+  const sectionStyle = window.getComputedStyle(section);
+  // Undo any list scrolling so the floor describes the unscrolled position of
+  // the first card's bottom edge, plus the list padding and panel border below
+  // it.
+  const firstCardBottom =
+    firstCard.getBoundingClientRect().bottom +
+    list.scrollTop -
+    section.getBoundingClientRect().top;
+  const floor =
+    firstCardBottom +
+    parseFloat(listStyle.paddingBottom) +
+    parseFloat(sectionStyle.borderBottomWidth);
+  return Number.isFinite(floor) && floor > 0 ? floor : null;
 }
 
 function useDocumentVisible(): boolean {
@@ -376,6 +416,54 @@ export const DashboardPage: React.FC = () => {
   const visibleStatus =
     !isServiceDisconnected && status ? status : createEmptyProjectStatus(lastProject);
 
+  // Populated queue slots keep their floor (title row + first card) as an
+  // inline min-height, overriding the Tailwind lg:min-h-0 fallback so the
+  // column's flex algorithm can never compress a small queue past its only
+  // visible task. Clearing the property restores the bare slot when a queue
+  // empties; below lg the slot is display:contents, where the value is inert.
+  const queueSlotRefs = useRef<Record<QueueSlotKey, HTMLElement | null>>({
+    next: null,
+    inReview: null,
+    current: null,
+    inbox: null,
+  });
+
+  useLayoutEffect(() => {
+    const slots: Array<[QueueSlotKey, TaskSummary[]]> = [
+      ["next", visibleStatus.next],
+      ["inReview", visibleStatus.inReview],
+      ["current", visibleStatus.current],
+      ["inbox", visibleStatus.inbox],
+    ];
+    const applySlotFloors = () => {
+      for (const [key, tasks] of slots) {
+        const slot = queueSlotRefs.current[key];
+        if (!slot) continue;
+        const floor = tasks.length > 0 ? measureQueueSlotFloor(slot) : null;
+        if (floor === null) slot.style.removeProperty("min-height");
+        else slot.style.minHeight = `${floor}px`;
+      }
+    };
+    applySlotFloors();
+
+    // Card text rewraps with the viewport and fonts may load late; re-measure
+    // on both instead of trusting a stale floor.
+    let frame: number | null = null;
+    const scheduleRemeasure = () => {
+      if (frame !== null) return;
+      frame = requestAnimationFrame(() => {
+        frame = null;
+        applySlotFloors();
+      });
+    };
+    window.addEventListener("resize", scheduleRemeasure);
+    void document.fonts.ready.then(scheduleRemeasure);
+    return () => {
+      window.removeEventListener("resize", scheduleRemeasure);
+      if (frame !== null) cancelAnimationFrame(frame);
+    };
+  }, [visibleStatus.next, visibleStatus.inReview, visibleStatus.current, visibleStatus.inbox]);
+
   const reconnect = async () => {
     setIsReconnecting(true);
     forceFullStatusRef.current = true;
@@ -479,15 +567,21 @@ export const DashboardPage: React.FC = () => {
         {/* Four active queue regions keep their 2x2 positions on wide screens:
             left column 已就绪 + 待审核, right column 正在进行 + 草稿箱. Each column
             is a flex stack — an empty queue holds a single status row and
-            populated queues take their content height, compressing with
-            internal scroll only when the column together overflows. Below lg the
-            column wrappers flatten to display:contents and the order utilities
-            restore the original natural stack order. */}
+            populated queues take their content height, never shrinking below
+            their measured title-plus-first-card floor, compressing with
+            internal scroll only when the column together overflows. Below lg
+            the column wrappers flatten to display:contents and the order
+            utilities restore the original natural stack order. */}
         <div className="flex flex-col gap-6 lg:min-h-0 lg:flex-1 lg:flex-row lg:gap-3">
           {/* Wide screens: left column. Narrow screens: display contents. */}
           <div className="contents lg:flex lg:min-h-0 lg:min-w-0 lg:flex-1 lg:flex-col lg:gap-3">
             {/* Top-left: 已就绪 */}
-            <div className={`order-1 ${queueSlotClass(visibleStatus.next.length)}`}>
+            <div
+              ref={(el) => {
+                queueSlotRefs.current.next = el;
+              }}
+              className={`order-1 ${queueSlotClass(visibleStatus.next.length)}`}
+            >
               <NextTasks
                 tasks={visibleStatus.next}
                 allTasks={allTasks}
@@ -502,7 +596,12 @@ export const DashboardPage: React.FC = () => {
             </div>
 
             {/* Bottom-left: 待审核 */}
-            <div className={`order-3 ${queueSlotClass(visibleStatus.inReview.length)}`}>
+            <div
+              ref={(el) => {
+                queueSlotRefs.current.inReview = el;
+              }}
+              className={`order-3 ${queueSlotClass(visibleStatus.inReview.length)}`}
+            >
               <ReviewTasks
                 tasks={visibleStatus.inReview}
                 onApprove={(id) => approveTaskMutation.mutate(id)}
@@ -528,7 +627,12 @@ export const DashboardPage: React.FC = () => {
           {/* Wide screens: right column. Narrow screens: display contents. */}
           <div className="contents lg:flex lg:min-h-0 lg:min-w-0 lg:flex-1 lg:flex-col lg:gap-3">
             {/* Top-right: 正在进行 */}
-            <div className={`order-2 ${queueSlotClass(visibleStatus.current.length)}`}>
+            <div
+              ref={(el) => {
+                queueSlotRefs.current.current = el;
+              }}
+              className={`order-2 ${queueSlotClass(visibleStatus.current.length)}`}
+            >
               <CurrentTasks
                 tasks={visibleStatus.current}
                 allTasks={allTasks}
@@ -539,7 +643,12 @@ export const DashboardPage: React.FC = () => {
             </div>
 
             {/* Bottom-right: 草稿箱 */}
-            <div className={`order-4 ${queueSlotClass(visibleStatus.inbox.length)}`}>
+            <div
+              ref={(el) => {
+                queueSlotRefs.current.inbox = el;
+              }}
+              className={`order-4 ${queueSlotClass(visibleStatus.inbox.length)}`}
+            >
               <InboxTasks
                 tasks={visibleStatus.inbox}
                 allTasks={allTasks}
