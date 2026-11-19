@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { RefreshCw, WifiOff } from "lucide-react";
 import {
   useQuery,
@@ -23,6 +23,10 @@ import { EditInboxModal } from "../components/EditInboxModal";
 import { DeleteTaskConfirmModal } from "../components/DeleteTaskConfirmModal";
 import { ServiceDisconnectedModal } from "../components/ServiceDisconnectedModal";
 import { PageCommentsModal } from "../components/PageCommentsModal";
+import {
+  OperationErrorNotice,
+  type OperationError,
+} from "../components/OperationErrorNotice";
 import {
   projectStatusQueryOptions,
   projectStatusQueryKey,
@@ -102,6 +106,21 @@ export const DashboardPage: React.FC = () => {
   const [lastProject, setLastProject] = useState<ProjectSummary>({ id: "", name: "", goal: null });
   const [isDisconnectNoticeDismissed, setIsDisconnectNoticeDismissed] = useState(false);
   const [isReconnecting, setIsReconnecting] = useState(false);
+  const [operationError, setOperationError] = useState<OperationError | null>(null);
+
+  // Every failed action reports the operation that failed and the service's own
+  // reason. Successful actions stay silent: the changed queue is the feedback.
+  const reportOperationFailure = useCallback(
+    (operation: string) => (error: Error) => {
+      setOperationError((previous) => ({
+        id: (previous?.id ?? 0) + 1,
+        operation,
+        message: error.message || "未知错误",
+      }));
+    },
+    [],
+  );
+  const dismissOperationError = useCallback(() => setOperationError(null), []);
 
   // Queries. A failed call is never retried into a fake result: it marks the
   // service offline right away, and the notice waits for a real recovery.
@@ -206,6 +225,7 @@ export const DashboardPage: React.FC = () => {
     mutationFn: ({ taskId, riskLevel }: { taskId: string; riskLevel?: RiskLevel }) =>
       apiClient.confirmInboxTask(taskId, riskLevel),
     onSuccess: invalidateProjectQueries,
+    onError: reportOperationFailure("确认入队"),
   });
 
   const editInboxTaskMutation = useMutation({
@@ -248,11 +268,13 @@ export const DashboardPage: React.FC = () => {
     mutationFn: ({ taskId, direction }: { taskId: string; direction: "up" | "down" }) =>
       apiClient.reorderReadyTask(taskId, direction),
     onSuccess: invalidateProjectQueries,
+    onError: reportOperationFailure("调整顺序"),
   });
 
   const releaseTaskMutation = useMutation({
     mutationFn: (taskId: string) => apiClient.releaseTask(taskId),
     onSuccess: invalidateProjectQueries,
+    onError: reportOperationFailure("释放"),
   });
 
   const approveTaskMutation = useMutation({
@@ -261,9 +283,10 @@ export const DashboardPage: React.FC = () => {
       invalidateProjectQueries();
       queryClient.invalidateQueries({ queryKey: ["taskDetails", taskId] });
     },
-    onError: (_, taskId) => {
+    onError: (error, taskId) => {
       invalidateProjectQueries();
       queryClient.invalidateQueries({ queryKey: ["taskDetails", taskId] });
+      reportOperationFailure("批准")(error);
     },
   });
 
@@ -274,9 +297,10 @@ export const DashboardPage: React.FC = () => {
       invalidateProjectQueries();
       queryClient.invalidateQueries({ queryKey: ["taskDetails", variables.taskId] });
     },
-    onError: (_, variables) => {
+    onError: (error, variables) => {
       invalidateProjectQueries();
       queryClient.invalidateQueries({ queryKey: ["taskDetails", variables.taskId] });
+      reportOperationFailure("检查并归档")(error);
     },
   });
 
@@ -309,6 +333,7 @@ export const DashboardPage: React.FC = () => {
       invalidateProjectQueries();
       queryClient.invalidateQueries({ queryKey: ["taskDetails", variables.taskId] });
     },
+    onError: reportOperationFailure("直接验收"),
   });
 
   const requestChangesMutation = useMutation({
@@ -325,9 +350,7 @@ export const DashboardPage: React.FC = () => {
       invalidateProjectQueries();
       queryClient.invalidateQueries({ queryKey: ["taskDetails", variables.taskId] });
     },
-    onError: (error: Error) => {
-      alert(`退回返工失败：${error.message}`);
-    },
+    onError: reportOperationFailure("退回返工"),
   });
 
   const reopenTaskMutation = useMutation({
@@ -337,6 +360,7 @@ export const DashboardPage: React.FC = () => {
       invalidateProjectQueries();
       queryClient.invalidateQueries({ queryKey: ["taskDetails", variables.taskId] });
     },
+    onError: reportOperationFailure("重新打开"),
   });
   // An offline dashboard is still a dashboard: it keeps the frame and the last
   // known project name, but never the last task snapshot.
@@ -507,6 +531,8 @@ export const DashboardPage: React.FC = () => {
           </div>
         </div>
       </main>
+
+      <OperationErrorNotice error={operationError} onDismiss={dismissOperationError} />
 
       {/* Archive Slide-over Drawer */}
       <RecentTasks
