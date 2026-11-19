@@ -66,6 +66,13 @@ function createEmptyProjectStatus(project: ProjectSummary): ProjectStatus {
   };
 }
 
+/** Wide screens keep the dashboard in one viewport: inside each queue column,
+ *  populated queues split the remaining height while empty queues hold a single
+ *  status row. */
+function queueSlotClass(taskCount: number): string {
+  return taskCount > 0 ? "lg:min-h-0 lg:flex-1" : "lg:shrink-0";
+}
+
 function useDocumentVisible(): boolean {
   const [isVisible, setIsVisible] = useState(
     () => typeof document === "undefined" || document.visibilityState === "visible",
@@ -381,7 +388,7 @@ export const DashboardPage: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-zinc-950 text-zinc-100 pb-16 lg:pb-0 selection:bg-cyan-500/30 selection:text-cyan-200">
+    <div className="min-h-screen flex flex-col bg-zinc-950 text-zinc-100 pb-16 lg:h-screen lg:pb-0 selection:bg-cyan-500/30 selection:text-cyan-200">
       {/* Header */}
       <Header
         project={visibleStatus.project}
@@ -426,7 +433,7 @@ export const DashboardPage: React.FC = () => {
       )}
 
       {/* Main Content Area */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 w-full space-y-6 lg:flex lg:h-[calc(100vh-4rem)] lg:min-h-0 lg:flex-col lg:space-y-3 lg:overflow-hidden">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 w-full space-y-6 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:space-y-3 lg:overflow-hidden lg:pb-3">
         {/* Blocked Section (Top priority when tasks are blocked) */}
         <BlockedTasks
           tasks={visibleStatus.blocked}
@@ -440,70 +447,81 @@ export const DashboardPage: React.FC = () => {
           onConfirmTask={(id, riskLevel) => confirmInboxMutation.mutate({ taskId: id, riskLevel })}
         />
 
-        {/* Four active queue regions: symmetric 2x2 grid on wide screens; natural stack on mobile. */}
-        <div className="grid grid-cols-1 gap-6 lg:flex-1 lg:min-h-0 lg:grid-cols-2 lg:grid-rows-2 lg:items-stretch lg:gap-3">
-          {/* Top-left: 已就绪 */}
-          <div className="lg:h-full lg:min-h-0">
-            <NextTasks
-              tasks={visibleStatus.next}
-              allTasks={allTasks}
-              onReorder={(id, dir) => reorderTaskMutation.mutate({ taskId: id, direction: dir })}
-              onReturnToInbox={(id) => returnReadyMutation.mutate(id)}
-              onRequestDelete={(task) =>
-                setPendingDeletion({ taskId: task.id, taskTitle: task.title, source: "ready" })
-              }
-              onSelectTask={(id) => setSelectedTaskId(id)}
-              onOpenBriefing={(task) => setBriefingTask(task)}
-            />
+        {/* Four active queue regions keep their 2x2 positions on wide screens:
+            left column 已就绪 + 待审核, right column 正在进行 + 草稿箱. Each column
+            is a flex stack — an empty queue holds a single status row and
+            populated queues split the remaining column height. Below lg the
+            column wrappers flatten to display:contents and the order utilities
+            restore the original natural stack order. */}
+        <div className="flex flex-col gap-6 lg:min-h-0 lg:flex-1 lg:flex-row lg:gap-3">
+          {/* Wide screens: left column. Narrow screens: display contents. */}
+          <div className="contents lg:flex lg:min-h-0 lg:min-w-0 lg:flex-1 lg:flex-col lg:gap-3">
+            {/* Top-left: 已就绪 */}
+            <div className={`order-1 ${queueSlotClass(visibleStatus.next.length)}`}>
+              <NextTasks
+                tasks={visibleStatus.next}
+                allTasks={allTasks}
+                onReorder={(id, dir) => reorderTaskMutation.mutate({ taskId: id, direction: dir })}
+                onReturnToInbox={(id) => returnReadyMutation.mutate(id)}
+                onRequestDelete={(task) =>
+                  setPendingDeletion({ taskId: task.id, taskTitle: task.title, source: "ready" })
+                }
+                onSelectTask={(id) => setSelectedTaskId(id)}
+                onOpenBriefing={(task) => setBriefingTask(task)}
+              />
+            </div>
+
+            {/* Bottom-left: 待审核 */}
+            <div className={`order-3 ${queueSlotClass(visibleStatus.inReview.length)}`}>
+              <ReviewTasks
+                tasks={visibleStatus.inReview}
+                onApprove={(id) => approveTaskMutation.mutate(id)}
+                onCheckIntegration={(taskId, reviewId) =>
+                  checkIntegrationMutation.mutate({ taskId, reviewId })
+                }
+                checkingTaskId={
+                  checkIntegrationMutation.isPending
+                    ? checkIntegrationMutation.variables?.taskId ?? null
+                    : null
+                }
+                onWaiveApproval={(taskId, reason) =>
+                  waiveTaskApprovalMutation.mutate({ taskId, reason })
+                }
+                onRequestChanges={(taskId, feedback, findingClosures) =>
+                  requestChangesMutation.mutate({ taskId, feedback, findingClosures })
+                }
+                onSelectTask={(id) => setSelectedTaskId(id)}
+              />
+            </div>
           </div>
 
-          {/* Top-right: 正在进行 */}
-          <div className="lg:h-full lg:min-h-0">
-            <CurrentTasks
-              tasks={visibleStatus.current}
-              allTasks={allTasks}
-              onSelectTask={(id) => setSelectedTaskId(id)}
-              onReleaseTask={(id) => releaseTaskMutation.mutate(id)}
-              isServiceOffline={isServiceDisconnected}
-            />
-          </div>
+          {/* Wide screens: right column. Narrow screens: display contents. */}
+          <div className="contents lg:flex lg:min-h-0 lg:min-w-0 lg:flex-1 lg:flex-col lg:gap-3">
+            {/* Top-right: 正在进行 */}
+            <div className={`order-2 ${queueSlotClass(visibleStatus.current.length)}`}>
+              <CurrentTasks
+                tasks={visibleStatus.current}
+                allTasks={allTasks}
+                onSelectTask={(id) => setSelectedTaskId(id)}
+                onReleaseTask={(id) => releaseTaskMutation.mutate(id)}
+                isServiceOffline={isServiceDisconnected}
+              />
+            </div>
 
-          {/* Bottom-left: 待审核 */}
-          <div className="lg:h-full lg:min-h-0">
-            <ReviewTasks
-              tasks={visibleStatus.inReview}
-              onApprove={(id) => approveTaskMutation.mutate(id)}
-              onCheckIntegration={(taskId, reviewId) =>
-                checkIntegrationMutation.mutate({ taskId, reviewId })
-              }
-              checkingTaskId={
-                checkIntegrationMutation.isPending
-                  ? checkIntegrationMutation.variables?.taskId ?? null
-                  : null
-              }
-              onWaiveApproval={(taskId, reason) =>
-                waiveTaskApprovalMutation.mutate({ taskId, reason })
-              }
-              onRequestChanges={(taskId, feedback, findingClosures) =>
-                requestChangesMutation.mutate({ taskId, feedback, findingClosures })
-              }
-              onSelectTask={(id) => setSelectedTaskId(id)}
-            />
-          </div>
-
-          {/* Bottom-right: 草稿箱 */}
-          <div className="lg:h-full lg:min-h-0">
-            <InboxTasks
-              tasks={visibleStatus.inbox}
-              allTasks={allTasks}
-              onConfirmTask={(id, riskLevel) => confirmInboxMutation.mutate({ taskId: id, riskLevel })}
-              onRequestDelete={(task) =>
-                setPendingDeletion({ taskId: task.id, taskTitle: task.title, source: "inbox" })
-              }
-              onSelectTask={(id) => setSelectedTaskId(id)}
-              onEditTask={(task) => setEditingInboxTask(task)}
-              onCreateTask={isServiceDisconnected ? undefined : openCreateModal}
-            />
+            {/* Bottom-right: 草稿箱 */}
+            <div className={`order-4 ${queueSlotClass(visibleStatus.inbox.length)}`}>
+              <InboxTasks
+                tasks={visibleStatus.inbox}
+                allTasks={allTasks}
+                onConfirmTask={(id, riskLevel) => confirmInboxMutation.mutate({ taskId: id, riskLevel })}
+                onRequestDelete={(task) =>
+                  setPendingDeletion({ taskId: task.id, taskTitle: task.title, source: "inbox" })
+                }
+                onSelectTask={(id) => setSelectedTaskId(id)}
+                onEditTask={(task) => setEditingInboxTask(task)}
+                onCreateTask={isServiceDisconnected ? undefined : openCreateModal}
+              />
+            </div>
           </div>
         </div>
       </main>

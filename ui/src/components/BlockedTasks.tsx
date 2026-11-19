@@ -20,9 +20,6 @@ export const BlockedTasks: React.FC<BlockedTasksProps> = ({ tasks, onSelectTask 
             阻塞异常 ({tasks.length})
           </h2>
         </div>
-        <span className="text-[11px] font-mono text-rose-400/80">
-          需人工介入处理
-        </span>
       </div>
 
       <div className="p-3 space-y-2.5 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">

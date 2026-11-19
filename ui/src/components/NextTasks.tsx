@@ -9,11 +9,10 @@ import {
   Zap,
   Play,
   Clock,
-  ListOrdered,
 } from "lucide-react";
 import type { TaskSummary } from "../types";
 import { TaskIdBadge } from "./CopyTaskIdButton";
-import { EmptyState } from "./EmptyState";
+import { QueueStatusBar } from "./QueueStatusBar";
 import {
   computeReadyQueueStats,
   computeTaskDependencyDetail,
@@ -63,6 +62,17 @@ export const NextTasks: React.FC<NextTasksProps> = ({
     }));
   };
 
+  if (tasks.length === 0) {
+    return (
+      <QueueStatusBar
+        tone="indigo"
+        title="就绪队列"
+        count={0}
+        status="队列清空"
+      />
+    );
+  }
+
   return (
     <section className="rounded-lg border border-zinc-800 bg-zinc-900/50 backdrop-blur-xs overflow-hidden lg:h-full lg:min-h-0 lg:flex lg:flex-col">
       <div className="px-4 py-2.5 border-b border-zinc-800/80 flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5 shrink-0">
@@ -104,212 +114,201 @@ export const NextTasks: React.FC<NextTasksProps> = ({
       </div>
 
       <div className="p-3 lg:flex-1 lg:min-h-0 lg:overflow-y-auto">
-        {tasks.length === 0 ? (
-          <EmptyState
-            icon={ListOrdered}
-            title="就绪队列为空"
-            description="当前没有排队中的就绪任务。可在草稿箱中确认任务，或新增规划"
-            tag="队列清空"
-            variant="indigo"
-            className="lg:h-full"
-          />
-        ) : (
-          <div className="space-y-2">
-            {tasks.map((task, index) => {
-              const isFirst = index === 0;
-              const isLast = index === tasks.length - 1;
-              const posNumber = String(task.queuePosition ?? index + 1).padStart(2, "0");
+        <div className="space-y-2">
+          {tasks.map((task, index) => {
+            const isFirst = index === 0;
+            const isLast = index === tasks.length - 1;
+            const posNumber = String(task.queuePosition ?? index + 1).padStart(2, "0");
 
-              const detail = computeTaskDependencyDetail(task, allTasks);
-              const isRunnable = detail.isRunnable;
-              const reworkReview = isReworkTask(task) ? task.latestReview : null;
-              const reworkDetail = reworkReview
-                ? reworkReview.summary?.trim() ||
-                  (reworkReview.findingsCount > 0
-                    ? `${reworkReview.findingsCount} 条 finding`
-                    : `第 ${reworkReview.reviewRound} 轮评审要求修改`)
-                : null;
+            const detail = computeTaskDependencyDetail(task, allTasks);
+            const isRunnable = detail.isRunnable;
+            const reworkReview = isReworkTask(task) ? task.latestReview : null;
+            const reworkDetail = reworkReview
+              ? reworkReview.summary?.trim() ||
+                (reworkReview.findingsCount > 0
+                  ? `${reworkReview.findingsCount} 条 finding`
+                  : `第 ${reworkReview.reviewRound} 轮评审要求修改`)
+              : null;
 
-              const isDepsExpanded = !!expandedDepsTaskIds[task.id];
-              const visibleDeps = isDepsExpanded
-                ? detail.dependencies
-                : detail.dependencies.slice(0, 2);
-              const hasHiddenDeps = detail.dependencies.length > 2;
+            const isDepsExpanded = !!expandedDepsTaskIds[task.id];
+            const visibleDeps = isDepsExpanded
+              ? detail.dependencies
+              : detail.dependencies.slice(0, 2);
+            const hasHiddenDeps = detail.dependencies.length > 2;
 
-              return (
+            return (
+              <div
+                key={task.id}
+                id={`ready-task-${task.id}`}
+                className="group grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2 gap-y-2 p-2.5 rounded-md bg-zinc-950/60 border border-zinc-800 hover:border-zinc-600 transition-colors lg:grid-cols-[2.75rem_minmax(0,7rem)_minmax(0,1fr)_auto] lg:gap-x-3"
+              >
+                {/* Reorder and Index */}
+                <div className="flex items-center space-x-2 shrink-0 pt-0.5 lg:col-start-1 lg:row-start-1">
+                  <div className="flex flex-col opacity-20 group-hover:opacity-100 transition-opacity">
+                    <button
+                      onClick={() => onReorder(task.id, "up")}
+                      disabled={isFirst}
+                      className="p-0.5 text-zinc-400 hover:text-zinc-200 disabled:opacity-0 transition-colors"
+                      title="上移"
+                    >
+                      <ChevronUp className="w-3 h-3" />
+                    </button>
+                    <button
+                      onClick={() => onReorder(task.id, "down")}
+                      disabled={isLast}
+                      className="p-0.5 text-zinc-400 hover:text-zinc-200 disabled:opacity-0 transition-colors"
+                      title="下移"
+                    >
+                      <ChevronDown className="w-3 h-3" />
+                    </button>
+                  </div>
+
+                  <span className="font-mono text-xs text-zinc-600 group-hover:text-zinc-400 transition-colors w-5 text-right select-none">
+                    {posNumber}
+                  </span>
+                </div>
+
+                {/* Task Info & Dependencies */}
                 <div
-                  key={task.id}
-                  id={`ready-task-${task.id}`}
-                  className="group grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2 gap-y-2 p-2.5 rounded-md bg-zinc-950/60 border border-zinc-800 hover:border-zinc-600 transition-colors lg:grid-cols-[2.75rem_minmax(0,7rem)_minmax(0,1fr)_auto] lg:gap-x-3"
+                  className="flex flex-1 min-w-0 items-start gap-2 cursor-pointer lg:contents"
+                  onClick={() => onSelectTask(task.id)}
                 >
-                  {/* Reorder and Index */}
-                  <div className="flex items-center space-x-2 shrink-0 pt-0.5 lg:col-start-1 lg:row-start-1">
-                    <div className="flex flex-col opacity-20 group-hover:opacity-100 transition-opacity">
-                      <button
-                        onClick={() => onReorder(task.id, "up")}
-                        disabled={isFirst}
-                        className="p-0.5 text-zinc-400 hover:text-zinc-200 disabled:opacity-0 transition-colors"
-                        title="上移"
-                      >
-                        <ChevronUp className="w-3 h-3" />
-                      </button>
-                      <button
-                        onClick={() => onReorder(task.id, "down")}
-                        disabled={isLast}
-                        className="p-0.5 text-zinc-400 hover:text-zinc-200 disabled:opacity-0 transition-colors"
-                        title="下移"
-                      >
-                        <ChevronDown className="w-3 h-3" />
-                      </button>
-                    </div>
+                  <TaskIdBadge
+                    taskId={task.id}
+                    variant="muted"
+                    className="w-28 lg:col-start-2 lg:row-start-1 lg:w-full"
+                  />
+                  <div className="min-w-0 flex-1 lg:col-start-3 lg:row-start-1">
+                    <h3 className="min-w-0 text-xs font-mono font-medium text-zinc-200 line-clamp-2 break-words group-hover:text-indigo-300 transition-colors">
+                      {task.title}
+                    </h3>
 
-                    <span className="font-mono text-xs text-zinc-600 group-hover:text-zinc-400 transition-colors w-5 text-right select-none">
-                      {posNumber}
-                    </span>
-                  </div>
-
-                  {/* Task Info & Dependencies */}
-                  <div
-                    className="flex flex-1 min-w-0 items-start gap-2 cursor-pointer lg:contents"
-                    onClick={() => onSelectTask(task.id)}
-                  >
-                    <TaskIdBadge
-                      taskId={task.id}
-                      variant="muted"
-                      className="w-28 lg:col-start-2 lg:row-start-1 lg:w-full"
-                    />
-                    <div className="min-w-0 flex-1 lg:col-start-3 lg:row-start-1">
-                      <h3 className="min-w-0 text-xs font-mono font-medium text-zinc-200 line-clamp-2 break-words group-hover:text-indigo-300 transition-colors">
-                        {task.title}
-                      </h3>
-
-                      {/* 可执行状态只占一行：可并行/可领取并附已完成依赖数，否则列出等待中的依赖 */}
-                      <div className="mt-1 flex items-center flex-wrap gap-1.5 text-[10px] font-mono">
-                        {isRunnable ? (
-                          <span
-                            className={`inline-flex items-center space-x-1 px-1.5 py-px rounded shrink-0 ${
-                              isParallelizable
-                                ? "bg-emerald-950/80 border border-emerald-700/60 text-emerald-300"
-                                : "bg-cyan-950/80 border border-cyan-700/60 text-cyan-300"
-                            }`}
-                          >
-                            {isParallelizable ? (
-                              <Zap className="w-2.5 h-2.5 text-emerald-400" />
-                            ) : (
-                              <Play className="w-2.5 h-2.5 text-cyan-400" />
-                            )}
-                            <span className="font-bold">{isParallelizable ? "可并行" : "可领取"}</span>
-                            {detail.dependencies.length > 0 && (
-                              <span className={isParallelizable ? "text-emerald-400/70" : "text-cyan-400/70"}>
-                                · 前置依赖已完成 ({detail.dependencies.length})
-                              </span>
-                            )}
-                          </span>
-                        ) : (
-                          <>
-                            <span className="text-amber-400/90 inline-flex items-center space-x-1 shrink-0">
-                              <Clock className="w-2.5 h-2.5 text-amber-400" />
-                              <span>等待前置 ({detail.waitingFor.length}):</span>
+                    {/* 可执行状态只占一行：可并行/可领取并附已完成依赖数，否则列出等待中的依赖 */}
+                    <div className="mt-1 flex items-center flex-wrap gap-1.5 text-[10px] font-mono">
+                      {isRunnable ? (
+                        <span
+                          className={`inline-flex items-center space-x-1 px-1.5 py-px rounded shrink-0 ${
+                            isParallelizable
+                              ? "bg-emerald-950/80 border border-emerald-700/60 text-emerald-300"
+                              : "bg-cyan-950/80 border border-cyan-700/60 text-cyan-300"
+                          }`}
+                        >
+                          {isParallelizable ? (
+                            <Zap className="w-2.5 h-2.5 text-emerald-400" />
+                          ) : (
+                            <Play className="w-2.5 h-2.5 text-cyan-400" />
+                          )}
+                          <span className="font-bold">{isParallelizable ? "可并行" : "可领取"}</span>
+                          {detail.dependencies.length > 0 && (
+                            <span className={isParallelizable ? "text-emerald-400/70" : "text-cyan-400/70"}>
+                              · 前置依赖已完成 ({detail.dependencies.length})
                             </span>
-                            {visibleDeps.map((dep: DependencyItem) => (
-                                <button
-                                  key={dep.id}
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    onSelectTask(dep.id);
-                                  }}
-                                  className={`inline-flex items-center space-x-1 px-1.5 py-0.5 rounded text-[10px] border transition-colors max-w-[180px] truncate ${
-                                    dep.isCompleted
-                                      ? "bg-emerald-950/20 border-emerald-900/40 text-emerald-300 hover:border-emerald-700"
-                                      : "bg-amber-950/20 border-amber-900/40 text-amber-300 hover:border-amber-700"
+                          )}
+                        </span>
+                      ) : (
+                        <>
+                          <span className="text-amber-400/90 inline-flex items-center space-x-1 shrink-0">
+                            <Clock className="w-2.5 h-2.5 text-amber-400" />
+                            <span>等待前置 ({detail.waitingFor.length}):</span>
+                          </span>
+                          {visibleDeps.map((dep: DependencyItem) => (
+                              <button
+                                key={dep.id}
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onSelectTask(dep.id);
+                                }}
+                                className={`inline-flex items-center space-x-1 px-1.5 py-0.5 rounded text-[10px] border transition-colors max-w-[180px] truncate ${
+                                  dep.isCompleted
+                                    ? "bg-emerald-950/20 border-emerald-900/40 text-emerald-300 hover:border-emerald-700"
+                                    : "bg-amber-950/20 border-amber-900/40 text-amber-300 hover:border-amber-700"
+                                }`}
+                                title={`前置依赖: ${dep.title} (${dep.status}) - 点击查看详情`}
+                              >
+                                <span
+                                  className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                                    dep.isCompleted ? "bg-emerald-400" : "bg-amber-400 animate-pulse"
                                   }`}
-                                  title={`前置依赖: ${dep.title} (${dep.status}) - 点击查看详情`}
-                                >
-                                  <span
-                                    className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                                      dep.isCompleted ? "bg-emerald-400" : "bg-amber-400 animate-pulse"
-                                    }`}
-                                  />
-                                  <span className="shrink-0 text-zinc-400 font-mono">
-                                    #{dep.id.slice(0, 8)}
-                                  </span>
-                                  <span className="truncate">{dep.title}</span>
-                                </button>
-                              ))}
-                              {hasHiddenDeps && (
-                                <button
-                                  type="button"
-                                  onClick={(e) => toggleExpandDeps(task.id, e)}
-                                  className="text-zinc-500 hover:text-zinc-300 text-[10px] transition-colors"
-                                >
-                                  {isDepsExpanded ? "收起" : `等共 ${detail.dependencies.length} 项`}
-                                </button>
-                              )}
-                          </>
-                        )}
-                      </div>
+                                />
+                                <span className="shrink-0 text-zinc-400 font-mono">
+                                  #{dep.id.slice(0, 8)}
+                                </span>
+                                <span className="truncate">{dep.title}</span>
+                              </button>
+                            ))}
+                            {hasHiddenDeps && (
+                              <button
+                                type="button"
+                                onClick={(e) => toggleExpandDeps(task.id, e)}
+                                className="text-zinc-500 hover:text-zinc-300 text-[10px] transition-colors"
+                              >
+                                {isDepsExpanded ? "收起" : `等共 ${detail.dependencies.length} 项`}
+                              </button>
+                            )}
+                        </>
+                      )}
                     </div>
-                  </div>
-
-                  {reworkReview && reworkDetail && (
-                    <div className="col-span-2 flex min-w-0 items-center gap-1.5 text-[10px] font-mono lg:col-span-4 lg:col-start-1 lg:row-start-2">
-                      <span className="inline-flex shrink-0 items-center space-x-0.5 px-1.5 py-px rounded border border-rose-800/60 bg-rose-950/50 text-rose-300">
-                        <RotateCcw className="w-2.5 h-2.5" />
-                        <span>退回 第 {reworkReview.reviewRound} 轮</span>
-                      </span>
-                      <span
-                        className="min-w-0 flex-1 truncate text-rose-200/70"
-                        title={reworkDetail}
-                      >
-                        {reworkDetail}
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Action buttons */}
-                  <div className="col-span-2 flex items-center justify-end space-x-1.5 shrink-0 pt-0.5 lg:col-span-1 lg:col-start-4 lg:row-start-1">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onOpenBriefing(task);
-                      }}
-                      className="inline-flex items-center space-x-1 px-2 py-0.5 text-[11px] font-mono text-zinc-400 hover:text-cyan-300 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded transition-colors"
-                      title="生成并复制 AI 任务简报"
-                    >
-                      <Copy className="w-3 h-3" />
-                      <span>简报</span>
-                    </button>
-
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onReturnToInbox(task.id);
-                      }}
-                      className="inline-flex items-center space-x-1 px-2 py-0.5 text-[11px] font-mono text-zinc-400 hover:text-amber-300 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded transition-colors"
-                      title="退回草稿箱"
-                    >
-                      <RotateCcw className="w-3 h-3" />
-                      <span>退回</span>
-                    </button>
-
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onRequestDelete(task);
-                      }}
-                      className="inline-flex items-center space-x-1 px-2 py-0.5 text-[11px] font-mono text-zinc-400 hover:text-rose-300 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded transition-colors"
-                      title="删除任务"
-                    >
-                      <Trash2 className="w-3 h-3" />
-                      <span>删除</span>
-                    </button>
                   </div>
                 </div>
-              );
-            })}
-          </div>
-        )}
+
+                {reworkReview && reworkDetail && (
+                  <div className="col-span-2 flex min-w-0 items-center gap-1.5 text-[10px] font-mono lg:col-span-4 lg:col-start-1 lg:row-start-2">
+                    <span className="inline-flex shrink-0 items-center space-x-0.5 px-1.5 py-px rounded border border-rose-800/60 bg-rose-950/50 text-rose-300">
+                      <RotateCcw className="w-2.5 h-2.5" />
+                      <span>退回 第 {reworkReview.reviewRound} 轮</span>
+                    </span>
+                    <span
+                      className="min-w-0 flex-1 truncate text-rose-200/70"
+                      title={reworkDetail}
+                    >
+                      {reworkDetail}
+                    </span>
+                  </div>
+                )}
+
+                {/* Action buttons */}
+                <div className="col-span-2 flex items-center justify-end space-x-1.5 shrink-0 pt-0.5 lg:col-span-1 lg:col-start-4 lg:row-start-1">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onOpenBriefing(task);
+                    }}
+                    className="inline-flex items-center space-x-1 px-2 py-0.5 text-[11px] font-mono text-zinc-400 hover:text-cyan-300 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded transition-colors"
+                    title="生成并复制 AI 任务简报"
+                  >
+                    <Copy className="w-3 h-3" />
+                    <span>简报</span>
+                  </button>
+
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onReturnToInbox(task.id);
+                    }}
+                    className="inline-flex items-center space-x-1 px-2 py-0.5 text-[11px] font-mono text-zinc-400 hover:text-amber-300 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded transition-colors"
+                    title="退回草稿箱"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    <span>退回</span>
+                  </button>
+
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onRequestDelete(task);
+                    }}
+                    className="inline-flex items-center space-x-1 px-2 py-0.5 text-[11px] font-mono text-zinc-400 hover:text-rose-300 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded transition-colors"
+                    title="删除任务"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                    <span>删除</span>
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
     </section>
   );
