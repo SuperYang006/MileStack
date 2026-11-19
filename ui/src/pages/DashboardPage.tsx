@@ -604,12 +604,7 @@ export const DashboardPage: React.FC = () => {
         task={editingInboxTask}
         isOpen={!!editingInboxTask}
         onClose={() => setEditingInboxTask(null)}
-        availableTasks={[
-          ...visibleStatus.current,
-          ...visibleStatus.next,
-          ...visibleStatus.blocked,
-          ...visibleStatus.inbox,
-        ]}
+        availableTasks={Array.from(allTasks.values())}
         onSubmit={async (taskId, payload) => {
           await editInboxTaskMutation.mutateAsync({ taskId, payload });
         }}
