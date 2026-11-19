@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { X, GitCommit, CheckCircle2, Clock, Timer, Edit3, GitFork, ArrowRight, Zap, ShieldAlert, ShieldCheck, Terminal, Bot, Check, MessageSquare, GitBranch, RefreshCw, ChevronDown, ChevronRight } from "lucide-react";
 import { EmptyState } from "./EmptyState";
 import type { FindingClosureInput, TaskDetails, TaskEvent, TaskReview, TaskSummary } from "../types";
@@ -143,13 +143,31 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
   const [eventsExpanded, setEventsExpanded] = useState(false);
   const { openFeedbackDialog, feedbackDialogProps } = useFeedbackDialog();
 
+  /** Each integration-policy edit session gets an id captured by the submit
+   *  handler. Switching tasks, closing/reopening the modal, or starting another
+   *  edit session invalidates it, so a late save result from one task can never
+   *  close another task's form, clear its submitting flag, or write its error. */
+  const integrationPolicySessionRef = useRef(0);
+  const invalidateIntegrationPolicySession = () => {
+    integrationPolicySessionRef.current += 1;
+    setIsSubmittingIntegrationPolicy(false);
+    setIntegrationPolicyError(null);
+  };
+
   useEffect(() => {
     setExpandedReviewIds({});
     setEventsExpanded(false);
     setIsEditingIntegrationPolicy(false);
-    setIsSubmittingIntegrationPolicy(false);
-    setIntegrationPolicyError(null);
+    invalidateIntegrationPolicySession();
   }, [details?.task.id]);
+
+  // Closing the modal also ends the running edit session; reopening starts at
+  // the summary instead of resurrecting a half-saved form.
+  useEffect(() => {
+    if (isOpen) return;
+    setIsEditingIntegrationPolicy(false);
+    invalidateIntegrationPolicySession();
+  }, [isOpen]);
 
   useEffect(() => {
     if (!details) return;
@@ -395,7 +413,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                     <button
                       type="button"
                       onClick={() => {
-                        setIntegrationPolicyError(null);
+                        invalidateIntegrationPolicySession();
                         setIsEditingIntegrationPolicy(true);
                       }}
                       className="inline-flex items-center space-x-1 rounded border border-zinc-700 bg-zinc-900 px-2 py-0.5 text-[11px] text-zinc-300 hover:border-zinc-600 hover:text-zinc-100 transition-colors"
@@ -441,6 +459,13 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                       ) {
                         return;
                       }
+                      // Bind the save outcome to the task and edit session that
+                      // started it, so a late result never mutates the state of
+                      // a task the user has switched to in the meantime.
+                      const submittedTaskId = details.task.id;
+                      const submitSession = integrationPolicySessionRef.current;
+                      const isStaleResult = () =>
+                        integrationPolicySessionRef.current !== submitSession;
                       setIsSubmittingIntegrationPolicy(true);
                       setIntegrationPolicyError(null);
                       try {
@@ -449,15 +474,22 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                           integrationTargetBranch: integrationTargetBranch.trim() || "main",
                           integrationNotRequiredReason: integrationRequired ? null : integrationNotRequiredReason.trim(),
                         });
+                        if (isStaleResult()) return;
                         setIsEditingIntegrationPolicy(false);
                       } catch (error) {
+                        if (isStaleResult()) return;
                         setIntegrationPolicyError(
                           error instanceof Error && error.message
                             ? error.message
                             : "保存交付要求失败，请检查后重试",
                         );
                       } finally {
-                        setIsSubmittingIntegrationPolicy(false);
+                        // The session that owns the submitting flag resets it
+                        // itself (task switch / close / new edit); a stale
+                        // handler must leave the current session's flag alone.
+                        if (!isStaleResult()) {
+                          setIsSubmittingIntegrationPolicy(false);
+                        }
                       }
                     }}
                   >
@@ -499,10 +531,10 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                         type="button"
                         disabled={isSubmittingIntegrationPolicy}
                         onClick={() => {
+                          invalidateIntegrationPolicySession();
                           setIntegrationRequired(details.task.integrationRequired);
                           setIntegrationTargetBranch(details.task.integrationTargetBranch);
                           setIntegrationNotRequiredReason(details.task.integrationNotRequiredReason ?? "");
-                          setIntegrationPolicyError(null);
                           setIsEditingIntegrationPolicy(false);
                         }}
                         className="rounded border border-zinc-700 bg-zinc-900 px-2.5 py-1.5 text-[11px] text-zinc-400 hover:text-zinc-200 disabled:opacity-50"
@@ -1182,6 +1214,20 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                               id={`review-detail-${rev.id}`}
                               className="bg-zinc-900/70 p-3 space-y-2.5 border-t border-zinc-800"
                             >
+                              {/* Full metadata lives in the expanded panel: the
+                                  one-line button keeps a compact summary, while
+                                  the open record restores the complete reviewer
+                                  agent and datetime the full card always had. */}
+                              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                                {rev.reviewerActorLabel && (
+                                  <span className="text-[10px] text-violet-300 bg-violet-950/40 px-1.5 py-px rounded border border-violet-900/50">
+                                    审核代理: {rev.reviewerActorLabel}
+                                  </span>
+                                )}
+                                <span className="text-[10px] text-zinc-500">
+                                  {new Date(rev.createdAt).toLocaleString()}
+                                </span>
+                              </div>
                               {reviewBody}
                             </div>
                           )}
