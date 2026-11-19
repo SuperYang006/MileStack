@@ -50,11 +50,11 @@ export const BriefingModal: React.FC<BriefingModalProps> = ({
 
   return createPortal(
     <div className="fixed inset-0 z-50 overflow-y-auto bg-black/75 backdrop-blur-xs flex items-center justify-center p-4">
-      <div className="bg-zinc-950 rounded-lg border border-zinc-800 max-w-xl w-full flex flex-col max-h-[85vh] overflow-hidden shadow-2xl font-mono">
+      <div className="bg-zinc-950 rounded-lg border border-zinc-800 max-w-xl w-full flex flex-col max-h-[85vh] overflow-hidden shadow-2xl">
         <div className="px-5 py-3 border-b border-zinc-800 flex items-center justify-between">
           <div className="flex items-center space-x-2">
             <Terminal className="w-4 h-4 text-cyan-400" />
-            <h2 className="text-xs font-bold text-zinc-100 uppercase tracking-wider">
+            <h2 className="text-[13px] font-bold text-zinc-100 uppercase tracking-wider">
               任务简报生成器
             </h2>
           </div>
@@ -82,7 +82,7 @@ export const BriefingModal: React.FC<BriefingModalProps> = ({
               <div className="text-[11px] text-zinc-500 mb-2">
                 可直接将以下包含完整任务目标与验收条件的简报复制粘贴给 AI 编程助手：
               </div>
-              <pre className="p-3.5 bg-zinc-900/90 border border-zinc-800 text-zinc-200 rounded text-xs overflow-x-auto whitespace-pre-wrap leading-relaxed selection:bg-cyan-500/30">
+              <pre className="p-3.5 bg-zinc-900/90 border border-zinc-800 text-zinc-200 rounded font-mono text-xs overflow-x-auto whitespace-pre-wrap leading-relaxed selection:bg-cyan-500/30">
                 {briefingText}
               </pre>
             </>
@@ -90,7 +90,7 @@ export const BriefingModal: React.FC<BriefingModalProps> = ({
         </div>
 
         <div className="px-5 py-2.5 border-t border-zinc-800 bg-zinc-900/40 flex items-center justify-between">
-          <span className="text-[10px] text-zinc-600">MILESTACK_PROTOCOL_V0</span>
+          <span className="text-[10px] font-mono text-zinc-600">MILESTACK_PROTOCOL_V0</span>
           <div className="flex items-center space-x-2">
             <button
               onClick={onClose}

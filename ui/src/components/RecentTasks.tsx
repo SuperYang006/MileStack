@@ -118,7 +118,7 @@ export const RecentTasks: React.FC<RecentTasksProps> = ({
             <div className="flex items-center space-x-2.5">
               <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
               <div className="flex items-baseline space-x-2">
-                <h2 className="text-sm font-mono font-bold tracking-wider text-zinc-100 uppercase">
+                <h2 className="text-sm font-bold tracking-wider text-zinc-100 uppercase">
                   已完成归档
                 </h2>
                 <span className="text-xs font-mono text-zinc-500">
@@ -128,7 +128,7 @@ export const RecentTasks: React.FC<RecentTasksProps> = ({
             </div>
 
             <div className="flex items-center space-x-2">
-              <span className="hidden sm:inline text-[11px] font-mono text-zinc-500">
+              <span className="hidden sm:inline text-[11px] text-zinc-500">
                 按 ESC 关闭
               </span>
               <button
@@ -156,11 +156,11 @@ export const RecentTasks: React.FC<RecentTasksProps> = ({
             }}
           >
             {isLoading ? (
-              <div className="py-12 text-center text-xs font-mono text-zinc-500">
+              <div className="py-12 text-center text-xs text-zinc-500">
                 正在加载已完成归档...
               </div>
             ) : isError ? (
-              <div className="py-12 text-center text-xs font-mono text-rose-400">
+              <div className="py-12 text-center text-xs text-rose-400">
                 已完成归档加载失败，请稍后重试
               </div>
             ) : tasks.length === 0 ? (
@@ -177,7 +177,7 @@ export const RecentTasks: React.FC<RecentTasksProps> = ({
                 {tasks.map((task) => (
                   <div
                     key={task.id}
-                    className="py-3 first:pt-0 last:pb-0 flex items-start justify-between gap-3 text-xs font-mono"
+                    className="py-3 first:pt-0 last:pb-0 flex items-start justify-between gap-3 text-xs"
                   >
                     <div
                       className="flex-1 min-w-0 cursor-pointer group space-y-1.5"
@@ -186,7 +186,7 @@ export const RecentTasks: React.FC<RecentTasksProps> = ({
                       <div className="flex items-center space-x-2">
                         <TaskIdBadge taskId={task.id} variant="muted" />
                         {task.completedAt && (
-                          <span className="text-zinc-500 text-[10px]">
+                          <span className="text-zinc-500 text-[11px] font-mono">
                             {new Date(task.completedAt).toLocaleString([], {
                               year: "numeric",
                               month: "2-digit",
@@ -206,7 +206,7 @@ export const RecentTasks: React.FC<RecentTasksProps> = ({
                       <button
                         type="button"
                         onClick={() => handleOpenReopen(task)}
-                        className="inline-flex items-center space-x-1 px-2 py-0.5 text-[11px] font-mono text-cyan-400 hover:text-cyan-300 bg-cyan-950/30 hover:bg-cyan-950/60 border border-cyan-900/50 rounded transition-colors cursor-pointer"
+                        className="inline-flex items-center space-x-1 px-2 py-0.5 text-[11px] text-cyan-400 hover:text-cyan-300 bg-cyan-950/30 hover:bg-cyan-950/60 border border-cyan-900/50 rounded transition-colors cursor-pointer"
                         title="重新打开为 Ready 任务"
                       >
                         <RotateCcw className="w-3 h-3" />
@@ -227,7 +227,7 @@ export const RecentTasks: React.FC<RecentTasksProps> = ({
             )}
 
             {(hasMore || isLoadingMore) && !isLoading && (
-              <div className="py-4 text-center text-[11px] font-mono text-zinc-500">
+              <div className="py-4 text-center text-[11px] text-zinc-500">
                 {isLoadingMore ? "正在加载更多归档..." : "继续向下滚动加载更多"}
               </div>
             )}

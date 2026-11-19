@@ -68,8 +68,8 @@ export const InboxTasks: React.FC<InboxTasksProps> = ({
       <div className="px-4 py-2.5 border-b border-zinc-800/80 flex items-center justify-between shrink-0">
         <div className="flex items-center space-x-2">
           <span className="w-2 h-2 rounded-full bg-zinc-500" />
-          <h2 className="text-xs font-mono font-bold tracking-wider text-zinc-300 uppercase">
-            草稿箱 ({tasks.length})
+          <h2 className="text-[13px] font-bold tracking-wider text-zinc-300 uppercase">
+            草稿箱 <span className="font-mono">({tasks.length})</span>
           </h2>
         </div>
       </div>
@@ -92,7 +92,7 @@ export const InboxTasks: React.FC<InboxTasksProps> = ({
                 >
                   <TaskIdBadge taskId={task.id} variant="muted" displayLength={8} className="lg:w-full" />
                   <div className="min-w-0 flex-1">
-                    <h3 className="min-w-0 text-xs font-mono text-zinc-300 line-clamp-2 break-words group-hover:text-amber-300 transition-colors">
+                    <h3 className="min-w-0 text-[13px] text-zinc-300 line-clamp-2 break-words group-hover:text-amber-300 transition-colors">
                       {task.title}
                     </h3>
 
@@ -112,7 +112,7 @@ export const InboxTasks: React.FC<InboxTasksProps> = ({
                       {/* 只能标记为“可并行候选”，绝不误标为“当前可领取” */}
                       {detail.isInboxParallelCandidate && (
                         <span
-                          className="inline-flex items-center space-x-1 px-1.5 py-px rounded text-[10px] font-mono bg-indigo-950/50 border border-indigo-900/60 text-indigo-300 shrink-0"
+                          className="inline-flex items-center space-x-1 px-1.5 py-px rounded text-[10px] bg-indigo-950/50 border border-indigo-900/60 text-indigo-300 shrink-0"
                           title="无未完成前置依赖，排入就绪队列后可并行执行"
                         >
                           <Zap className="w-2.5 h-2.5 text-indigo-400" />
@@ -123,14 +123,14 @@ export const InboxTasks: React.FC<InboxTasksProps> = ({
 
                   {/* 待整理依赖轻量摘要：纯文字与短ID链接，不占用多余高度 */}
                   {detail.dependencies.length > 0 && (
-                    <div className="mt-1 flex items-center flex-wrap gap-x-2 gap-y-0.5 text-[11px] font-mono text-zinc-500">
+                    <div className="mt-1 flex items-center flex-wrap gap-x-2 gap-y-0.5 text-[11px] text-zinc-500">
                       {detail.areAllDependenciesMet ? (
-                        <span className="inline-flex items-center space-x-1 text-emerald-400/90 text-[10px]">
+                        <span className="inline-flex items-center space-x-1 text-emerald-400/90">
                           <CheckCircle2 className="w-2.5 h-2.5 text-emerald-400" />
                           <span>前置已满足 ({detail.dependencies.length})</span>
                         </span>
                       ) : (
-                        <div className="inline-flex items-center space-x-1.5 flex-wrap text-[10px]">
+                        <div className="inline-flex items-center space-x-1.5 flex-wrap">
                           <span className="text-amber-400/90 inline-flex items-center space-x-1 shrink-0">
                             <span className="w-1.5 h-1.5 rounded-full bg-amber-400/90" />
                             <span>等待 {detail.waitingFor.length} 项前置:</span>
@@ -144,7 +144,7 @@ export const InboxTasks: React.FC<InboxTasksProps> = ({
                                   e.stopPropagation();
                                   onSelectTask(dep.id);
                                 }}
-                                className="text-zinc-400 hover:text-cyan-300 underline underline-offset-2 decoration-zinc-700 hover:decoration-cyan-400 transition-colors"
+                                className="font-mono text-zinc-400 hover:text-cyan-300 underline underline-offset-2 decoration-zinc-700 hover:decoration-cyan-400 transition-colors"
                                 title={`前置依赖: ${dep.title} (${dep.status}) - 点击查看详情`}
                               >
                                 #{dep.id.slice(0, 8)}
@@ -169,7 +169,7 @@ export const InboxTasks: React.FC<InboxTasksProps> = ({
                     <button
                       type="button"
                       onClick={(e) => handleTogglePopover(task.id, e)}
-                      className={`inline-flex items-center space-x-1 px-2 py-0.5 text-[11px] font-mono rounded transition-colors ${
+                      className={`inline-flex items-center space-x-1 px-2 py-0.5 text-[11px] rounded transition-colors ${
                         confirmingTaskId === task.id
                           ? "text-emerald-300 bg-emerald-950 border border-emerald-500/80 shadow-[0_0_8px_rgba(16,185,129,0.3)]"
                           : "text-emerald-400 hover:text-emerald-300 bg-emerald-950/40 hover:bg-emerald-950/80 border border-emerald-900/60"

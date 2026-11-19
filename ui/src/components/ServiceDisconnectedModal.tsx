@@ -26,7 +26,7 @@ export const ServiceDisconnectedModal: React.FC<ServiceDisconnectedModalProps> =
   return createPortal(
     <div className="fixed inset-0 z-[60] overflow-y-auto bg-black/80 backdrop-blur-xs flex items-center justify-center p-4">
       <div
-        className="bg-zinc-950 rounded-lg border border-rose-900/70 max-w-md w-full flex flex-col overflow-hidden shadow-2xl font-mono text-xs"
+        className="bg-zinc-950 rounded-lg border border-rose-900/70 max-w-md w-full flex flex-col overflow-hidden shadow-2xl text-xs"
         role="dialog"
         aria-modal="true"
         aria-labelledby="service-disconnected-title"
@@ -36,7 +36,7 @@ export const ServiceDisconnectedModal: React.FC<ServiceDisconnectedModalProps> =
             <WifiOff className="w-4 h-4 shrink-0 text-rose-400" />
             <h2
               id="service-disconnected-title"
-              className="text-xs font-bold text-zinc-100 uppercase tracking-wider truncate"
+              className="text-[13px] font-bold text-zinc-100 uppercase tracking-wider truncate"
             >
               WebUI 服务已断开
             </h2>
@@ -53,7 +53,8 @@ export const ServiceDisconnectedModal: React.FC<ServiceDisconnectedModalProps> =
         </div>
 
         <div className="p-5 leading-relaxed text-zinc-300">
-          无法连接到 MileStack 服务。当前不显示任务数据，请确认 milestack serve 仍在运行后重试。
+          无法连接到 MileStack 服务。当前不显示任务数据，请确认{" "}
+          <span className="font-mono">milestack serve</span> 仍在运行后重试。
         </div>
 
         <div className="px-5 py-3 border-t border-zinc-800 bg-zinc-900/40 flex items-center justify-end space-x-2">

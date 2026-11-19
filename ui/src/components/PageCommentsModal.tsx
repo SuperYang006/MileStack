@@ -75,7 +75,7 @@ export const PageCommentsModal: React.FC<PageCommentsModalProps> = ({
       role="presentation"
     >
       <div
-        className="w-full max-w-xl overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950 font-mono text-xs shadow-2xl"
+        className="w-full max-w-xl overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950 text-xs shadow-2xl"
         role="dialog"
         aria-modal="true"
         aria-labelledby="page-comments-title"
@@ -86,7 +86,7 @@ export const PageCommentsModal: React.FC<PageCommentsModalProps> = ({
             <MessageSquare className="h-4 w-4 shrink-0 text-cyan-400" />
             <h2
               id="page-comments-title"
-              className="truncate text-xs font-bold uppercase tracking-wider text-zinc-100"
+              className="truncate text-[13px] font-bold uppercase tracking-wider text-zinc-100"
             >
               页面评论
             </h2>
@@ -114,16 +114,16 @@ export const PageCommentsModal: React.FC<PageCommentsModalProps> = ({
                 ref={bookmarkRef}
                 draggable
                 onClick={(event) => event.preventDefault()}
-                className="inline-flex cursor-grab items-center space-x-1.5 rounded border border-cyan-700/60 bg-cyan-950/40 px-3 py-1.5 font-mono text-xs font-semibold text-cyan-200 transition-colors hover:border-cyan-500/70 hover:bg-cyan-900/40 active:cursor-grabbing"
+                className="inline-flex cursor-grab items-center space-x-1.5 rounded border border-cyan-700/60 bg-cyan-950/40 px-3 py-1.5 text-xs font-semibold text-cyan-200 transition-colors hover:border-cyan-500/70 hover:bg-cyan-900/40 active:cursor-grabbing"
                 title="拖到浏览器书签栏"
                 aria-label="页面评论书签，拖到浏览器书签栏"
               >
                 <Bookmark className="h-3.5 w-3.5" />
                 <span>页面评论</span>
               </a>
-              <span className="text-[10px] text-zinc-500">拖到书签栏</span>
+              <span className="text-[11px] text-zinc-500">拖到书签栏</span>
             </div>
-            <p className="mt-2 text-[10px] leading-relaxed text-zinc-500">
+            <p className="mt-2 text-[11px] leading-relaxed text-zinc-500">
               书签只保存一小段加载代码，不内嵌评论脚本；点击时才从运行中的 MileStack
               服务加载。
             </p>
@@ -133,7 +133,7 @@ export const PageCommentsModal: React.FC<PageCommentsModalProps> = ({
             <button
               type="button"
               onClick={() => void copySnippet()}
-              className="inline-flex items-center space-x-1.5 rounded border border-zinc-700 bg-zinc-900 px-3 py-1.5 font-mono text-xs text-zinc-200 transition-colors hover:bg-zinc-800"
+              className="inline-flex items-center space-x-1.5 rounded border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-200 transition-colors hover:bg-zinc-800"
             >
               {copied ? (
                 <Check className="h-3.5 w-3.5 text-emerald-400" />
@@ -142,11 +142,11 @@ export const PageCommentsModal: React.FC<PageCommentsModalProps> = ({
               )}
               <span>{copied ? "已复制控制台片段" : "复制控制台片段"}</span>
             </button>
-            <p className="mt-1.5 text-[10px] leading-relaxed text-zinc-500">
+            <p className="mt-1.5 text-[11px] leading-relaxed text-zinc-500">
               书签拖不动时，在目标页面的开发者工具 Console 中粘贴执行。
             </p>
             {copyFailed && (
-              <p className="mt-1.5 text-[10px] text-rose-400">
+              <p className="mt-1.5 text-[11px] text-rose-400">
                 复制失败，请检查浏览器剪贴板权限。
               </p>
             )}
@@ -159,7 +159,7 @@ export const PageCommentsModal: React.FC<PageCommentsModalProps> = ({
             <li>点“复制全部”，把文本粘贴给编程 Agent 整理。</li>
           </ol>
 
-          <p className="text-[10px] leading-relaxed text-zinc-500">
+          <p className="text-[11px] leading-relaxed text-zinc-500">
             整页刷新后，再次点击书签即可恢复评论。首期只保证 localhost 页面可用。
           </p>
         </div>
@@ -168,7 +168,7 @@ export const PageCommentsModal: React.FC<PageCommentsModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="rounded border border-zinc-800 bg-zinc-900 px-3 py-1.5 font-mono text-xs text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
+            className="rounded border border-zinc-800 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
           >
             关闭
           </button>

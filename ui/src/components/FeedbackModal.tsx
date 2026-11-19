@@ -151,7 +151,7 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({
       {/* The backdrop deliberately does not close the dialog: a page-level overlay is easy to
           hit by accident, and the input is often long. Close with 取消, the header close button, or Esc. */}
       <div
-        className={`bg-zinc-950 rounded-lg border border-zinc-800 ${themeConfig.borderClass} max-w-lg w-full flex flex-col overflow-hidden shadow-2xl font-mono text-xs`}
+        className={`bg-zinc-950 rounded-lg border border-zinc-800 ${themeConfig.borderClass} max-w-lg w-full flex flex-col overflow-hidden shadow-2xl text-xs`}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
@@ -163,7 +163,7 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({
             <Icon className={`w-4 h-4 shrink-0 ${themeConfig.iconColor}`} />
             <h2
               id="feedback-modal-title"
-              className="text-xs font-bold text-zinc-100 uppercase tracking-wider truncate"
+              className="text-[13px] font-bold text-zinc-100 uppercase tracking-wider truncate"
             >
               {effectiveTitle}
             </h2>
@@ -188,9 +188,9 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({
         <div className="p-5 flex flex-col space-y-3.5">
           {/* Target Task Context Box */}
           <div className="p-3 rounded bg-zinc-900/60 border border-zinc-800 space-y-1.5">
-            <div className="flex items-center space-x-1.5 text-[11px] text-zinc-500 font-mono">
+            <div className="flex items-center space-x-1.5 text-[11px] text-zinc-500">
               <span className="text-zinc-400 font-semibold uppercase">目标任务</span>
-              <span className="text-zinc-600">#</span>
+              <span className="text-zinc-600 font-mono">#</span>
               <span className="text-zinc-300 font-mono select-all truncate max-w-sm">
                 {taskId}
               </span>
@@ -253,14 +253,14 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({
               onKeyDown={handleTextareaKeyDown}
               disabled={isSubmitting}
               placeholder={placeholder || "请输入详细说明（普通回车键换行，Cmd+Enter 快捷提交）..."}
-              className={`w-full bg-zinc-900/90 border border-zinc-800 text-zinc-100 placeholder-zinc-600 rounded p-3 font-mono text-xs outline-none leading-relaxed resize-y transition-colors ${themeConfig.focusClass}`}
+              className={`w-full bg-zinc-900/90 border border-zinc-800 text-zinc-100 placeholder-zinc-600 rounded p-3 text-xs outline-none leading-relaxed resize-y transition-colors ${themeConfig.focusClass}`}
             />
           </div>
         </div>
 
         {/* Footer */}
         <div className="px-5 py-3 border-t border-zinc-800 bg-zinc-900/40 flex items-center justify-between">
-          <span className="text-[10px] text-zinc-500 font-mono hidden sm:inline">
+          <span className="text-[11px] text-zinc-500 hidden sm:inline">
             ⌘ / Ctrl + Enter 提交 · Esc 取消
           </span>
           <div className="flex items-center space-x-2 ml-auto">

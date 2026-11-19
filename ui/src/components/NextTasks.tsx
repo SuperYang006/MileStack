@@ -78,14 +78,14 @@ export const NextTasks: React.FC<NextTasksProps> = ({
       <div className="px-4 py-2.5 border-b border-zinc-800/80 flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5 shrink-0">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
           <span className="w-2 h-2 rounded-full bg-indigo-400 shrink-0" />
-          <h2 className="text-xs font-mono font-bold tracking-wider text-zinc-200 uppercase">
-            就绪队列 ({tasks.length})
+          <h2 className="text-[13px] font-bold tracking-wider text-zinc-200 uppercase">
+            就绪队列 <span className="font-mono">({tasks.length})</span>
           </h2>
           {reworkTasks.length > 0 && (
             <button
               type="button"
               onClick={scrollToFirstRework}
-              className="inline-flex items-center space-x-1 px-1.5 py-0.5 rounded text-[10px] font-mono shrink-0 bg-rose-950/60 border border-rose-800/60 text-rose-300 hover:border-rose-600/70 hover:text-rose-200 transition-colors"
+              className="inline-flex items-center space-x-1 px-1.5 py-0.5 rounded text-[10px] shrink-0 bg-rose-950/60 border border-rose-800/60 text-rose-300 hover:border-rose-600/70 hover:text-rose-200 transition-colors"
               title="定位到第一个待返工任务"
             >
               <RotateCcw className="w-2.5 h-2.5" />
@@ -96,17 +96,17 @@ export const NextTasks: React.FC<NextTasksProps> = ({
 
         {/* 显著显示当前可领取 / 可并行数量 */}
         {isParallelizable ? (
-          <div className="flex items-center space-x-1.5 px-2 py-0.5 rounded bg-emerald-950/60 border border-emerald-800/50 text-[11px] font-mono text-emerald-300">
+          <div className="flex items-center space-x-1.5 px-2 py-0.5 rounded bg-emerald-950/60 border border-emerald-800/50 text-[11px] text-emerald-300">
             <Zap className="w-3 h-3 text-emerald-400" />
             <span>可并行推进: {runnableCount} 个就绪</span>
           </div>
         ) : runnableCount === 1 ? (
-          <div className="flex items-center space-x-1.5 px-2 py-0.5 rounded bg-cyan-950/60 border border-cyan-800/50 text-[11px] font-mono text-cyan-300">
+          <div className="flex items-center space-x-1.5 px-2 py-0.5 rounded bg-cyan-950/60 border border-cyan-800/50 text-[11px] text-cyan-300">
             <Play className="w-3 h-3 text-cyan-400" />
             <span>当前可领取: 1 个</span>
           </div>
         ) : tasks.length > 0 ? (
-          <div className="flex items-center space-x-1.5 px-2 py-0.5 rounded bg-amber-950/60 border border-amber-800/50 text-[11px] font-mono text-amber-300">
+          <div className="flex items-center space-x-1.5 px-2 py-0.5 rounded bg-amber-950/60 border border-amber-800/50 text-[11px] text-amber-300">
             <Clock className="w-3 h-3 text-amber-400" />
             <span>等待前置依赖解锁 ({tasks.length})</span>
           </div>
@@ -180,12 +180,12 @@ export const NextTasks: React.FC<NextTasksProps> = ({
                     className="w-[5.5rem] lg:col-start-2 lg:row-start-1 lg:w-full"
                   />
                   <div className="min-w-0 flex-1 lg:col-start-3 lg:row-start-1">
-                    <h3 className="min-w-0 text-xs font-mono font-medium text-zinc-200 line-clamp-2 break-words group-hover:text-indigo-300 transition-colors">
+                    <h3 className="min-w-0 text-[13px] font-medium text-zinc-200 line-clamp-2 break-words group-hover:text-indigo-300 transition-colors">
                       {task.title}
                     </h3>
 
                     {/* 可执行状态只占一行：可并行/可领取并附已完成依赖数，否则列出等待中的依赖 */}
-                    <div className="mt-1 flex items-center flex-wrap gap-1.5 text-[10px] font-mono">
+                    <div className="mt-1 flex items-center flex-wrap gap-1.5 text-[11px]">
                       {isRunnable ? (
                         <span
                           className={`inline-flex items-center space-x-1 px-1.5 py-px rounded shrink-0 ${
@@ -242,7 +242,7 @@ export const NextTasks: React.FC<NextTasksProps> = ({
                               <button
                                 type="button"
                                 onClick={(e) => toggleExpandDeps(task.id, e)}
-                                className="text-zinc-500 hover:text-zinc-300 text-[10px] transition-colors"
+                                className="text-zinc-500 hover:text-zinc-300 text-[11px] transition-colors"
                               >
                                 {isDepsExpanded ? "收起" : `等共 ${detail.dependencies.length} 项`}
                               </button>
@@ -254,7 +254,7 @@ export const NextTasks: React.FC<NextTasksProps> = ({
                 </div>
 
                 {reworkReview && reworkDetail && (
-                  <div className="col-span-2 flex min-w-0 items-center gap-1.5 text-[10px] font-mono lg:col-span-4 lg:col-start-1 lg:row-start-2">
+                  <div className="col-span-2 flex min-w-0 items-center gap-1.5 text-[11px] lg:col-span-4 lg:col-start-1 lg:row-start-2">
                     <span className="inline-flex shrink-0 items-center space-x-0.5 px-1.5 py-px rounded border border-rose-800/60 bg-rose-950/50 text-rose-300">
                       <RotateCcw className="w-2.5 h-2.5" />
                       <span>退回 第 {reworkReview.reviewRound} 轮</span>
@@ -275,7 +275,7 @@ export const NextTasks: React.FC<NextTasksProps> = ({
                       e.stopPropagation();
                       onOpenBriefing(task);
                     }}
-                    className="inline-flex items-center space-x-1 px-2 py-0.5 text-[11px] font-mono text-zinc-400 hover:text-cyan-300 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded transition-colors"
+                    className="inline-flex items-center space-x-1 px-2 py-0.5 text-[11px] text-zinc-400 hover:text-cyan-300 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded transition-colors"
                     title="生成并复制 AI 任务简报"
                   >
                     <Copy className="w-3 h-3" />
@@ -287,7 +287,7 @@ export const NextTasks: React.FC<NextTasksProps> = ({
                       e.stopPropagation();
                       onReturnToInbox(task.id);
                     }}
-                    className="inline-flex items-center space-x-1 px-2 py-0.5 text-[11px] font-mono text-zinc-400 hover:text-amber-300 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded transition-colors"
+                    className="inline-flex items-center space-x-1 px-2 py-0.5 text-[11px] text-zinc-400 hover:text-amber-300 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded transition-colors"
                     title="退回草稿箱"
                   >
                     <RotateCcw className="w-3 h-3" />
@@ -299,7 +299,7 @@ export const NextTasks: React.FC<NextTasksProps> = ({
                       e.stopPropagation();
                       onRequestDelete(task);
                     }}
-                    className="inline-flex items-center space-x-1 px-2 py-0.5 text-[11px] font-mono text-zinc-400 hover:text-rose-300 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded transition-colors"
+                    className="inline-flex items-center space-x-1 px-2 py-0.5 text-[11px] text-zinc-400 hover:text-rose-300 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded transition-colors"
                     title="删除任务"
                   >
                     <Trash2 className="w-3 h-3" />
