@@ -47,7 +47,8 @@
     "typecheck": "tsc --noEmit",
     "typecheck:ui": "tsc -p tsconfig.ui.json --noEmit",
     "test": "vitest run",
-    "prepack": "pnpm run typecheck && pnpm run typecheck:ui && pnpm run build && pnpm run test"
+    "prepack": "pnpm run typecheck && pnpm run typecheck:ui && pnpm run build && pnpm run test",
+    "demo": "pnpm build && node scripts/demo.mjs"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",

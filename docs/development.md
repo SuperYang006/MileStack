@@ -55,6 +55,14 @@ To manage another project with the development build:
 node dist/index.js serve --project /absolute/path/to/project --port 7331
 ```
 
+To see the current UI on a throwaway project with demo data:
+
+```bash
+pnpm demo
+```
+
+The command builds the checkout, creates a project in the system temporary directory, seeds tasks covering every state (multi-round reviews, a dependency chain, blockers, mixed risk levels, and developer- and agent-created drafts), and prints the address it actually uses. It picks a free port starting at 7331, so it does not disturb a server that is already running. Press Ctrl+C to stop the server and delete the temporary project.
+
 ## Web UI development
 
 Keep the API server and Vite running in separate terminals:
