@@ -1,4 +1,5 @@
 import React, { useLayoutEffect, useRef, useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { X, Edit3, Terminal, CheckCircle2, Link2, AlertCircle } from "lucide-react";
 import type {
   AcceptanceCriterion,
@@ -13,6 +14,7 @@ import {
   acceptanceCriteriaPreSubmissionReminder,
   reconcileCriteriaLines,
 } from "../utils/acceptanceCriteria";
+import { useEscapeToClose } from "../utils/overlayEscape";
 
 const MIN_TEXTAREA_ROWS = 3;
 const MAX_TEXTAREA_ROWS = 12;
@@ -114,6 +116,9 @@ export const EditInboxModal: React.FC<EditInboxModalProps> = ({
     if (criteriaRef.current) resizeLongTextArea(criteriaRef.current);
   }, [isOpen, objective, criteriaText]);
 
+  // 50 must match the z-50 of the overlay root rendered below.
+  useEscapeToClose(isOpen, onClose, 50);
+
   if (!isOpen || !task) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -155,7 +160,7 @@ export const EditInboxModal: React.FC<EditInboxModalProps> = ({
     }
   };
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 overflow-y-auto bg-black/75 backdrop-blur-xs flex items-center justify-center p-4">
       <div className="bg-zinc-950 rounded-lg border border-zinc-800 max-w-lg w-full max-h-[85vh] flex flex-col overflow-hidden shadow-2xl font-mono">
         {/* Header */}
@@ -367,6 +372,7 @@ export const EditInboxModal: React.FC<EditInboxModalProps> = ({
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

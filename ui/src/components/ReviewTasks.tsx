@@ -168,8 +168,8 @@ const ReviewTaskItem: React.FC<{
           className="flex min-w-0 flex-1 basis-72 items-start gap-2 cursor-pointer"
           title="查看任务详情与事件记录"
         >
-          <span className="w-[7rem] min-w-0 shrink-0">
-            <TaskIdBadge taskId={task.id} variant="muted" className="w-full" />
+          <span className="w-[5.5rem] min-w-0 shrink-0">
+            <TaskIdBadge taskId={task.id} variant="muted" displayLength={8} className="w-full" />
           </span>
           <h3 className="min-w-0 flex-1 text-xs font-medium text-zinc-100 line-clamp-2 break-words hover:text-violet-300 transition-colors">
             {task.title}

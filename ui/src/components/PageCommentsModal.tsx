@@ -1,10 +1,12 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { Bookmark, Check, Copy, MessageSquare, X } from "lucide-react";
 
 import {
   createPageCommentsBookmarklet,
   createPageCommentsConsoleSnippet,
 } from "../utils/pageCommentsBookmarklet.js";
+import { useEscapeToClose } from "../utils/overlayEscape.js";
 
 interface PageCommentsModalProps {
   isOpen: boolean;
@@ -34,15 +36,10 @@ export const PageCommentsModal: React.FC<PageCommentsModalProps> = ({
     if (!isOpen) return;
     setCopied(false);
     setCopyFailed(false);
-    const handleGlobalKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      event.stopPropagation();
-      onClose();
-    };
-    window.addEventListener("keydown", handleGlobalKeyDown, true);
-    return () => window.removeEventListener("keydown", handleGlobalKeyDown, true);
-  }, [isOpen, onClose]);
+  }, [isOpen]);
+
+  // 60 must match the z-[60] of the overlay root rendered below.
+  useEscapeToClose(isOpen, onClose, 60);
 
   useEffect(() => {
     if (!copied) return;
@@ -71,7 +68,7 @@ export const PageCommentsModal: React.FC<PageCommentsModalProps> = ({
     }
   };
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-[60] overflow-y-auto bg-black/80 backdrop-blur-xs flex items-center justify-center p-4"
       onClick={onClose}
@@ -177,6 +174,7 @@ export const PageCommentsModal: React.FC<PageCommentsModalProps> = ({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

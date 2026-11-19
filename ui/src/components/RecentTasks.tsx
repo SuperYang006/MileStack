@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { ArrowUpRight, RotateCcw, Archive, X } from "lucide-react";
 import { EmptyState } from "./EmptyState";
 import type { TaskSummary } from "../types";
 import { TaskIdBadge } from "./CopyTaskIdButton";
 import { FeedbackModal, useFeedbackDialog } from "./FeedbackModal";
+import { useEscapeToClose } from "../utils/overlayEscape";
 
 interface RecentTasksProps {
   isOpen: boolean;
@@ -75,17 +77,8 @@ export const RecentTasks: React.FC<RecentTasksProps> = ({
     };
   }, [isOpen]);
 
-  // Close on Escape key
-  useEffect(() => {
-    if (!isMounted) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        onClose();
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isMounted, onClose]);
+  // Close on Escape key; 40 must match the z-40 of the overlay root rendered below.
+  useEscapeToClose(isMounted, onClose, 40);
 
   // Lock body scroll while drawer is open
   useEffect(() => {
@@ -99,7 +92,7 @@ export const RecentTasks: React.FC<RecentTasksProps> = ({
 
   if (!isMounted) return null;
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-40 overflow-hidden">
       {/* Backdrop */}
       <div
@@ -243,6 +236,7 @@ export const RecentTasks: React.FC<RecentTasksProps> = ({
       </div>
 
       <FeedbackModal {...feedbackDialogProps} />
-    </div>
+    </div>,
+    document.body
   );
 };

@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { X, GitCommit, CheckCircle2, Clock, Timer, Edit3, GitFork, ArrowRight, Zap, ShieldAlert, ShieldCheck, Terminal, Bot, Check, MessageSquare, GitBranch, RefreshCw } from "lucide-react";
 import { EmptyState } from "./EmptyState";
 import type { FindingClosureInput, TaskDetails, TaskEvent, TaskSummary } from "../types";
 import { TaskIdBadge } from "./CopyTaskIdButton";
 import { FeedbackModal, useFeedbackDialog } from "./FeedbackModal";
 import { buildDownstreamMap } from "../utils/dependencyGraph";
+import { useEscapeToClose } from "../utils/overlayEscape";
 import {
   computeRunExecutions,
   formatDuration,
@@ -159,6 +161,9 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
     return () => clearInterval(interval);
   }, [isRunning]);
 
+  // 50 must match the z-50 of the overlay root rendered below.
+  useEscapeToClose(isOpen, onClose, 50);
+
   const latestClaim = details
     ? [...details.events].reverse().find((event) => event.type === "started")
     : undefined;
@@ -177,7 +182,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
     runs[runs.length - 1];
   if (!isOpen) return null;
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 overflow-y-auto bg-black/75 backdrop-blur-xs flex items-center justify-center p-4">
       <div className="bg-zinc-950 rounded-lg border border-zinc-800 max-w-2xl w-full max-h-[85vh] flex flex-col overflow-hidden shadow-2xl">
         {/* Header */}
@@ -459,9 +464,11 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                 </h3>
                 {details.task.acceptanceCriteria && details.task.acceptanceCriteria.length > 0 ? (
                   <div className="space-y-1 bg-zinc-900/40 p-2.5 rounded border border-zinc-800">
-                    {details.task.acceptanceCriteria.map((item) => (
+                    {details.task.acceptanceCriteria.map((item, index) => (
                       <div key={item.id} className="flex items-start space-x-2 text-zinc-300">
-                        <span className="text-cyan-400 select-none">[x]</span>
+                        <span className="text-cyan-400 select-none tabular-nums">
+                          {index + 1}.
+                        </span>
                         <span>{item.text}</span>
                       </div>
                     ))}
@@ -1105,6 +1112,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
       </div>
 
       <FeedbackModal {...feedbackDialogProps} />
-    </div>
+    </div>,
+    document.body
   );
 };

@@ -1,7 +1,9 @@
 import React, { useState } from "react";
+import { createPortal } from "react-dom";
 import { X, Plus, Terminal, ListPlus } from "lucide-react";
 import type { CreateTaskPayload, RiskLevel } from "../types";
 import { acceptanceCriteriaPreSubmissionReminder } from "../utils/acceptanceCriteria";
+import { useEscapeToClose } from "../utils/overlayEscape";
 
 interface CreateTaskModalProps {
   isOpen: boolean;
@@ -24,6 +26,9 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
   const [riskLevel, setRiskLevel] = useState<RiskLevel>("medium");
   const [batchText, setBatchText] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // 50 must match the z-50 of the overlay root rendered below.
+  useEscapeToClose(isOpen, onClose, 50);
 
   if (!isOpen) return null;
 
@@ -93,7 +98,7 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
     }
   };
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 overflow-y-auto bg-black/75 backdrop-blur-xs flex items-center justify-center p-4">
       <div className="bg-zinc-950 rounded-lg border border-zinc-800 max-w-lg w-full overflow-hidden shadow-2xl font-mono">
         {/* Header */}
@@ -392,6 +397,7 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
           </form>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

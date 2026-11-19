@@ -1,5 +1,7 @@
-import React, { useEffect } from "react";
+import React from "react";
+import { createPortal } from "react-dom";
 import { RefreshCw, WifiOff, X } from "lucide-react";
+import { useEscapeToClose } from "../utils/overlayEscape";
 
 interface ServiceDisconnectedModalProps {
   isOpen: boolean;
@@ -16,22 +18,12 @@ export const ServiceDisconnectedModal: React.FC<ServiceDisconnectedModalProps> =
   onReconnect,
   onClose,
 }) => {
-  useEffect(() => {
-    if (!isOpen) return;
-    const handleGlobalKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        event.stopPropagation();
-        onClose();
-      }
-    };
-    window.addEventListener("keydown", handleGlobalKeyDown, true);
-    return () => window.removeEventListener("keydown", handleGlobalKeyDown, true);
-  }, [isOpen, onClose]);
+  // 60 must match the z-[60] of the overlay root rendered below.
+  useEscapeToClose(isOpen, onClose, 60);
 
   if (!isOpen) return null;
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[60] overflow-y-auto bg-black/80 backdrop-blur-xs flex items-center justify-center p-4">
       <div
         className="bg-zinc-950 rounded-lg border border-rose-900/70 max-w-md w-full flex flex-col overflow-hidden shadow-2xl font-mono text-xs"
@@ -84,6 +76,7 @@ export const ServiceDisconnectedModal: React.FC<ServiceDisconnectedModalProps> =
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

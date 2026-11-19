@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { AlertTriangle, Loader2, Trash2, X } from "lucide-react";
 import { TaskIdBadge } from "./CopyTaskIdButton";
+import { useEscapeToClose } from "../utils/overlayEscape";
 
 interface DeleteTaskConfirmModalProps {
   isOpen: boolean;
@@ -61,18 +63,9 @@ export const DeleteTaskConfirmModal: React.FC<DeleteTaskConfirmModalProps> = ({
     }, CLOSE_ANIMATION_MS);
   };
 
-  // Capture phase so Escape closes this confirmation before any lower overlay.
-  useEffect(() => {
-    if (!isOpen) return;
-    const handleGlobalKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      event.stopPropagation();
-      requestClose();
-    };
-    window.addEventListener("keydown", handleGlobalKeyDown, true);
-    return () => window.removeEventListener("keydown", handleGlobalKeyDown, true);
-  }, [isOpen, onClose]);
+  // Capture phase so Escape closes this confirmation before any lower overlay;
+  // 70 must match the z-[70] of the overlay root rendered below.
+  useEscapeToClose(isOpen, requestClose, 70);
 
   if (!isOpen) return null;
 
@@ -101,7 +94,7 @@ export const DeleteTaskConfirmModal: React.FC<DeleteTaskConfirmModalProps> = ({
 
   const controlsDisabled = isDeleting || isClosing;
 
-  return (
+  return createPortal(
     <div
       className={`fixed inset-0 z-[70] overflow-y-auto bg-black/80 backdrop-blur-xs flex items-center justify-center p-4 transition-opacity duration-150 ease-out motion-reduce:transition-none ${
         isClosing ? "opacity-0" : "opacity-100"
@@ -209,6 +202,7 @@ export const DeleteTaskConfirmModal: React.FC<DeleteTaskConfirmModalProps> = ({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

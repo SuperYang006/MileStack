@@ -1,5 +1,5 @@
 import React from "react";
-import { Plus, RefreshCw, Archive, ArrowUp, MessageSquare } from "lucide-react";
+import { Plus, RefreshCw, Archive, ArrowUp, Check, MessageSquare } from "lucide-react";
 import { Logo } from "./Logo";
 import type { ProjectSummary, RuntimeUpdateInfo } from "../types";
 import { isSemverVersion } from "../runtime-version";
@@ -30,6 +30,7 @@ export const Header: React.FC<HeaderProps> = ({
   isRefreshing = false,
 }) => {
   const updateHintId = React.useId();
+  const [isUpdateCommandCopied, setIsUpdateCommandCopied] = React.useState(false);
   const showRuntimeIdentity = isBackendConnected && isSemverVersion(runtimeVersion);
   const showUpdate =
     showRuntimeIdentity &&
@@ -37,6 +38,22 @@ export const Header: React.FC<HeaderProps> = ({
     runtimeUpdate !== undefined &&
     isSemverVersion(runtimeUpdate.latestVersion) &&
     runtimeUpdate.command.trim().length > 0;
+
+  React.useEffect(() => {
+    if (!isUpdateCommandCopied) return;
+    const timer = window.setTimeout(() => setIsUpdateCommandCopied(false), 2000);
+    return () => window.clearTimeout(timer);
+  }, [isUpdateCommandCopied]);
+
+  const copyUpdateCommand = async () => {
+    if (!runtimeUpdate) return;
+    try {
+      await navigator.clipboard.writeText(runtimeUpdate.command);
+    } catch {
+      return;
+    }
+    setIsUpdateCommandCopied(true);
+  };
 
   return (
     <header className="bg-zinc-950/80 backdrop-blur-md border-b border-zinc-800/80 sticky top-0 z-30">
@@ -87,20 +104,37 @@ export const Header: React.FC<HeaderProps> = ({
                       <ArrowUp className="w-3 h-3 shrink-0" aria-hidden="true" />
                       {runtimeUpdate.latestVersion}
                     </span>
-                    <span className="group/update-command inline-flex">
-                      <code
-                        className="rounded border border-amber-900/60 bg-amber-950/40 px-1.5 py-0.5 font-mono text-[11px] text-amber-200/90 whitespace-nowrap focus-visible:outline-2 focus-visible:outline-emerald-400"
-                        tabIndex={0}
+                    <span className="group/update-command relative inline-flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => void copyUpdateCommand()}
+                        className={`cursor-pointer rounded border px-1.5 py-0.5 font-mono text-[11px] whitespace-nowrap transition-colors focus-visible:outline-2 focus-visible:outline-emerald-400 ${
+                          isUpdateCommandCopied
+                            ? "border-emerald-800 bg-emerald-950/50 text-emerald-300"
+                            : "border-amber-900/60 bg-amber-950/40 text-amber-200/90 hover:border-amber-700 hover:bg-amber-900/50"
+                        }`}
+                        title="点击复制升级命令"
                         aria-describedby={updateHintId}
                       >
                         {runtimeUpdate.command}
-                      </code>
+                      </button>
+                      {isUpdateCommandCopied && (
+                        <span
+                          role="status"
+                          className="inline-flex items-center gap-0.5 font-mono text-[11px] whitespace-nowrap text-emerald-400"
+                        >
+                          <Check className="w-3 h-3" aria-hidden="true" />
+                          已复制
+                        </span>
+                      )}
                       <span
                         id={updateHintId}
                         role="tooltip"
                         className="pointer-events-none invisible absolute right-0 top-full z-50 mt-1.5 max-w-full rounded border border-zinc-700 bg-zinc-900 px-2.5 py-1.5 text-xs leading-relaxed text-zinc-200 shadow-lg group-hover/update-command:visible group-focus-within/update-command:visible"
                       >
-                        请复制到终端进行更新
+                        {isUpdateCommandCopied
+                          ? "已复制到剪贴板，粘贴到终端执行"
+                          : "点击复制，粘贴到终端执行"}
                       </span>
                     </span>
                   </>

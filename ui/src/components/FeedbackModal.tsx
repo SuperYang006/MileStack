@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { MessageSquare, RotateCcw, ShieldCheck, X } from "lucide-react";
 
 import {
@@ -9,6 +10,7 @@ import {
   getFeedbackThemeConfig,
   isValidFeedback,
 } from "../utils/feedbackDialog.js";
+import { useEscapeToClose } from "../utils/overlayEscape.js";
 import type { FindingClosureStatus } from "../types.js";
 
 export type { FeedbackClosureOption, FeedbackClosureSelection, FeedbackTheme };
@@ -107,20 +109,8 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({
     }
   }, [isOpen, initialValue]);
 
-  // Handle global Escape key with capture phase so it takes precedence over lower overlays
-  useEffect(() => {
-    if (!isOpen) return;
-    const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        e.stopPropagation();
-        e.stopImmediatePropagation();
-        onClose();
-      }
-    };
-    window.addEventListener("keydown", handleGlobalKeyDown, true);
-    return () => window.removeEventListener("keydown", handleGlobalKeyDown, true);
-  }, [isOpen, onClose]);
+  // 60 must match the z-[60] of the overlay root rendered below.
+  useEscapeToClose(isOpen, onClose, 60);
 
   if (!isOpen) return null;
 
@@ -148,11 +138,6 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({
   };
 
   const handleTextareaKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Escape") {
-      e.preventDefault();
-      onClose();
-      return;
-    }
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
       if (isValid && !isSubmitting) {
@@ -161,7 +146,7 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({
     }
   };
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[60] overflow-y-auto bg-black/80 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-100">
       {/* The backdrop deliberately does not close the dialog: a page-level overlay is easy to
           hit by accident, and the input is often long. Close with 取消, the header close button, or Esc. */}
@@ -302,7 +287,8 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 
