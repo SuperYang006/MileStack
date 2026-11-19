@@ -121,7 +121,7 @@ export function formatProjectAgentInstructions(version: string): string {
     "- Work directly in the current checkout instead of creating a branch and worktree only when the developer explicitly asks for it, or when the project is not a Git repository.",
     "- Rework after requested changes: do not create a new branch. Return to the branch and worktree recorded by the previous round's submission and append commits there; the get_task working view exposes them as latestSubmission.review.branch and latestSubmission.review.worktree. When that worktree no longer exists, recreate a worktree for the same branch.",
     "- In a new worktree, install dependencies from the local package cache first: pnpm install --frozen-lockfile --offline, falling back to pnpm install --frozen-lockfile --prefer-offline, or npm ci --prefer-offline for npm projects. Go online only when the lockfile needs packages the local cache does not have.",
-    "- Record the actual branch and worktree with the review submission. If isolated worktrees are unavailable, run the implementations serially or coordinate explicit ownership with the developer before editing.",
+    "- Record the actual branch and worktree with the review submission. When an isolated worktree cannot be created, stop and report the blocker instead of editing the current checkout; implement there only after the developer explicitly authorizes it. Running implementations serially or coordinating file ownership is parallel-safety advice only and never authorizes skipping worktree isolation.",
     "- Integration or merge work is a separate step. Do not merge task branches or change shared branches without explicit developer authorization.",
     "",
     "## Submit a fixed artifact",

@@ -348,6 +348,15 @@ describe("CLI entry point", () => {
     expect(generatedInstructions).toContain(
       "never run two writing agents in the same working tree",
     );
+    expect(generatedInstructions).toContain(
+      "When an isolated worktree cannot be created, stop and report the blocker instead of editing the current checkout; implement there only after the developer explicitly authorizes it",
+    );
+    expect(generatedInstructions).toContain(
+      "Running implementations serially or coordinating file ownership is parallel-safety advice only and never authorizes skipping worktree isolation",
+    );
+    expect(generatedInstructions).not.toContain(
+      "If isolated worktrees are unavailable, run the implementations serially or coordinate explicit ownership with the developer before editing",
+    );
     expect(generatedInstructions).toContain("submit_for_review");
     expect(generatedInstructions).toContain("start_review");
     expect(generatedInstructions).toContain("reviewRunId");
