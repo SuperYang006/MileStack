@@ -150,9 +150,6 @@ export const EditInboxModal: React.FC<EditInboxModalProps> = ({
       if (lastId) removeDependencyId(lastId);
       return;
     }
-    if (event.key === "Escape") {
-      setIsDependencyPickerOpen(false);
-    }
   };
 
   useEffect(() => {
@@ -206,6 +203,10 @@ export const EditInboxModal: React.FC<EditInboxModalProps> = ({
 
   // 50 must match the z-50 of the overlay root rendered below.
   useEscapeToClose(isOpen, onClose, 50);
+  // The open candidate list is a later layer at the same z-index, so the first
+  // Escape closes only the list and keeps the unsaved draft edits.
+  useEscapeToClose(isOpen && isDependencyPickerOpen, () => setIsDependencyPickerOpen(false), 50);
+
   // Keep the open candidate list between the search input and the modal
   // footer: cap the box to the measured space and only render the rows that
   // fully fit, so every option stays completely clickable.
