@@ -217,7 +217,7 @@ Only a developer moves work from `inbox` to `ready`. When an agent cannot contin
 1. After the requirements and solution are agreed, turn the discussion into concrete, verifiable MileStack inbox tasks without inventing unconfirmed scope. Before creating a task, confirm you can state the observable outcome, explicit exclusions, and verification. If anything is unclear, ask a small batch of targeted questions with recommended defaults, and record unanswered points as labeled assumptions in the task.
 2. As an implementation agent, load a developer-provided task ID directly. If no task ID is provided, query project status, select the first task in `next` with `runnable = true`, then call `start_task` to establish execution ownership.
 3. Record meaningful milestones, the current step, the next step, or a blocker—rather than every command and file edit.
-4. Create another inbox task when independent follow-up work is discovered during implementation.
+4. When independent follow-up work is discovered during implementation or review, propose it with a title and a one-sentence reason in the handoff or summary and in the final reply instead of creating it; create the task only after the developer confirms it.
 5. Submit a fixed 40-character Git commit and leave a clear completion summary.
 6. As a review agent, first receive a task ID from the developer, then call `start_review` to establish review ownership; do not select a pending review yourself. Confirm `phase=review` with `get_task`, review the exact submitted commit, independently reproduce the key verification instead of trusting the submitter's recorded evidence, check the diff against the task boundary and the root `AGENTS.md`, close every finding from a previous changes-requested round, and conclude with one review decision tool.
 
@@ -282,7 +282,7 @@ milestack mcp --discover
 | Execution | `start_task`, `update_task`, `submit_for_review` |
 | Review | `start_review`, `approve_review`, `request_changes`, `complete_review`, `check_task_integration` |
 
-Agent-created tasks enter the inbox. A developer must confirm their risk and queue position before they become claimable. `edit_inbox_task` requires the latest `updatedAt` from `get_task`, rejects an edit when the task changed since it was read, cannot change risk, and only works on inbox tasks.
+Tasks an agent creates after developer confirmation enter the inbox. A developer must confirm their risk and queue position before they become claimable. `edit_inbox_task` requires the latest `updatedAt` from `get_task`, rejects an edit when the task changed since it was read, cannot change risk, and only works on inbox tasks.
 
 `get_task` defaults to the `working` view, which keeps the full task definition and current work context. Pass `view: "full"` to inspect every immutable task event and review record. The HTTP task-detail endpoint used by the Web UI always returns the full timeline.
 
