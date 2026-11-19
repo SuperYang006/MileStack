@@ -67,6 +67,7 @@ export function mountPageComments(): PageCommentsHandle {
     .list{position:fixed;right:16px;bottom:64px;width:380px;max-width:calc(100vw - 32px);max-height:55vh;overflow:auto;background:#fff;border-radius:10px;box-shadow:0 8px 28px rgba(15,23,42,.25);pointer-events:auto;padding:6px;font-size:12px;color:#0f172a}
     .item{padding:8px;display:flex;gap:8px;align-items:flex-start}
     .item + .item{border-top:1px solid #eef2f6}
+    .item-acts{flex:none;display:flex;gap:4px}
     .num{flex:none;width:20px;height:20px;border-radius:50%;background:#dc2626;color:#fff;font-weight:600;display:flex;align-items:center;justify-content:center;font-size:11px}
     .item-body{flex:1;min-width:0}
     .item-body.clickable{cursor:pointer}
@@ -334,6 +335,12 @@ export function mountPageComments(): PageCommentsHandle {
         body.addEventListener("click", () => locateComment(index));
       }
 
+      const copy = document.createElement("button");
+      copy.textContent = "复制";
+      copy.addEventListener("click", () => {
+        void copyComments([comment], `已复制第 ${index + 1} 条评论，粘贴给 Agent 即可`);
+      });
+
       const remove = document.createElement("button");
       remove.className = "danger";
       remove.textContent = "删除";
@@ -344,7 +351,11 @@ export function mountPageComments(): PageCommentsHandle {
         refresh();
       });
 
-      item.append(number, body, remove);
+      const actions = document.createElement("div");
+      actions.className = "item-acts";
+      actions.append(copy, remove);
+
+      item.append(number, body, actions);
       list.appendChild(item);
     });
   }
@@ -569,12 +580,8 @@ export function mountPageComments(): PageCommentsHandle {
 
   // ---------- 工具栏 ----------
 
-  async function copyAll(): Promise<void> {
-    if (comments.length === 0) {
-      showToast("还没有评论");
-      return;
-    }
-    const text = formatComments(comments, {
+  async function copyComments(selected: readonly PageComment[], message: string): Promise<void> {
+    const text = formatComments(selected, {
       origin: location.origin,
       formattedAt: new Date().toLocaleString("zh-CN", { hour12: false }),
     });
@@ -589,7 +596,7 @@ export function mountPageComments(): PageCommentsHandle {
       document.execCommand("copy");
       area.remove();
     }
-    showToast(`已复制 ${comments.length} 条评论，粘贴给 Agent 即可`);
+    showToast(message);
   }
 
   modeButton.addEventListener("click", () => {
@@ -603,7 +610,11 @@ export function mountPageComments(): PageCommentsHandle {
     renderList();
   });
   query<HTMLButtonElement>(".copy").addEventListener("click", () => {
-    void copyAll();
+    if (comments.length === 0) {
+      showToast("还没有评论");
+      return;
+    }
+    void copyComments(comments, `已复制 ${comments.length} 条评论，粘贴给 Agent 即可`);
   });
   query<HTMLButtonElement>(".clear").addEventListener("click", () => {
     if (comments.length === 0) return;

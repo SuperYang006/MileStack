@@ -154,9 +154,9 @@ The bookmark and snippet contain only a small loader. They load `/page-comments.
 
 1. Open the localhost development page you want to comment on and click the “页面评论” bookmark. The comment toolbar appears at the bottom right.
 2. Click an element and write a comment; a numbered marker appears on the element. Switch to “已暂停点选” (picking paused) when you need to expand a menu, open a dialog, or change routes normally.
-3. Click a number to edit or delete a comment. The toolbar provides the list, copy all, clear, and exit. Clicking the bookmark again hides or shows the toolbar.
+3. Click a number to edit or delete a comment. The toolbar provides the list, copy all, clear, and exit. Clicking a comment for the current page in the list scrolls to its element and opens it for editing. Clicking the bookmark again hides or shows the toolbar.
 4. After a hot update, markers are re-located using the element's clues. When the original element cannot be found, a dashed “原元素已变化” (element changed) marker stays at the original position; you can edit, delete, or reassign the comment to a new element. After a full page reload, click the bookmark again to restore comments.
-5. Click “复制全部” (Copy all) and paste the text to your coding agent.
+5. Click “复制全部” (Copy all), or click “复制” (Copy) on a comment in the list to copy only that comment, and paste the text to your coding agent.
 
 The agent first organizes the comments: it locates the code for each item, merges comments about the same place, separates requirements that involve data or APIs, and asks the developer about decisions with recommendations. Only after the developer confirms does it create tasks or change code.
 
