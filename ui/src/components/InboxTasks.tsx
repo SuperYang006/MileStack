@@ -82,6 +82,7 @@ export const InboxTasks: React.FC<InboxTasksProps> = ({
             return (
               <div
                 key={task.id}
+                data-queue-card
                 className={`py-2.5 first:pt-0 last:pb-0 flex items-start justify-between gap-3 group lg:grid lg:grid-cols-[minmax(0,5.5rem)_minmax(0,1fr)_auto] lg:items-start lg:gap-x-3 ${
                   confirmingTaskId === task.id ? "relative z-30" : ""
                 }`}

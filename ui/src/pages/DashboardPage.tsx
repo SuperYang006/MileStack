@@ -1,4 +1,11 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { RefreshCw, WifiOff } from "lucide-react";
 import {
   useQuery,
@@ -71,10 +78,92 @@ function createEmptyProjectStatus(project: ProjectSummary): ProjectStatus {
 }
 
 /** Wide screens keep the dashboard in one viewport: inside each queue column,
- *  populated queues split the remaining height while empty queues hold a single
- *  status row. */
+ *  populated queues take their content height and only compress — then scroll
+ *  internally — when the column together overflows, while empty queues hold a
+ *  single status row. A populated queue never shrinks below its title row plus
+ *  first card (a measured floor, see measureQueueSlotHeights) while the column
+ *  can afford every floor. When the floors together would overflow the column,
+ *  every queue first keeps its title row and a usable list viewport, then the
+ *  remaining column height is shared in proportion to how much more each first
+ *  card still needs (see applySlotHeights), so a very tall first card shrinks
+ *  its own queue instead of leaving its neighbour with a title and no operable
+ *  content. Leftover space stays below the column, never inside a panel. */
 function queueSlotClass(taskCount: number): string {
-  return taskCount > 0 ? "lg:min-h-0 lg:flex-1" : "lg:shrink-0";
+  return taskCount > 0 ? "lg:min-h-0" : "lg:shrink-0";
+}
+
+type QueueSlotKey = "next" | "inReview" | "current" | "inbox";
+
+/** Card content a populated queue keeps visible when the column cannot afford
+ *  every full first card: enough for the first card's title and action row. */
+const MIN_LIST_VIEWPORT = 64;
+
+interface QueueSlotHeights {
+  /** Panel height that shows the title row and the whole first card. */
+  firstCard: number;
+  /** Panel height that keeps the title row plus MIN_LIST_VIEWPORT of card. */
+  minimum: number;
+}
+
+/** Heights a populated panel needs, measured from the rendered panel: real
+ *  font metrics and card content set the floor, not hardcoded pixels. The
+ *  scrollable list is the section's second child and the first card carries
+ *  data-queue-card. Returns null when the slot does not hold the populated
+ *  section layout. */
+function measureQueueSlotHeights(slot: HTMLElement): QueueSlotHeights | null {
+  const section = slot.firstElementChild;
+  if (!(section instanceof HTMLElement)) return null;
+  const header = section.children[0];
+  const list = section.children[1];
+  if (!(header instanceof HTMLElement) || !(list instanceof HTMLElement)) return null;
+  const firstCard = list.querySelector<HTMLElement>("[data-queue-card]");
+  if (!firstCard) return null;
+  const listStyle = window.getComputedStyle(list);
+  const sectionStyle = window.getComputedStyle(section);
+  // Undo any list scrolling so the floor describes the unscrolled position of
+  // the first card's bottom edge, plus the list padding and panel border below
+  // it.
+  const firstCardBottom =
+    firstCard.getBoundingClientRect().bottom +
+    list.scrollTop -
+    section.getBoundingClientRect().top;
+  const firstCardFloor =
+    firstCardBottom +
+    parseFloat(listStyle.paddingBottom) +
+    parseFloat(sectionStyle.borderBottomWidth);
+  const chrome =
+    parseFloat(sectionStyle.borderTopWidth) +
+    header.offsetHeight +
+    parseFloat(listStyle.paddingTop) +
+    parseFloat(listStyle.paddingBottom) +
+    parseFloat(sectionStyle.borderBottomWidth);
+  const minimum = Math.min(firstCardFloor, chrome + MIN_LIST_VIEWPORT);
+  if (!Number.isFinite(firstCardFloor) || firstCardFloor <= 0) return null;
+  if (!Number.isFinite(minimum) || minimum <= 0) return null;
+  return { firstCard: firstCardFloor, minimum };
+}
+
+/** Space a column can spend on its populated queues' heights: the column's own
+ *  height minus the inter-slot gaps and any empty status rows sharing it. The
+ *  column's height does not depend on the floors (its wrapper can shrink), so
+ *  the budget is stable across applications. Returns null when the column
+ *  generates no box — below lg it is display:contents, where an inline
+ *  min-height is inert and budgeting would read meaningless zeros. */
+function measureColumnSlotBudget(
+  column: HTMLElement,
+  slots: ReadonlyArray<{ slot: HTMLElement; populated: boolean }>,
+): number | null {
+  const columnStyle = window.getComputedStyle(column);
+  if (columnStyle.display === "contents") return null;
+  const columnHeight = column.clientHeight;
+  if (columnHeight <= 0) return null;
+  const gap = Number.parseFloat(columnStyle.rowGap) || 0;
+  const emptyHeight = slots
+    .filter((entry) => !entry.populated)
+    .reduce((sum, entry) => sum + entry.slot.offsetHeight, 0);
+  const budget =
+    columnHeight - gap * Math.max(0, slots.length - 1) - emptyHeight;
+  return Number.isFinite(budget) ? budget : null;
 }
 
 function useDocumentVisible(): boolean {
@@ -374,6 +463,105 @@ export const DashboardPage: React.FC = () => {
   const visibleStatus =
     !isServiceDisconnected && status ? status : createEmptyProjectStatus(lastProject);
 
+  // Populated queue slots keep their title-plus-first-card floor as an inline
+  // min-height, overriding the Tailwind lg:min-h-0 fallback so the column's
+  // flex algorithm can never compress a small queue past its only visible
+  // task. The heights are budgeted per column: when every full floor fits,
+  // they hold as measured. When the floors together exceed the column, each
+  // queue first keeps its title row and a usable list viewport, and only the
+  // rest of the column is shared in proportion to how much more each first
+  // card needs — so a very tall first card shrinks its own queue instead of
+  // leaving its neighbour with a title and no operable content. Clearing the
+  // property restores the bare slot when a queue empties; below lg the slot is
+  // display:contents, where the value is inert.
+  const queueSlotRefs = useRef<Record<QueueSlotKey, HTMLElement | null>>({
+    next: null,
+    inReview: null,
+    current: null,
+    inbox: null,
+  });
+
+  useLayoutEffect(() => {
+    const slots: Array<[QueueSlotKey, TaskSummary[]]> = [
+      ["next", visibleStatus.next],
+      ["inReview", visibleStatus.inReview],
+      ["current", visibleStatus.current],
+      ["inbox", visibleStatus.inbox],
+    ];
+    const applySlotHeights = () => {
+      // Heights are budgeted per flex column: measured for every slot in that
+      // column first, then allocated together. While every populated queue's
+      // full title-plus-first-card floor fits, the floors hold as measured.
+      // When they overflow, the title row and usable list viewport of every
+      // populated queue are reserved before the remaining height is shared by
+      // first-card need, so the column never overflows and no queue is reduced
+      // to a title above an unusable list.
+      const columns = new Map<
+        HTMLElement,
+        Array<{ slot: HTMLElement; heights: QueueSlotHeights | null }>
+      >();
+      for (const [key, tasks] of slots) {
+        const slot = queueSlotRefs.current[key];
+        if (!slot) continue;
+        const column = slot.parentElement;
+        if (!(column instanceof HTMLElement)) continue;
+        const group = columns.get(column) ?? [];
+        group.push({
+          slot,
+          heights: tasks.length > 0 ? measureQueueSlotHeights(slot) : null,
+        });
+        columns.set(column, group);
+      }
+      for (const [column, group] of columns) {
+        const budget = measureColumnSlotBudget(
+          column,
+          group.map((entry) => ({ slot: entry.slot, populated: entry.heights !== null })),
+        );
+        const populated = group.flatMap((entry) => (entry.heights ? [entry.heights] : []));
+        const totalFirstCards = populated.reduce((sum, heights) => sum + heights.firstCard, 0);
+        const totalMinimum = populated.reduce((sum, heights) => sum + heights.minimum, 0);
+        const firstCardSlack = Math.max(0, totalFirstCards - totalMinimum);
+        for (const { slot, heights } of group) {
+          if (!heights) {
+            slot.style.removeProperty("min-height");
+            continue;
+          }
+          let target = heights.firstCard;
+          if (budget !== null && budget < totalFirstCards) {
+            if (budget >= totalMinimum) {
+              const firstCardShare =
+                firstCardSlack > 0 ? (budget - totalMinimum) / firstCardSlack : 0;
+              target =
+                heights.minimum +
+                firstCardShare * (heights.firstCard - heights.minimum);
+            } else {
+              target = (Math.max(budget, 0) * heights.minimum) / totalMinimum;
+            }
+          }
+          slot.style.minHeight = `${target}px`;
+        }
+      }
+    };
+    applySlotHeights();
+
+    // Card text rewraps with the viewport and fonts may load late; re-measure
+    // on both instead of trusting a stale floor.
+    let frame: number | null = null;
+    const scheduleRemeasure = () => {
+      if (frame !== null) return;
+      frame = requestAnimationFrame(() => {
+        frame = null;
+        applySlotHeights();
+      });
+    };
+    window.addEventListener("resize", scheduleRemeasure);
+    void document.fonts.ready.then(scheduleRemeasure);
+    return () => {
+      window.removeEventListener("resize", scheduleRemeasure);
+      if (frame !== null) cancelAnimationFrame(frame);
+    };
+  }, [visibleStatus.next, visibleStatus.inReview, visibleStatus.current, visibleStatus.inbox]);
+
   const reconnect = async () => {
     setIsReconnecting(true);
     forceFullStatusRef.current = true;
@@ -477,14 +665,23 @@ export const DashboardPage: React.FC = () => {
         {/* Four active queue regions keep their 2x2 positions on wide screens:
             left column 已就绪 + 待审核, right column 正在进行 + 草稿箱. Each column
             is a flex stack — an empty queue holds a single status row and
-            populated queues split the remaining column height. Below lg the
-            column wrappers flatten to display:contents and the order utilities
-            restore the original natural stack order. */}
+            populated queues take their content height, never shrinking below
+            their measured title-plus-first-card floor while the column can
+            afford every floor. When the floors together overflow the column,
+            each queue first keeps its title row and a usable list viewport,
+            then shares the rest by first-card need and scrolls internally.
+            Below lg the column wrappers flatten to display:contents and the
+            order utilities restore the original natural stack order. */}
         <div className="flex flex-col gap-6 lg:min-h-0 lg:flex-1 lg:flex-row lg:gap-3">
           {/* Wide screens: left column. Narrow screens: display contents. */}
           <div className="contents lg:flex lg:min-h-0 lg:min-w-0 lg:flex-1 lg:flex-col lg:gap-3">
             {/* Top-left: 已就绪 */}
-            <div className={`order-1 ${queueSlotClass(visibleStatus.next.length)}`}>
+            <div
+              ref={(el) => {
+                queueSlotRefs.current.next = el;
+              }}
+              className={`order-1 ${queueSlotClass(visibleStatus.next.length)}`}
+            >
               <NextTasks
                 tasks={visibleStatus.next}
                 allTasks={allTasks}
@@ -499,7 +696,12 @@ export const DashboardPage: React.FC = () => {
             </div>
 
             {/* Bottom-left: 待审核 */}
-            <div className={`order-3 ${queueSlotClass(visibleStatus.inReview.length)}`}>
+            <div
+              ref={(el) => {
+                queueSlotRefs.current.inReview = el;
+              }}
+              className={`order-3 ${queueSlotClass(visibleStatus.inReview.length)}`}
+            >
               <ReviewTasks
                 tasks={visibleStatus.inReview}
                 onApprove={(id) => approveTaskMutation.mutate(id)}
@@ -525,7 +727,12 @@ export const DashboardPage: React.FC = () => {
           {/* Wide screens: right column. Narrow screens: display contents. */}
           <div className="contents lg:flex lg:min-h-0 lg:min-w-0 lg:flex-1 lg:flex-col lg:gap-3">
             {/* Top-right: 正在进行 */}
-            <div className={`order-2 ${queueSlotClass(visibleStatus.current.length)}`}>
+            <div
+              ref={(el) => {
+                queueSlotRefs.current.current = el;
+              }}
+              className={`order-2 ${queueSlotClass(visibleStatus.current.length)}`}
+            >
               <CurrentTasks
                 tasks={visibleStatus.current}
                 allTasks={allTasks}
@@ -536,7 +743,12 @@ export const DashboardPage: React.FC = () => {
             </div>
 
             {/* Bottom-right: 草稿箱 */}
-            <div className={`order-4 ${queueSlotClass(visibleStatus.inbox.length)}`}>
+            <div
+              ref={(el) => {
+                queueSlotRefs.current.inbox = el;
+              }}
+              className={`order-4 ${queueSlotClass(visibleStatus.inbox.length)}`}
+            >
               <InboxTasks
                 tasks={visibleStatus.inbox}
                 allTasks={allTasks}

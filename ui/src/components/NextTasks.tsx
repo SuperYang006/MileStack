@@ -140,6 +140,7 @@ export const NextTasks: React.FC<NextTasksProps> = ({
               <div
                 key={task.id}
                 id={`ready-task-${task.id}`}
+                data-queue-card
                 className="group grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2 gap-y-2 p-2.5 rounded-md bg-zinc-950/60 border border-zinc-800 hover:border-zinc-600 transition-colors lg:grid-cols-[2.75rem_minmax(0,5.5rem)_minmax(0,1fr)_auto] lg:gap-x-3"
               >
                 {/* Reorder and Index */}
