@@ -545,7 +545,7 @@ export const DashboardPage: React.FC = () => {
           checkIntegrationMutation.mutate({ taskId, reviewId })
         }
         onSetIntegrationPolicy={(taskId, policy) =>
-          integrationPolicyMutation.mutate({ taskId, ...policy })
+          integrationPolicyMutation.mutateAsync({ taskId, ...policy })
         }
         isCheckingIntegration={checkIntegrationMutation.isPending}
         isSavingIntegrationPolicy={integrationPolicyMutation.isPending}

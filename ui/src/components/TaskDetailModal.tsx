@@ -61,6 +61,35 @@ const reviewStatusLabel = (status: TaskReview["status"]): string => {
   }
 };
 
+/** Compact status label for the one-line collapsed review summaries, so the
+ *  round, conclusion, and time always fit on a single line. */
+const reviewStatusShortLabel = (status: TaskReview["status"]): string => {
+  switch (status) {
+    case "passed":
+      return "审核通过";
+    case "in_progress":
+      return "审核中";
+    case "changes_requested":
+      return "要求修改";
+    case "waived":
+      return "直接验收";
+    default:
+      return "未领取";
+  }
+};
+
+/** Compact timestamp for the one-line collapsed review summaries: a full
+ *  locale datetime can get clipped on narrow screens, so keep it recognizable
+ *  but short (month/day hour:minute). */
+const reviewCompactTime = (iso: string): string =>
+  new Date(iso).toLocaleString([], {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+
 interface TaskDetailModalProps {
   details: TaskDetails | null;
   isOpen: boolean;
@@ -81,7 +110,7 @@ interface TaskDetailModalProps {
   onSetIntegrationPolicy?: (
     taskId: string,
     policy: { integrationRequired: boolean; integrationTargetBranch: string; integrationNotRequiredReason?: string | null },
-  ) => void;
+  ) => void | Promise<unknown>;
   isCheckingIntegration?: boolean;
   isSavingIntegrationPolicy?: boolean;
 }
@@ -108,6 +137,8 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
   const [integrationTargetBranch, setIntegrationTargetBranch] = useState("main");
   const [integrationNotRequiredReason, setIntegrationNotRequiredReason] = useState("");
   const [isEditingIntegrationPolicy, setIsEditingIntegrationPolicy] = useState(false);
+  const [isSubmittingIntegrationPolicy, setIsSubmittingIntegrationPolicy] = useState(false);
+  const [integrationPolicyError, setIntegrationPolicyError] = useState<string | null>(null);
   const [expandedReviewIds, setExpandedReviewIds] = useState<Record<string, boolean>>({});
   const [eventsExpanded, setEventsExpanded] = useState(false);
   const { openFeedbackDialog, feedbackDialogProps } = useFeedbackDialog();
@@ -116,6 +147,8 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
     setExpandedReviewIds({});
     setEventsExpanded(false);
     setIsEditingIntegrationPolicy(false);
+    setIsSubmittingIntegrationPolicy(false);
+    setIntegrationPolicyError(null);
   }, [details?.task.id]);
 
   useEffect(() => {
@@ -124,6 +157,23 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
     setIntegrationTargetBranch(details.task.integrationTargetBranch);
     setIntegrationNotRequiredReason(details.task.integrationNotRequiredReason ?? "");
   }, [details?.task.id, details?.task.updatedAt]);
+
+  /** Whether the current task is still allowed to edit its integration policy.
+   *  Form visibility and summary hiding both derive from this single condition,
+   *  so a task that loses edit eligibility mid-edit always falls back to the
+   *  summary instead of leaving an empty section. */
+  const canEditIntegrationPolicy = Boolean(
+    details &&
+      onSetIntegrationPolicy &&
+      (details.task.status === "inbox" || details.task.status === "ready"),
+  );
+  const showIntegrationPolicyForm = isEditingIntegrationPolicy && canEditIntegrationPolicy;
+
+  useEffect(() => {
+    if (!canEditIntegrationPolicy) {
+      setIsEditingIntegrationPolicy(false);
+    }
+  }, [canEditIntegrationPolicy]);
 
   const handleOpenWaive = () => {
     if (!details) return;
@@ -341,96 +391,132 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                     <GitBranch className="w-3.5 h-3.5 text-cyan-400" />
                     <span>本地交付要求</span>
                   </div>
-                  {(details.task.status === "inbox" || details.task.status === "ready") &&
-                    onSetIntegrationPolicy &&
-                    !isEditingIntegrationPolicy && (
-                      <button
-                        type="button"
-                        onClick={() => setIsEditingIntegrationPolicy(true)}
-                        className="inline-flex items-center space-x-1 rounded border border-zinc-700 bg-zinc-900 px-2 py-0.5 text-[11px] text-zinc-300 hover:border-zinc-600 hover:text-zinc-100 transition-colors"
-                      >
-                        <Edit3 className="w-3 h-3" />
-                        <span>修改</span>
-                      </button>
-                    )}
+                  {canEditIntegrationPolicy && !showIntegrationPolicyForm && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIntegrationPolicyError(null);
+                        setIsEditingIntegrationPolicy(true);
+                      }}
+                      className="inline-flex items-center space-x-1 rounded border border-zinc-700 bg-zinc-900 px-2 py-0.5 text-[11px] text-zinc-300 hover:border-zinc-600 hover:text-zinc-100 transition-colors"
+                    >
+                      <Edit3 className="w-3 h-3" />
+                      <span>修改</span>
+                    </button>
+                  )}
                 </div>
-                {!isEditingIntegrationPolicy && (
-                  <div className="text-[11px] text-zinc-400">
+                {!showIntegrationPolicyForm ? (
+                  <div className="flex items-center gap-1 min-w-0 overflow-hidden whitespace-nowrap text-[11px] text-zinc-400">
                     {details.task.integrationRequired ? (
                       <>
-                        目标分支：<span className="text-cyan-300">本地 {details.task.integrationTargetBranch}</span>
+                        <span className="shrink-0">目标分支：</span>
+                        <span
+                          className="truncate text-cyan-300"
+                          title={`本地 ${details.task.integrationTargetBranch}`}
+                        >
+                          本地 {details.task.integrationTargetBranch}
+                        </span>
                       </>
                     ) : (
                       <>
-                        无需 Git 集成：<span className="text-zinc-200">{details.task.integrationNotRequiredReason}</span>
+                        <span className="shrink-0">无需 Git 集成：</span>
+                        <span
+                          className="truncate text-zinc-200"
+                          title={details.task.integrationNotRequiredReason ?? undefined}
+                        >
+                          {details.task.integrationNotRequiredReason}
+                        </span>
                       </>
                     )}
                   </div>
-                )}
-                {(details.task.status === "inbox" || details.task.status === "ready") &&
-                  onSetIntegrationPolicy &&
-                  isEditingIntegrationPolicy && (
-                    <form
-                      className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2 pt-1"
-                      onSubmit={(event) => {
-                        event.preventDefault();
-                        onSetIntegrationPolicy(details.task.id, {
+                ) : (
+                  <form
+                    className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2 pt-1"
+                    onSubmit={async (event) => {
+                      event.preventDefault();
+                      if (
+                        !onSetIntegrationPolicy ||
+                        isSubmittingIntegrationPolicy ||
+                        isSavingIntegrationPolicy
+                      ) {
+                        return;
+                      }
+                      setIsSubmittingIntegrationPolicy(true);
+                      setIntegrationPolicyError(null);
+                      try {
+                        await onSetIntegrationPolicy(details.task.id, {
                           integrationRequired,
                           integrationTargetBranch: integrationTargetBranch.trim() || "main",
                           integrationNotRequiredReason: integrationRequired ? null : integrationNotRequiredReason.trim(),
                         });
                         setIsEditingIntegrationPolicy(false);
-                      }}
-                    >
-                      <div className="space-y-2">
-                        <label className="flex items-center gap-2 text-[11px] text-zinc-300">
-                          <input
-                            type="checkbox"
-                            checked={integrationRequired}
-                            onChange={(event) => setIntegrationRequired(event.target.checked)}
-                          />
-                          要求审核提交进入本地目标分支
-                        </label>
+                      } catch (error) {
+                        setIntegrationPolicyError(
+                          error instanceof Error && error.message
+                            ? error.message
+                            : "保存交付要求失败，请检查后重试",
+                        );
+                      } finally {
+                        setIsSubmittingIntegrationPolicy(false);
+                      }
+                    }}
+                  >
+                    <div className="space-y-2">
+                      <label className="flex items-center gap-2 text-[11px] text-zinc-300">
                         <input
-                          value={integrationTargetBranch}
-                          onChange={(event) => setIntegrationTargetBranch(event.target.value)}
-                          aria-label="本地目标分支"
-                          placeholder="main"
-                          className="w-full rounded border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-[11px] text-zinc-200"
+                          type="checkbox"
+                          checked={integrationRequired}
+                          onChange={(event) => setIntegrationRequired(event.target.checked)}
                         />
-                        {!integrationRequired && (
-                          <textarea
-                            value={integrationNotRequiredReason}
-                            onChange={(event) => setIntegrationNotRequiredReason(event.target.value)}
-                            aria-label="无需 Git 集成的原因"
-                            placeholder="说明此任务无需 Git 集成的原因"
-                            className="w-full min-h-14 rounded border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-[11px] text-zinc-200"
-                          />
-                        )}
+                        要求审核提交进入本地目标分支
+                      </label>
+                      <input
+                        value={integrationTargetBranch}
+                        onChange={(event) => setIntegrationTargetBranch(event.target.value)}
+                        aria-label="本地目标分支"
+                        placeholder="main"
+                        className="w-full rounded border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-[11px] text-zinc-200"
+                      />
+                      {!integrationRequired && (
+                        <textarea
+                          value={integrationNotRequiredReason}
+                          onChange={(event) => setIntegrationNotRequiredReason(event.target.value)}
+                          aria-label="无需 Git 集成的原因"
+                          placeholder="说明此任务无需 Git 集成的原因"
+                          className="w-full min-h-14 rounded border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-[11px] text-zinc-200"
+                        />
+                      )}
+                    </div>
+                    <div className="flex flex-col gap-2 self-start">
+                      <button
+                        type="submit"
+                        disabled={isSubmittingIntegrationPolicy || isSavingIntegrationPolicy || (!integrationRequired && !integrationNotRequiredReason.trim())}
+                        className="rounded border border-cyan-800 bg-cyan-950/50 px-2.5 py-1.5 text-[11px] text-cyan-200 disabled:opacity-50"
+                      >
+                        {isSubmittingIntegrationPolicy || isSavingIntegrationPolicy ? "保存中" : "保存交付要求"}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isSubmittingIntegrationPolicy}
+                        onClick={() => {
+                          setIntegrationRequired(details.task.integrationRequired);
+                          setIntegrationTargetBranch(details.task.integrationTargetBranch);
+                          setIntegrationNotRequiredReason(details.task.integrationNotRequiredReason ?? "");
+                          setIntegrationPolicyError(null);
+                          setIsEditingIntegrationPolicy(false);
+                        }}
+                        className="rounded border border-zinc-700 bg-zinc-900 px-2.5 py-1.5 text-[11px] text-zinc-400 hover:text-zinc-200 disabled:opacity-50"
+                      >
+                        取消
+                      </button>
+                    </div>
+                    {integrationPolicyError && (
+                      <div className="sm:col-span-2 rounded border border-rose-900/60 bg-rose-950/40 px-2 py-1.5 text-[11px] text-rose-300">
+                        保存失败：{integrationPolicyError}
                       </div>
-                      <div className="flex flex-col gap-2 self-start">
-                        <button
-                          type="submit"
-                          disabled={isSavingIntegrationPolicy || (!integrationRequired && !integrationNotRequiredReason.trim())}
-                          className="rounded border border-cyan-800 bg-cyan-950/50 px-2.5 py-1.5 text-[11px] text-cyan-200 disabled:opacity-50"
-                        >
-                          {isSavingIntegrationPolicy ? "保存中" : "保存交付要求"}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setIntegrationRequired(details.task.integrationRequired);
-                            setIntegrationTargetBranch(details.task.integrationTargetBranch);
-                            setIntegrationNotRequiredReason(details.task.integrationNotRequiredReason ?? "");
-                            setIsEditingIntegrationPolicy(false);
-                          }}
-                          className="rounded border border-zinc-700 bg-zinc-900 px-2.5 py-1.5 text-[11px] text-zinc-400 hover:text-zinc-200"
-                        >
-                          取消
-                        </button>
-                      </div>
-                    </form>
-                  )}
+                    )}
+                  </form>
+                )}
               </section>
 
               {/* In-Review Decision Controls */}
@@ -823,79 +909,8 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                       const isLatestReview = index === reviews.length - 1;
                       const isCollapsible = reviews.length > 1 && !isLatestReview;
                       const isExpanded = !isCollapsible || Boolean(expandedReviewIds[rev.id]);
-                      if (isCollapsible && !isExpanded) {
-                        return (
-                          <button
-                            key={rev.id}
-                            type="button"
-                            onClick={() =>
-                              setExpandedReviewIds((prev) => ({ ...prev, [rev.id]: true }))
-                            }
-                            aria-expanded={false}
-                            className="w-full flex items-center justify-between gap-2 bg-zinc-900/50 hover:bg-zinc-900/80 border border-zinc-800 rounded px-3 py-2 text-left font-mono text-xs transition-colors cursor-pointer"
-                          >
-                            <span className="flex items-center space-x-2 min-w-0">
-                              <ChevronRight className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
-                              <span className="font-bold text-zinc-300 shrink-0">
-                                第 {rev.reviewRound} 轮审核
-                              </span>
-                              <span className={`px-1.5 py-px rounded text-[10px] ${reviewStatusBadgeClass(rev.status)}`}>
-                                {reviewStatusLabel(rev.status)}
-                              </span>
-                              {rev.reviewerActorLabel && (
-                                <span className="text-[10px] text-zinc-500 truncate">
-                                  审核代理: {rev.reviewerActorLabel}
-                                </span>
-                              )}
-                            </span>
-                            <span className="text-[10px] text-zinc-500 shrink-0">
-                              {new Date(rev.createdAt).toLocaleString()}
-                            </span>
-                          </button>
-                        );
-                      }
-                      return (
-                        <div
-                          key={rev.id}
-                          className="bg-zinc-900/70 border border-zinc-800 rounded p-3 space-y-2.5 font-mono text-xs"
-                        >
-                          {/* Review Header */}
-                          <div className="flex items-center justify-between border-b border-zinc-800/80 pb-2">
-                            <div className="flex items-center space-x-2">
-                              <span className="font-bold text-zinc-200">
-                                第 {rev.reviewRound} 轮审核
-                              </span>
-                              <span
-                                className={`px-1.5 py-px rounded text-[10px] ${reviewStatusBadgeClass(rev.status)}`}
-                              >
-                                {reviewStatusLabel(rev.status)}
-                              </span>
-                              {rev.reviewerActorLabel && (
-                                <span className="text-[10px] text-violet-300 bg-violet-950/40 px-1.5 py-px rounded border border-violet-900/50">
-                                  审核代理: {rev.reviewerActorLabel}
-                                </span>
-                              )}
-                            </div>
-                            <div className="flex items-center space-x-2 shrink-0">
-                              <span className="text-[10px] text-zinc-500">
-                                {new Date(rev.createdAt).toLocaleString()}
-                              </span>
-                              {isCollapsible && (
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    setExpandedReviewIds((prev) => ({ ...prev, [rev.id]: false }))
-                                  }
-                                  aria-expanded={true}
-                                  className="inline-flex items-center space-x-1 text-[10px] text-zinc-400 hover:text-zinc-200 cursor-pointer"
-                                >
-                                  <span>收起</span>
-                                  <ChevronDown className="w-3 h-3" />
-                                </button>
-                              )}
-                            </div>
-                          </div>
-
+                      const reviewBody = (
+                        <>
                           {/* Git Commit & Worktree Artifact */}
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-[11px] bg-zinc-950/50 p-2 rounded border border-zinc-800">
                             <div className="flex items-center space-x-1.5 truncate">
@@ -1086,6 +1101,90 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                               </div>
                             );
                           })()}
+                        </>
+                      );
+                      if (!isCollapsible) {
+                        return (
+                          <div
+                            key={rev.id}
+                            className="bg-zinc-900/70 border border-zinc-800 rounded p-3 space-y-2.5 font-mono text-xs"
+                          >
+                            {/* Review Header */}
+                            <div className="flex items-center justify-between border-b border-zinc-800/80 pb-2">
+                              <div className="flex items-center space-x-2">
+                                <span className="font-bold text-zinc-200">
+                                  第 {rev.reviewRound} 轮审核
+                                </span>
+                                <span
+                                  className={`px-1.5 py-px rounded text-[10px] ${reviewStatusBadgeClass(rev.status)}`}
+                                >
+                                  {reviewStatusLabel(rev.status)}
+                                </span>
+                                {rev.reviewerActorLabel && (
+                                  <span className="text-[10px] text-violet-300 bg-violet-950/40 px-1.5 py-px rounded border border-violet-900/50">
+                                    审核代理: {rev.reviewerActorLabel}
+                                  </span>
+                                )}
+                              </div>
+                              <span className="text-[10px] text-zinc-500 shrink-0">
+                                {new Date(rev.createdAt).toLocaleString()}
+                              </span>
+                            </div>
+                            {reviewBody}
+                          </div>
+                        );
+                      }
+                      return (
+                        <div
+                          key={rev.id}
+                          className="border border-zinc-800 rounded overflow-hidden font-mono text-xs"
+                        >
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setExpandedReviewIds((prev) => ({ ...prev, [rev.id]: !prev[rev.id] }))
+                            }
+                            aria-expanded={isExpanded}
+                            aria-controls={`review-detail-${rev.id}`}
+                            className="w-full flex items-center justify-between gap-2 bg-zinc-900/50 hover:bg-zinc-900/80 px-3 py-2 text-left transition-colors cursor-pointer whitespace-nowrap overflow-hidden"
+                          >
+                            <span className="flex items-center gap-2 min-w-0">
+                              {isExpanded ? (
+                                <ChevronDown className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+                              ) : (
+                                <ChevronRight className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+                              )}
+                              <span className="font-bold text-zinc-300 shrink-0">
+                                第 {rev.reviewRound} 轮审核
+                              </span>
+                              <span
+                                className={`px-1.5 py-px rounded text-[10px] shrink-0 ${reviewStatusBadgeClass(rev.status)}`}
+                              >
+                                {reviewStatusShortLabel(rev.status)}
+                              </span>
+                              {rev.reviewerActorLabel && (
+                                <span className="hidden sm:inline truncate text-[10px] text-zinc-500">
+                                  审核代理: {rev.reviewerActorLabel}
+                                </span>
+                              )}
+                            </span>
+                            <span className="flex items-center gap-2 shrink-0">
+                              {isExpanded && (
+                                <span className="text-[10px] text-zinc-400">收起</span>
+                              )}
+                              <span className="text-[10px] text-zinc-500">
+                                {reviewCompactTime(rev.createdAt)}
+                              </span>
+                            </span>
+                          </button>
+                          {isExpanded && (
+                            <div
+                              id={`review-detail-${rev.id}`}
+                              className="bg-zinc-900/70 p-3 space-y-2.5 border-t border-zinc-800"
+                            >
+                              {reviewBody}
+                            </div>
+                          )}
                         </div>
                       );
                     })}
