@@ -82,6 +82,28 @@ describe("draft dependency picker", () => {
     ]);
   });
 
+  it("matches short ids typed with the leading # shown in the ui", () => {
+    const withHash = filterDependencyCandidates(tasks, {
+      currentTaskId: "cccccccc-3333-4333-8333-333333333333",
+      selectedIds: [],
+      query: "#" + shortTaskId("dddddddd-4444-4444-8444-444444444444"),
+    });
+    const hashOnly = filterDependencyCandidates(tasks, {
+      currentTaskId: "cccccccc-3333-4333-8333-333333333333",
+      selectedIds: [],
+      query: "#",
+    });
+
+    expect(withHash.map((candidate) => candidate.id)).toEqual([
+      "dddddddd-4444-4444-8444-444444444444",
+    ]);
+    expect(hashOnly.map((candidate) => candidate.id)).toEqual([
+      "aaaaaaaa-1111-4111-8111-111111111111",
+      "bbbbbbbb-2222-4222-8222-222222222222",
+      "dddddddd-4444-4444-8444-444444444444",
+    ]);
+  });
+
   it("limits the visible candidate list without changing its order", () => {
     const candidates = filterDependencyCandidates(tasks, {
       currentTaskId: "cccccccc-3333-4333-8333-333333333333",

@@ -409,7 +409,7 @@ export const EditInboxModal: React.FC<EditInboxModalProps> = ({
                     <div
                       id="dependency-picker-options"
                       role="listbox"
-                      className="absolute bottom-full left-0 right-0 z-10 mb-1 max-h-56 overflow-y-auto rounded border border-zinc-700 bg-zinc-950 shadow-xl"
+                      className="absolute top-full left-0 right-0 z-10 mt-1 max-h-56 overflow-y-auto rounded border border-zinc-700 bg-zinc-950 shadow-xl"
                     >
                       {dependencyCandidates.length === 0 ? (
                         <p className="px-3 py-2 text-[11px] text-zinc-500">

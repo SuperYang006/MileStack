@@ -36,7 +36,9 @@ export function filterDependencyCandidates(
   },
 ): TaskSummary[] {
   const selected = new Set(options.selectedIds);
-  const normalizedQuery = options.query.trim().toLowerCase();
+  // The interface renders short ids with a leading "#"; strip it so a query
+  // copied straight from the screen still matches the raw task id.
+  const normalizedQuery = options.query.trim().toLowerCase().replace(/^#+/, "");
   const candidates = tasks.filter((task) => {
     if (task.id === options.currentTaskId || selected.has(task.id)) {
       return false;
