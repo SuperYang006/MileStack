@@ -1,9 +1,10 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   Check,
   MessageSquare,
   ArrowUpRight,
   CheckCircle2,
+  Copy,
   ShieldAlert,
   Bot,
   Clock,
@@ -47,6 +48,7 @@ const ReviewTaskItem: React.FC<{
 }> = ({ task, onApprove, onOpenWaive, onOpenRequestChanges, onCheckIntegration, isCheckingIntegration, onSelectTask }) => {
   const digest = task.latestReview;
   const reviewStatus = digest?.status ?? "pending";
+  const [instructionCopied, setInstructionCopied] = useState(false);
 
   // Review states:
   // 1. pending: 未领取 (等待 AI 审核)
@@ -122,6 +124,20 @@ const ReviewTaskItem: React.FC<{
         <span>要求修改</span>
       </span>
     );
+  };
+
+  // One click prepares the text a developer sends to a fresh agent session to
+  // start a review; MileStack stores prior findings in the task, so any new
+  // session can pick the review up.
+  const handleCopyReviewInstruction = async (event: React.MouseEvent) => {
+    event.stopPropagation();
+    try {
+      await navigator.clipboard.writeText(`review ${task.id}`);
+      setInstructionCopied(true);
+      setTimeout(() => setInstructionCopied(false), 1500);
+    } catch {
+      // Clipboard unavailable: keep the card silent instead of failing.
+    }
   };
 
   const riskBadge = (
@@ -260,14 +276,28 @@ const ReviewTaskItem: React.FC<{
           )}
         </span>
 
-        <button
-          onClick={() => onSelectTask(task.id)}
-          className="inline-flex shrink-0 items-center gap-1 text-zinc-500 hover:text-zinc-300 transition-colors"
-          title="查看任务详情与完整证据"
-        >
-          <span>查看详情</span>
-          <ArrowUpRight className="w-3 h-3" />
-        </button>
+        <div className="flex shrink-0 items-center gap-3">
+          <button
+            type="button"
+            onClick={handleCopyReviewInstruction}
+            className={`inline-flex items-center gap-1 transition-colors ${
+              instructionCopied ? "text-emerald-400" : "text-zinc-500 hover:text-zinc-300"
+            }`}
+            title={`复制发起审核的指令到剪贴板: review ${task.id}`}
+          >
+            {instructionCopied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+            <span>{instructionCopied ? "已复制" : "复制审核指令"}</span>
+          </button>
+
+          <button
+            onClick={() => onSelectTask(task.id)}
+            className="inline-flex items-center gap-1 text-zinc-500 hover:text-zinc-300 transition-colors"
+            title="查看任务详情与完整证据"
+          >
+            <span>查看详情</span>
+            <ArrowUpRight className="w-3 h-3" />
+          </button>
+        </div>
       </div>
     </div>
   );
