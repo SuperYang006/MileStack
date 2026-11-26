@@ -136,8 +136,19 @@ describe("MCP task tools", () => {
     expect(instructions).toContain("Implementation stop:");
     expect(instructions).toContain("Review dimensions:");
     expect(instructions).toContain(
-      "Do not accept the submitter's criteriaResults as review evidence",
+      "Do not accept the submitter's criteriaResults as review evidence: independently reproduce the key verification for each acceptance criterion and the project's defined change-related scope.",
     );
+    expect(instructions).toContain(
+      "Follow any tiered verification strategy defined in the repository root AGENTS.md: when the root AGENTS.md schedules repository-wide full regression at the target-branch merge stage, task-branch verification only needs to verify all task acceptance criteria and the project's defined change-related scope, and does not require rerunning the full regression suite on the task branch unless the task itself explicitly requires it.",
+    );
+    expect(instructions).toContain(
+      "When the root AGENTS.md assigns repository-wide full regression to the integration or merge stage, do not put generic full-suite tests into ordinary single-task acceptance criteria",
+    );
+    expect(instructions).toContain("Re-review:");
+    expect(instructions).toContain(
+      "it never replaces independent verification of every acceptance criterion and the project's defined task-branch verification scope.",
+    );
+    expect(instructions).not.toContain("never replaces the full verification");
     expect(instructions).toContain(
       "Inspect the reviewed diff for changes outside the task objective and acceptance criteria",
     );
@@ -280,6 +291,9 @@ describe("MCP task tools", () => {
     expect(startReviewTool?.description).toContain("confirm phase=review");
     expect(startReviewTool?.description).toContain(
       "Do not accept the submitter's criteriaResults as evidence",
+    );
+    expect(startReviewTool?.description).toContain(
+      "Follow any tiered verification strategy defined in the repository root AGENTS.md",
     );
     expect(startReviewTool?.description).toContain("repository root AGENTS.md");
     expect(startReviewTool?.description).toContain("severity does not permit a pass");
@@ -1103,7 +1117,21 @@ describe("MCP get_agent_instructions", () => {
 
     const result = await client.callTool({ name: "get_agent_instructions", arguments: {} });
     expect(result.isError).toBeFalsy();
-    expect(textContent(result)).toBe(generated);
+    const instructionsText = textContent(result);
+    expect(instructionsText).toBe(generated);
+    expect(instructionsText).toContain(
+      "Follow any tiered verification strategy defined in the repository root AGENTS.md",
+    );
+    expect(instructionsText).toContain(
+      "Do not accept the submitter's criteriaResults as review evidence: independently reproduce the key verification for each acceptance criterion and the project's defined change-related scope.",
+    );
+    expect(instructionsText).toContain(
+      "When the root AGENTS.md assigns repository-wide full regression to the integration or merge stage, do not put generic full-suite tests into ordinary single-task acceptance criteria",
+    );
+    expect(instructionsText).toContain(
+      "it never replaces independent verification of every acceptance criterion and the project's defined task-branch verification scope.",
+    );
+    expect(instructionsText).not.toContain("never replaces the full verification");
 
     expect(readFileSync(instructionsPath, "utf8")).toBe(generated);
     expect(readdirSync(projectRoot).sort()).toEqual(rootEntriesBefore);

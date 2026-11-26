@@ -16,6 +16,7 @@ import {
   agentInstructionsToolName,
   formatMcpInstructions,
   formatProjectAgentInstructions,
+  layeredVerificationRule,
   projectAgentInstructionsPath,
   taskCreationReadinessPrompt,
 } from "../core/agent-instructions.js";
@@ -145,7 +146,7 @@ const toolDefinitions: Tool[] = [
   {
     name: "start_review",
     description:
-      "Use this when the developer sends a task ID for independent review. Call get_task first and confirm phase=review, then atomically claim the latest pending review and save the returned reviewRunId before inspecting the submitted artifact. Review the exact commit in the latest submission. Do not accept the submitter's criteriaResults as evidence: independently reproduce the key verification for each acceptance criterion, inspect the diff for changes outside the task objective and acceptance criteria, and check the work against the repository root AGENTS.md. When a previous round requested changes, close every previous finding. Record low, medium, or high severity for each finding, but severity does not permit a pass: a review cannot pass while any submitted criterion is not_met or unverifiable, or any previous finding remains not_fixed or partially_fixed. Conclude with approve_review, request_changes, or complete_review using the reviewRunId.",
+      `Use this when the developer sends a task ID for independent review. Call get_task first and confirm phase=review, then atomically claim the latest pending review and save the returned reviewRunId before inspecting the submitted artifact. Review the exact commit in the latest submission. Do not accept the submitter's criteriaResults as evidence: independently reproduce the key verification for each acceptance criterion and the project's defined change-related scope. ${layeredVerificationRule} Inspect the diff for changes outside the task objective and acceptance criteria, and check the work against the repository root AGENTS.md. When a previous round requested changes, close every previous finding. Record low, medium, or high severity for each finding, but severity does not permit a pass: a review cannot pass while any submitted criterion is not_met or unverifiable, or any previous finding remains not_fixed or partially_fixed. Conclude with approve_review, request_changes, or complete_review using the reviewRunId.`,
     inputSchema: toJSONSchema(startReviewArgumentsSchema) as Tool["inputSchema"],
   },
   {
