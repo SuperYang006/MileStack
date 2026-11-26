@@ -10,6 +10,8 @@ import type {
   RiskLevel,
   RuntimeHealth,
   RuntimeUpdateInfo,
+  BatchIntegrationCheckItemInput,
+  BatchIntegrationCheckResult,
 } from "../types.js";
 import { isSemverVersion } from "../runtime-version.js";
 
@@ -288,6 +290,17 @@ export const apiClient = {
     return sendJson<TaskDetails>(`/api/tasks/${encodeURIComponent(taskId)}/check-integration`, {
       method: "POST",
       body: { expectedReviewId, projectId },
+      timeoutMs: WRITE_TIMEOUT_MS,
+    });
+  },
+
+  async checkTasksIntegration(
+    items: BatchIntegrationCheckItemInput[],
+    projectId?: string,
+  ): Promise<BatchIntegrationCheckResult> {
+    return sendJson<BatchIntegrationCheckResult>("/api/tasks/check-integration", {
+      method: "POST",
+      body: projectId ? { items, projectId } : { items },
       timeoutMs: WRITE_TIMEOUT_MS,
     });
   },

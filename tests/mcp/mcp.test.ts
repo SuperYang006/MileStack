@@ -154,6 +154,11 @@ describe("MCP task tools", () => {
     );
     expect(instructions).toContain("check the work against the repository root AGENTS.md");
     expect(instructions).toContain("severity does not permit a pass");
+    expect(instructions).toContain("Accepted task awaiting local integration:");
+    expect(instructions).toContain("check_task_integration");
+    expect(instructions).toContain("check_tasks_integration");
+    expect(instructions).toContain("batch-merged into the local target branch");
+    expect(instructions).toContain("without merging, fetching, or pushing");
     expect(instructions).toContain(
       "If .milestack/agent-instructions.md is missing in the current checkout",
     );
@@ -213,6 +218,7 @@ describe("MCP task tools", () => {
       "request_changes",
       "complete_review",
       "check_task_integration",
+      "check_tasks_integration",
       "get_agent_instructions",
     ]);
     expect(toolNames).toContain("submit_for_review");
@@ -1132,6 +1138,9 @@ describe("MCP get_agent_instructions", () => {
       "it never replaces independent verification of every acceptance criterion and the project's defined task-branch verification scope.",
     );
     expect(instructionsText).not.toContain("never replaces the full verification");
+    expect(instructionsText).toContain("check_task_integration");
+    expect(instructionsText).toContain("check_tasks_integration");
+    expect(instructionsText).toContain("without merging, fetching, or pushing");
 
     expect(readFileSync(instructionsPath, "utf8")).toBe(generated);
     expect(readdirSync(projectRoot).sort()).toEqual(rootEntriesBefore);

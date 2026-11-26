@@ -11,7 +11,12 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { createMcpServer } from "../../src/mcp/server.js";
 import type { StartedReview, StartedTask } from "../../src/core/task-service.js";
-import type { ProjectStatus, TaskDetails, TaskSummary } from "../../src/core/query-contract.js";
+import type {
+  CheckTasksIntegrationResult,
+  ProjectStatus,
+  TaskDetails,
+  TaskSummary,
+} from "../../src/core/query-contract.js";
 import {
   createHttpServer,
   type HttpServerOptions,
@@ -747,5 +752,223 @@ describe("review workflow integration", () => {
     });
     expect(approved.statusCode).toBe(200);
     expect((await getHttpTask(harness, created.task.id)).task.status).toBe("completed");
+  });
+
+  it("checks batched local integration across real stdio MCP, HTTP API, SQLite, and Git repository", { timeout: 20_000 }, async () => {
+    const harness = await createHttpHarness();
+    const projectRoot = harness.projectRoot;
+    git(projectRoot, "init", "-b", "main");
+    git(projectRoot, "config", "user.name", "MileStack Test");
+    git(projectRoot, "config", "user.email", "milestack-test@example.invalid");
+    git(projectRoot, "config", "core.hooksPath", "/dev/null");
+    git(projectRoot, "add", "dist/ui/index.html");
+    git(projectRoot, "commit", "-m", "temporary project baseline");
+
+    const createReadyTask = async (title: string): Promise<TaskDetails> => {
+      const response = await harness.app.inject({
+        method: "POST",
+        url: "/api/tasks",
+        payload: {
+          title,
+          objective: "Verify batched local integration check",
+          acceptanceCriteria: ["Merged task archives cleanly while unmerged stays in_review"],
+          riskLevel: "medium",
+          status: "ready",
+        },
+      });
+      expect(response.statusCode).toBe(201);
+      return JSON.parse(response.payload) as TaskDetails;
+    };
+
+    const submitApproveCommit = async (
+      client: Client,
+      task: TaskDetails,
+      branch: string,
+      filename: string,
+    ): Promise<{ taskId: string; reviewId: string; commitSha: string }> => {
+      git(projectRoot, "checkout", "main");
+      git(projectRoot, "checkout", "-b", branch);
+      const commitSha = commitFile(projectRoot, filename, `${branch}\n`, `work on ${branch}`);
+      const started = await callMcp<StartedTask>(client, "start_task", { taskId: task.task.id });
+      await callMcp<TaskDetails>(client, "submit_for_review", {
+        taskId: task.task.id,
+        runId: started.runId,
+        commitSha,
+        branch,
+        worktree: projectRoot,
+        summary: `Submitted ${branch}`,
+        completedWork: [`Committed ${commitSha}`],
+        criteriaResults: [
+          {
+            criterionId: task.task.acceptanceCriteria?.[0]?.id ?? "",
+            status: "met",
+            evidence: [{ command: "pnpm typecheck", result: "passed" }],
+          },
+        ],
+      });
+      const reviewRun = await callMcp<StartedReview>(client, "start_review", {
+        taskId: task.task.id,
+      });
+      const passed = await callMcp<TaskDetails>(client, "complete_review", {
+        taskId: task.task.id,
+        reviewRunId: reviewRun.reviewRunId,
+        decision: "passed",
+        summary: "Passed independent review.",
+        verificationEvidence: [{ command: "pnpm typecheck", result: "passed" }],
+      });
+      const approved = await harness.app.inject({
+        method: "POST",
+        url: `/api/tasks/${task.task.id}/approve`,
+      });
+      expect(approved.statusCode).toBe(200);
+      return {
+        taskId: task.task.id,
+        reviewId: passed.reviews!.at(-1)!.id,
+        commitSha,
+      };
+    };
+
+    const mcpMerged = await createReadyTask("MCP merged batch task");
+    const mcpUnmerged = await createReadyTask("MCP unmerged batch task");
+    const httpMerged = await createReadyTask("HTTP merged batch task");
+    const httpUnmerged = await createReadyTask("HTTP unmerged batch task");
+    const staleTask = await createReadyTask("Stale expectedReviewId task");
+
+    const client = await connectStdioMcp(projectRoot);
+    const mcpMergedRef = await submitApproveCommit(client, mcpMerged, "feature/mcp-merged", "mcp-merged.txt");
+    const mcpUnmergedRef = await submitApproveCommit(client, mcpUnmerged, "feature/mcp-unmerged", "mcp-unmerged.txt");
+    const httpMergedRef = await submitApproveCommit(client, httpMerged, "feature/http-merged", "http-merged.txt");
+    const httpUnmergedRef = await submitApproveCommit(client, httpUnmerged, "feature/http-unmerged", "http-unmerged.txt");
+    const staleRef = await submitApproveCommit(client, staleTask, "feature/stale-round-1", "stale.txt");
+
+    // Complete staleTask round 1 cleanly via merge + check, then reopen so round-1 reviewId becomes stale.
+    git(projectRoot, "checkout", "main");
+    git(projectRoot, "merge", "--no-ff", "feature/stale-round-1", "-m", "merge stale r1");
+    const staleRound1Check = await harness.app.inject({
+      method: "POST",
+      url: `/api/tasks/${staleTask.task.id}/check-integration`,
+      payload: { expectedReviewId: staleRef.reviewId },
+    });
+    expect(staleRound1Check.statusCode).toBe(200);
+    expect((await getHttpTask(harness, staleTask.task.id)).task.status).toBe("completed");
+    const reopened = await harness.app.inject({
+      method: "POST",
+      url: `/api/tasks/${staleTask.task.id}/reopen`,
+      payload: { reason: "Needs second round" },
+    });
+    expect(reopened.statusCode).toBe(200);
+    await submitApproveCommit(client, staleTask, "feature/stale-round-2", "stale-2.txt");
+
+    git(projectRoot, "checkout", "main");
+    git(projectRoot, "merge", "--no-ff", "feature/mcp-merged", "-m", "merge mcp task");
+    git(projectRoot, "merge", "--no-ff", "feature/http-merged", "-m", "merge http task");
+
+    // MCP validation rejections: empty items, missing expectedReviewId, duplicate taskId.
+    const emptyMcp = await client.callTool({
+      name: "check_tasks_integration",
+      arguments: { items: [] },
+    });
+    expect(emptyMcp.isError).toBe(true);
+    expect(textContent(emptyMcp)).toContain("INVALID_INPUT");
+
+    const missingFieldMcp = await client.callTool({
+      name: "check_tasks_integration",
+      arguments: { items: [{ taskId: mcpMergedRef.taskId }] },
+    });
+    expect(missingFieldMcp.isError).toBe(true);
+    expect(textContent(missingFieldMcp)).toContain("INVALID_INPUT");
+
+    const duplicateMcp = await client.callTool({
+      name: "check_tasks_integration",
+      arguments: {
+        items: [
+          { taskId: mcpMergedRef.taskId, expectedReviewId: mcpMergedRef.reviewId },
+          { taskId: mcpMergedRef.taskId, expectedReviewId: "other-review-id" },
+        ],
+      },
+    });
+    expect(duplicateMcp.isError).toBe(true);
+    expect(textContent(duplicateMcp)).toContain("Duplicate taskId");
+
+    // Real stdio MCP batch call with mixed merged + unmerged + stale entries.
+    const mcpBatch = await callMcp<CheckTasksIntegrationResult>(
+      client,
+      "check_tasks_integration",
+      {
+        items: [
+          { taskId: mcpMergedRef.taskId, expectedReviewId: mcpMergedRef.reviewId },
+          { taskId: mcpUnmergedRef.taskId, expectedReviewId: mcpUnmergedRef.reviewId },
+          { taskId: staleRef.taskId, expectedReviewId: staleRef.reviewId },
+        ],
+      },
+    );
+    expect(mcpBatch.counts).toEqual({
+      total: 3,
+      completed: 1,
+      notIntegrated: 1,
+      unavailable: 0,
+      error: 1,
+    });
+    expect(mcpBatch.results.map((item) => [item.taskId, item.status])).toEqual([
+      [mcpMergedRef.taskId, "completed"],
+      [mcpUnmergedRef.taskId, "not_integrated"],
+      [staleRef.taskId, "error"],
+    ]);
+    expect(mcpBatch.results[2]?.error?.code).toBe("INTEGRATION_CHECK_STALE");
+    expect((await getHttpTask(harness, mcpMergedRef.taskId)).task.status).toBe("completed");
+    expect((await getHttpTask(harness, mcpUnmergedRef.taskId)).task.status).toBe("in_review");
+
+    // Original check_task_integration preserves single-task TaskDetails contract.
+    git(projectRoot, "checkout", "main");
+    git(projectRoot, "merge", "--no-ff", "feature/mcp-unmerged", "-m", "merge mcp unmerged");
+    const singleMcp = await callMcp<TaskDetails>(client, "check_task_integration", {
+      taskId: mcpUnmergedRef.taskId,
+      expectedReviewId: mcpUnmergedRef.reviewId,
+    });
+    expect(singleMcp.task.status).toBe("completed");
+    expect(singleMcp.reviews.at(-1)?.integrationStatus).toBe("integrated");
+
+    // HTTP POST /api/tasks/check-integration validation + execution against real SQLite + Git.
+    const invalidHttp = await harness.app.inject({
+      method: "POST",
+      url: "/api/tasks/check-integration",
+      payload: {
+        items: [
+          { taskId: httpMergedRef.taskId, expectedReviewId: httpMergedRef.reviewId },
+          { taskId: httpMergedRef.taskId, expectedReviewId: httpMergedRef.reviewId },
+        ],
+      },
+    });
+    expect(invalidHttp.statusCode).toBe(400);
+
+    const validHttp = await harness.app.inject({
+      method: "POST",
+      url: "/api/tasks/check-integration",
+      payload: {
+        items: [
+          { taskId: httpMergedRef.taskId, expectedReviewId: httpMergedRef.reviewId },
+          { taskId: httpUnmergedRef.taskId, expectedReviewId: httpUnmergedRef.reviewId },
+          { taskId: staleRef.taskId, expectedReviewId: staleRef.reviewId },
+        ],
+      },
+    });
+    expect(validHttp.statusCode).toBe(200);
+    const httpBody = JSON.parse(validHttp.payload) as CheckTasksIntegrationResult;
+    expect(httpBody.counts).toEqual({
+      total: 3,
+      completed: 1,
+      notIntegrated: 1,
+      unavailable: 0,
+      error: 1,
+    });
+    expect(httpBody.results.map((item) => [item.taskId, item.status])).toEqual([
+      [httpMergedRef.taskId, "completed"],
+      [httpUnmergedRef.taskId, "not_integrated"],
+      [staleRef.taskId, "error"],
+    ]);
+    expect((await getHttpTask(harness, httpMergedRef.taskId)).task.status).toBe("completed");
+    expect((await getHttpTask(harness, httpUnmergedRef.taskId)).task.status).toBe("in_review");
+    expect((await getHttpTask(harness, httpUnmergedRef.taskId)).reviews?.at(-1)?.integrationMessage)
+      .toContain("main");
   });
 });

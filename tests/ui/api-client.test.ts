@@ -386,4 +386,53 @@ describe("UI API client", () => {
       details,
     );
   });
+
+  it("posts batch integration check items to /api/tasks/check-integration", async () => {
+    const batchResponse = {
+      counts: { total: 2, completed: 1, notIntegrated: 1, unavailable: 0, error: 0 },
+      results: [
+        {
+          taskId: "task-1",
+          expectedReviewId: "review-1",
+          status: "completed",
+          taskStatus: "completed",
+          integrationStatus: "integrated",
+          integrationMessage: null,
+          integrationTargetCommitSha: "a".repeat(40),
+          error: null,
+        },
+        {
+          taskId: "task-2",
+          expectedReviewId: "review-2",
+          status: "not_integrated",
+          taskStatus: "in_review",
+          integrationStatus: "not_integrated",
+          integrationMessage: "未检测到审核提交进入本地 'main'。",
+          integrationTargetCommitSha: "b".repeat(40),
+          error: null,
+        },
+      ],
+    };
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify(batchResponse), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const items = [
+      { taskId: "task-1", expectedReviewId: "review-1" },
+      { taskId: "task-2", expectedReviewId: "review-2" },
+    ];
+    await expect(apiClient.checkTasksIntegration(items)).resolves.toEqual(batchResponse);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/tasks/check-integration",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ items }),
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+  });
 });

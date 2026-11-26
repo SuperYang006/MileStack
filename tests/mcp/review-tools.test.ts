@@ -367,6 +367,86 @@ describe("MCP review tools", () => {
     expect(retry.events.filter((event: { type: string }) => event.type === "approved"))
       .toHaveLength(1);
 
+    const noIntegrationTask = context.service.createTask({
+      projectId: context.project.id,
+      title: "No-integration batch item",
+      createdBy: "developer",
+      status: "ready",
+      riskLevel: "low",
+    });
+    context.service.setTaskIntegrationPolicy({
+      projectId: context.project.id,
+      taskId: noIntegrationTask.task.id,
+      integrationRequired: false,
+      integrationTargetBranch: "main",
+      integrationNotRequiredReason: "Policy explicitly waived for batch verification.",
+    });
+    const noIntStarted = JSON.parse(textContent(await client.callTool({
+      name: "start_task",
+      arguments: { taskId: noIntegrationTask.task.id },
+    })));
+    await client.callTool({
+      name: "submit_for_review",
+      arguments: {
+        taskId: noIntegrationTask.task.id,
+        runId: noIntStarted.runId,
+        commitSha: "7777777777777777777777777777777777777777",
+        summary: "Ready with no integration.",
+      },
+    });
+    const noIntReview = JSON.parse(textContent(await client.callTool({
+      name: "start_review",
+      arguments: { taskId: noIntegrationTask.task.id },
+    })));
+    const noIntPassed = JSON.parse(textContent(await client.callTool({
+      name: "approve_review",
+      arguments: {
+        taskId: noIntegrationTask.task.id,
+        reviewRunId: noIntReview.reviewRunId,
+        summary: "Passed.",
+        verificationEvidence: [{ command: "pnpm test", result: "passed" }],
+      },
+    })));
+    expect(noIntPassed.task.status).toBe("completed");
+    const noIntReviewId = noIntPassed.reviews.at(-1).id as string;
+
+    const batchInvalidEmpty = await client.callTool({
+      name: "check_tasks_integration",
+      arguments: { items: [] },
+    });
+    expect(batchInvalidEmpty.isError).toBe(true);
+    expect(textContent(batchInvalidEmpty)).toContain("INVALID_INPUT");
+
+    const batchMissingField = await client.callTool({
+      name: "check_tasks_integration",
+      arguments: { items: [{ taskId: task.task.id }] },
+    });
+    expect(batchMissingField.isError).toBe(true);
+    expect(textContent(batchMissingField)).toContain("INVALID_INPUT");
+
+    const batchResult = JSON.parse(textContent(await client.callTool({
+      name: "check_tasks_integration",
+      arguments: {
+        items: [
+          { taskId: noIntegrationTask.task.id, expectedReviewId: noIntReviewId },
+          { taskId: task.task.id, expectedReviewId },
+          { taskId: task.task.id.replace(/./, "x"), expectedReviewId },
+        ],
+      },
+    })));
+    expect(batchResult.counts).toEqual({
+      total: 3,
+      completed: 1,
+      notIntegrated: 0,
+      unavailable: 1,
+      error: 1,
+    });
+    expect(batchResult.results.map((entry: { status: string }) => entry.status)).toEqual([
+      "completed",
+      "unavailable",
+      "error",
+    ]);
+
     await client.close();
     await server.close();
     context.database.close();

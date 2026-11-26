@@ -12,7 +12,11 @@ import {
   GitBranch,
   RefreshCw,
 } from "lucide-react";
-import type { FindingClosureInput, TaskSummary } from "../types";
+import type {
+  BatchIntegrationCheckItemInput,
+  FindingClosureInput,
+  TaskSummary,
+} from "../types";
 import { apiClient } from "../api/client";
 import { TaskIdBadge } from "./CopyTaskIdButton";
 import { QueueStatusBar } from "./QueueStatusBar";
@@ -21,7 +25,12 @@ import {
   useFeedbackDialog,
   type FeedbackClosureOption,
 } from "./FeedbackModal";
-import { findingsAwaitingClosure } from "../utils/reviewRecords";
+import {
+  findingsAwaitingClosure,
+  isTaskCheckableForIntegration,
+  selectIntegrationCheckTargets,
+  shouldShowBatchIntegrationButton,
+} from "../utils/reviewRecords";
 
 /** The in-review queue splits into two developer-facing groups inside one panel:
  *  等待 AI holds the reviews not yet handed to a review agent (unclaimed first,
@@ -85,7 +94,9 @@ interface ReviewTasksProps {
     findingClosures?: FindingClosureInput[],
   ) => void;
   onCheckIntegration: (taskId: string, reviewId: string) => void;
+  onCheckBatchIntegration: (items: BatchIntegrationCheckItemInput[]) => void;
   checkingTaskId?: string | null;
+  isBatchCheckingIntegration?: boolean;
   onSelectTask: (taskId: string) => void;
 }
 
@@ -96,8 +107,18 @@ const ReviewTaskItem: React.FC<{
   onOpenRequestChanges: (task: TaskSummary) => void;
   onCheckIntegration: (taskId: string, reviewId: string) => void;
   isCheckingIntegration: boolean;
+  disableIntegrationCheck: boolean;
   onSelectTask: (taskId: string) => void;
-}> = ({ task, onApprove, onOpenWaive, onOpenRequestChanges, onCheckIntegration, isCheckingIntegration, onSelectTask }) => {
+}> = ({
+  task,
+  onApprove,
+  onOpenWaive,
+  onOpenRequestChanges,
+  onCheckIntegration,
+  isCheckingIntegration,
+  disableIntegrationCheck,
+  onSelectTask,
+}) => {
   const digest = task.latestReview;
   const reviewStatus = digest?.status ?? "pending";
   const [instructionCopied, setInstructionCopied] = useState(false);
@@ -113,9 +134,7 @@ const ReviewTaskItem: React.FC<{
   const isAutoAccepted = task.riskLevel === "low" && task.riskConfirmed === true;
   const isAccepted = reviewStatus === "waived" || (isPassed && (isAutoAccepted || Boolean(digest?.approvedAt)));
   const needsDeveloperApproval = isPassed && !isAccepted;
-  const canCheckIntegration = Boolean(
-    digest && isAccepted && digest.integrationRequired && digest.integrationStatus !== "integrated",
-  );
+  const canCheckIntegration = isTaskCheckableForIntegration(task);
 
   // The review state is passive information, so it renders as plain text instead of a
   // bordered pill; the action buttons carry the visual weight on their own row.
@@ -264,7 +283,7 @@ const ReviewTaskItem: React.FC<{
               <button
                 type="button"
                 onClick={() => onCheckIntegration(task.id, digest.id)}
-                disabled={isCheckingIntegration}
+                disabled={disableIntegrationCheck}
                 className="inline-flex items-center space-x-1 px-2.5 py-1 text-[11px] text-cyan-200 hover:text-cyan-100 bg-cyan-950/50 hover:bg-cyan-900/70 border border-cyan-800/70 rounded transition-colors disabled:opacity-50"
                 title="只读检查固定审核提交是否已进入本地目标分支"
               >
@@ -361,7 +380,9 @@ export const ReviewTasks: React.FC<ReviewTasksProps> = ({
   onWaiveApproval,
   onRequestChanges,
   onCheckIntegration,
+  onCheckBatchIntegration,
   checkingTaskId = null,
+  isBatchCheckingIntegration = false,
   onSelectTask,
 }) => {
   const { openFeedbackDialog, feedbackDialogProps } = useFeedbackDialog();
@@ -416,6 +437,8 @@ export const ReviewTasks: React.FC<ReviewTasksProps> = ({
   };
 
   const { waitingForAi, waitingForYou } = splitReviewQueue(tasks);
+  const checkTargets = selectIntegrationCheckTargets(tasks);
+  const showBatchCheck = shouldShowBatchIntegrationButton(tasks);
 
   const renderTaskItem = (task: TaskSummary) => (
     <ReviewTaskItem
@@ -426,6 +449,7 @@ export const ReviewTasks: React.FC<ReviewTasksProps> = ({
       onOpenRequestChanges={handleOpenRequestChanges}
       onCheckIntegration={onCheckIntegration}
       isCheckingIntegration={checkingTaskId === task.id}
+      disableIntegrationCheck={isBatchCheckingIntegration || checkingTaskId === task.id}
       onSelectTask={onSelectTask}
     />
   );
@@ -448,6 +472,18 @@ export const ReviewTasks: React.FC<ReviewTasksProps> = ({
               待审核队列 <span className="font-mono">({tasks.length})</span>
             </h2>
           </div>
+          {showBatchCheck && (
+            <button
+              type="button"
+              onClick={() => onCheckBatchIntegration(checkTargets)}
+              disabled={isBatchCheckingIntegration || checkingTaskId !== null}
+              className="inline-flex shrink-0 items-center space-x-1 px-2.5 py-1 text-[11px] text-cyan-200 hover:text-cyan-100 bg-cyan-950/50 hover:bg-cyan-900/70 border border-cyan-800/70 rounded transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              title="批量只读检查所有已验收待本地集成的任务并归档"
+            >
+              <RefreshCw className={`w-3 h-3 ${isBatchCheckingIntegration ? "animate-spin" : ""}`} />
+              <span>{isBatchCheckingIntegration ? "正在检查" : "全部检查并归档"}</span>
+            </button>
+          )}
         </div>
 
         <div className="p-3 space-y-2.5 lg:flex-1 lg:min-h-0 lg:overflow-y-auto">

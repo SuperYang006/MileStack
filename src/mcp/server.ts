@@ -34,6 +34,7 @@ import {
   startReviewInputSchema,
   startTaskInputSchema,
   checkTaskIntegrationInputSchema,
+  checkTasksIntegrationInputSchema,
   updateTaskInputSchema,
   type ProjectStatusResult,
   type TaskPage,
@@ -79,6 +80,9 @@ const submitForReviewArgumentsSchema = submitForReviewInputSchema.omit({ project
 const startReviewArgumentsSchema = startReviewInputSchema.omit({ projectId: true });
 const completeReviewArgumentsSchema = completeReviewInputSchema.omit({ projectId: true });
 const checkIntegrationArgumentsSchema = checkTaskIntegrationInputSchema.omit({ projectId: true });
+const checkTasksIntegrationArgumentsSchema = checkTasksIntegrationInputSchema.omit({
+  projectId: true,
+});
 const reviewDecisionArgumentsSchema = completeReviewArgumentsSchema.omit({
   decision: true,
 });
@@ -172,6 +176,12 @@ const toolDefinitions: Tool[] = [
     description:
       "Retry the local read-only Git integration check for an already accepted latest review. Supply the expected review id from get_task. This never merges, fetches, pushes, or substitutes another commit SHA.",
     inputSchema: toJSONSchema(checkIntegrationArgumentsSchema) as Tool["inputSchema"],
+  },
+  {
+    name: "check_tasks_integration",
+    description:
+      "Batch-retry the local read-only Git integration check for multiple already accepted latest reviews, such as after an authorized batch merge into the local target branch. Supply a non-empty list of unique { taskId, expectedReviewId } items. Each item is checked and archived independently (partial success is allowed and failed or unmerged entries do not block completed ones). This never merges, fetches, pushes, or substitutes another commit SHA.",
+    inputSchema: toJSONSchema(checkTasksIntegrationArgumentsSchema) as Tool["inputSchema"],
   },
   {
     name: agentInstructionsToolName,
@@ -398,6 +408,15 @@ export function createMcpServer(
           const parsed = checkIntegrationArgumentsSchema.parse(args);
           return jsonResult(
             context.service.checkTaskIntegration({
+              ...parsed,
+              projectId: context.project.id,
+            }),
+          );
+        }
+        case "check_tasks_integration": {
+          const parsed = checkTasksIntegrationArgumentsSchema.parse(args);
+          return jsonResult(
+            context.service.checkTasksIntegration({
               ...parsed,
               projectId: context.project.id,
             }),

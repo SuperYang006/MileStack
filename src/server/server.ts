@@ -30,6 +30,7 @@ import {
   listTasksInputSchema,
   setTaskIntegrationPolicyInputSchema,
   checkTaskIntegrationInputSchema,
+  checkTasksIntegrationInputSchema,
 } from "../core/query-contract.js";
 import type { ReviewFindingInput, VerificationEvidence } from "../core/review-model.js";
 import {
@@ -392,6 +393,31 @@ export async function createHttpServer(
       }
       if (err instanceof InvalidTaskStateError || err instanceof z.ZodError) {
         return reply.status(400).send({ error: err instanceof z.ZodError ? err.issues : err.message });
+      }
+      throw err;
+    }
+  });
+
+  app.post("/api/tasks/check-integration", async (request, reply) => {
+    const rawBody = request.body;
+    const body =
+      rawBody !== null && typeof rawBody === "object" && !Array.isArray(rawBody)
+        ? (rawBody as Record<string, unknown>)
+        : {};
+    try {
+      return context.service.checkTasksIntegration(
+        checkTasksIntegrationInputSchema.parse({
+          ...body,
+          projectId: body.projectId === undefined ? context.project.id : body.projectId,
+          actorLabel: "developer",
+        }),
+      );
+    } catch (err) {
+      if (err instanceof ProjectNotFoundError) {
+        return reply.status(404).send({ error: err.message });
+      }
+      if (err instanceof z.ZodError) {
+        return reply.status(400).send({ error: err.issues });
       }
       throw err;
     }

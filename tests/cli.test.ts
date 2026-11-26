@@ -426,6 +426,12 @@ describe("CLI entry point", () => {
     expect(generatedInstructions).toContain(
       "If the current task workflow cannot record or verify a required integration check, state the missing evidence and next action instead of claiming integration or completion. Do not merge, fetch, push, or deploy without explicit developer authorization.",
     );
+    expect(generatedInstructions).toContain("check_task_integration");
+    expect(generatedInstructions).toContain("check_tasks_integration");
+    expect(generatedInstructions).toContain(
+      "When multiple accepted tasks have been batch-merged into the local target branch, call check_tasks_integration with each task's { taskId, expectedReviewId }",
+    );
+    expect(generatedInstructions).toContain("without merging, fetching, or pushing");
     expect(generatedInstructions).toContain("commands actually run and their results");
     expect(generatedInstructions).toContain("a concrete issue, an actionable suggestion");
     expect(generatedInstructions).toContain("Use agent when no model label is available");
@@ -645,6 +651,8 @@ describe("CLI entry point", () => {
     expect(mcpInstructions).not.toContain("never replaces the full verification");
     expect(mcpInstructions).toContain("Accepted task awaiting local integration:");
     expect(mcpInstructions).toContain("check_task_integration");
+    expect(mcpInstructions).toContain("check_tasks_integration");
+    expect(mcpInstructions).toContain("batch-merged into the local target branch");
     expect(knownTaskInstructions).toContain(`Call get_task directly with taskId \`${taskId}\``);
     expect(knownTaskInstructions).toContain("If the claim fails, do not modify the project");
     expect(knownTaskInstructions).toContain("full 40-character commit SHA");
@@ -658,6 +666,7 @@ describe("CLI entry point", () => {
       "A verified low-risk review may complete automatically",
     );
     expect(knownTaskInstructions).not.toContain("check_task_integration");
+    expect(knownTaskInstructions).not.toContain("check_tasks_integration");
     for (const step of [1, 2, 3, 4, 5, 6, 7]) {
       expect(knownTaskInstructions.split(`\n${step}. `).length - 1).toBe(1);
     }

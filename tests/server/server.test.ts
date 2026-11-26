@@ -1227,4 +1227,109 @@ describe("HTTP API Server", () => {
       integrationNotRequiredReason: "This task only documents external behavior.",
     });
   });
+
+  it("validates and delegates batch integration checks at POST /api/tasks/check-integration", async () => {
+    const emptyResponse = await serverInstance.app.inject({
+      method: "POST",
+      url: "/api/tasks/check-integration",
+      payload: { items: [] },
+    });
+    expect(emptyResponse.statusCode).toBe(400);
+
+    const missingFieldResponse = await serverInstance.app.inject({
+      method: "POST",
+      url: "/api/tasks/check-integration",
+      payload: { items: [{ taskId: "task-1" }] },
+    });
+    expect(missingFieldResponse.statusCode).toBe(400);
+
+    const duplicateResponse = await serverInstance.app.inject({
+      method: "POST",
+      url: "/api/tasks/check-integration",
+      payload: {
+        items: [
+          { taskId: "task-1", expectedReviewId: "rev-1" },
+          { taskId: "task-1", expectedReviewId: "rev-2" },
+        ],
+      },
+    });
+    expect(duplicateResponse.statusCode).toBe(400);
+
+    const unknownProjectResponse = await serverInstance.app.inject({
+      method: "POST",
+      url: "/api/tasks/check-integration",
+      payload: {
+        projectId: "non-existent-project",
+        items: [{ taskId: "task-1", expectedReviewId: "rev-1" }],
+      },
+    });
+    expect(unknownProjectResponse.statusCode).toBe(404);
+
+    const createdRes = await serverInstance.app.inject({
+      method: "POST",
+      url: "/api/tasks",
+      payload: { title: "Batch HTTP check item", status: "ready", riskLevel: "low" },
+    });
+    const taskId = JSON.parse(createdRes.payload).task.id as string;
+    const run = serverInstance.context.service.startTask({
+      projectId: serverInstance.context.project.id,
+      taskId,
+    });
+    serverInstance.context.service.submitForReview({
+      projectId: serverInstance.context.project.id,
+      taskId,
+      runId: run.runId,
+      commitSha: "7777777777777777777777777777777777777777",
+      summary: "Submitted commit.",
+    });
+    const review = serverInstance.context.service.startReview({
+      projectId: serverInstance.context.project.id,
+      taskId,
+    });
+    const passed = serverInstance.context.service.completeReview({
+      projectId: serverInstance.context.project.id,
+      taskId,
+      reviewRunId: review.reviewRunId,
+      decision: "passed",
+      summary: "Passed.",
+      verificationEvidence: [{ command: "pnpm test", result: "passed" }],
+    });
+    const reviewId = passed.reviews[0]!.id;
+
+    const batchRes = await serverInstance.app.inject({
+      method: "POST",
+      url: "/api/tasks/check-integration",
+      payload: {
+        items: [
+          { taskId, expectedReviewId: reviewId },
+          { taskId: "missing-task", expectedReviewId: "missing-review" },
+        ],
+      },
+    });
+    expect(batchRes.statusCode).toBe(200);
+    expect(JSON.parse(batchRes.payload)).toMatchObject({
+      counts: {
+        total: 2,
+        completed: 0,
+        notIntegrated: 0,
+        unavailable: 1,
+        error: 1,
+      },
+      results: [
+        {
+          taskId,
+          expectedReviewId: reviewId,
+          status: "unavailable",
+          taskStatus: "in_review",
+          integrationStatus: "unavailable",
+        },
+        {
+          taskId: "missing-task",
+          expectedReviewId: "missing-review",
+          status: "error",
+          error: { code: "TASK_NOT_FOUND" },
+        },
+      ],
+    });
+  });
 });

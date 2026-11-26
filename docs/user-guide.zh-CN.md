@@ -251,7 +251,7 @@ MCP 服务端 instructions 和 `start_review` 工具描述会提供审核入口�
 
 ### 本地集成与任务完成
 
-每个新任务默认要求固定审核提交进入本地 `main`。任务开始前，开发者可以指定其他本地目标分支，或填写原因明确记录无需 Git 集成。该选择会冻结在本轮审核记录中。风险对应的审核和批准要求满足后，MileStack 检查固定审核提交是否可从选定的本地分支到达。Git 无法证明时，已记录的批准仍保留，任务继续显示，下游任务仍等待依赖完成。获授权在本地合并或修复 Git 后，可点击“检查并归档”重试。检查只读，不执行合并、fetch 或 push，也不表示已发布或部署。若 squash/rebase 改变了审核提交 SHA，该检查无法证明提交已集成。
+每个新任务默认要求固定审核提交进入本地 `main`。任务开始前，开发者可以指定其他本地目标分支，或填写原因明确记录无需 Git 集成。该选择会冻结在本轮审核记录中。风险对应的审核和批准要求满足后，MileStack 检查固定审核提交是否可从选定的本地分支到达。Git 无法证明时，已记录的批准仍保留，任务继续显示，下游任务仍等待依赖完成。获授权在本地合并或修复 Git 后，可点击“检查并归档”重试。当多个已验收任务批量合入本地目标分支后（待审核队列中存在 2 个及以上可检查的待集成任务），可点击待审核队列标题栏的“全部检查并归档”按钮，或调用 MCP 工具 `check_tasks_integration` 传入各自的 `{ taskId, expectedReviewId }` 一次性批量只读检查并归档。单条与批量检查均为只读操作，不执行合并、fetch 或 push，也不表示已发布或部署。若 squash/rebase 改变了审核提交 SHA，该检查无法证明提交已集成。
 
 ## CLI 命令
 
@@ -282,7 +282,7 @@ milestack mcp --discover
 | 创建任务 | `create_task`、`create_tasks` |
 | 编辑草稿 | `edit_inbox_task` |
 | 执行 | `start_task`、`update_task`、`submit_for_review` |
-| 审核 | `start_review`、`approve_review`、`request_changes`、`complete_review`、`check_task_integration` |
+| 审核 | `start_review`、`approve_review`、`request_changes`、`complete_review`、`check_task_integration`、`check_tasks_integration` |
 
 Agent 经开发者确认后创建的任务会进入草稿箱。开发者确认风险和队列位置后，任务才可以被领取。`edit_inbox_task` 必须携带 `get_task` 返回的最新 `updatedAt`；任务在读取后被修改时编辑会被拒绝，该工具不能修改风险，也只能编辑草稿箱任务。
 

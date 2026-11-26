@@ -31,15 +31,19 @@ import { DeleteTaskConfirmModal } from "../components/DeleteTaskConfirmModal";
 import { ServiceDisconnectedModal } from "../components/ServiceDisconnectedModal";
 import { PageCommentsModal } from "../components/PageCommentsModal";
 import {
+  BatchIntegrationNotice,
   OperationErrorNotice,
+  type BatchIntegrationSummary,
   type OperationError,
 } from "../components/OperationErrorNotice";
+import { summarizeBatchIntegrationResult } from "../utils/reviewRecords";
 import {
   projectStatusQueryOptions,
   projectStatusQueryKey,
   refreshProjectStatusAfterDeletion,
 } from "./projectStatusQuery";
 import type {
+  BatchIntegrationCheckItemInput,
   ProjectStatus,
   ProjectSummary,
   TaskSummary,
@@ -203,11 +207,14 @@ export const DashboardPage: React.FC = () => {
   const [isDisconnectNoticeDismissed, setIsDisconnectNoticeDismissed] = useState(false);
   const [isReconnecting, setIsReconnecting] = useState(false);
   const [operationError, setOperationError] = useState<OperationError | null>(null);
+  const [batchIntegrationNotice, setBatchIntegrationNotice] =
+    useState<BatchIntegrationSummary | null>(null);
 
   // Every failed action reports the operation that failed and the service's own
   // reason. Successful actions stay silent: the changed queue is the feedback.
   const reportOperationFailure = useCallback(
     (operation: string) => (error: Error) => {
+      setBatchIntegrationNotice(null);
       setOperationError((previous) => ({
         id: (previous?.id ?? 0) + 1,
         operation,
@@ -217,6 +224,10 @@ export const DashboardPage: React.FC = () => {
     [],
   );
   const dismissOperationError = useCallback(() => setOperationError(null), []);
+  const dismissBatchIntegrationNotice = useCallback(
+    () => setBatchIntegrationNotice(null),
+    [],
+  );
 
   // Queries. A failed call is never retried into a fake result: it marks the
   // service offline right away, and the notice waits for a real recovery.
@@ -397,6 +408,37 @@ export const DashboardPage: React.FC = () => {
       invalidateProjectQueries();
       queryClient.invalidateQueries({ queryKey: ["taskDetails", variables.taskId] });
       reportOperationFailure("检查并归档")(error);
+    },
+  });
+
+  const checkBatchIntegrationMutation = useMutation({
+    mutationFn: (items: BatchIntegrationCheckItemInput[]) =>
+      apiClient.checkTasksIntegration(items),
+    onMutate: () => {
+      setOperationError(null);
+      setBatchIntegrationNotice(null);
+    },
+    onSuccess: (result, items) => {
+      forceFullStatusRef.current = true;
+      invalidateProjectQueries();
+      for (const item of items) {
+        queryClient.invalidateQueries({ queryKey: ["taskDetails", item.taskId] });
+      }
+      const summary = summarizeBatchIntegrationResult(result);
+      if (summary) {
+        setBatchIntegrationNotice((previous) => ({
+          id: (previous?.id ?? 0) + 1,
+          ...summary,
+        }));
+      }
+    },
+    onError: (error, items) => {
+      forceFullStatusRef.current = true;
+      invalidateProjectQueries();
+      for (const item of items) {
+        queryClient.invalidateQueries({ queryKey: ["taskDetails", item.taskId] });
+      }
+      reportOperationFailure("批量检查并归档")(error);
     },
   });
 
@@ -708,11 +750,16 @@ export const DashboardPage: React.FC = () => {
                 onCheckIntegration={(taskId, reviewId) =>
                   checkIntegrationMutation.mutate({ taskId, reviewId })
                 }
+                onCheckBatchIntegration={(items) => {
+                  if (checkBatchIntegrationMutation.isPending) return;
+                  checkBatchIntegrationMutation.mutate(items);
+                }}
                 checkingTaskId={
                   checkIntegrationMutation.isPending
                     ? checkIntegrationMutation.variables?.taskId ?? null
                     : null
                 }
+                isBatchCheckingIntegration={checkBatchIntegrationMutation.isPending}
                 onWaiveApproval={(taskId, reason) =>
                   waiveTaskApprovalMutation.mutate({ taskId, reason })
                 }
@@ -766,6 +813,10 @@ export const DashboardPage: React.FC = () => {
       </main>
 
       <OperationErrorNotice error={operationError} onDismiss={dismissOperationError} />
+      <BatchIntegrationNotice
+        summary={batchIntegrationNotice}
+        onDismiss={dismissBatchIntegrationNotice}
+      />
 
       {/* Archive Slide-over Drawer */}
       <RecentTasks

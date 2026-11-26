@@ -30,6 +30,7 @@ import {
   editInboxTaskInputSchema,
   setTaskIntegrationPolicyInputSchema,
   checkTaskIntegrationInputSchema,
+  checkTasksIntegrationInputSchema,
   type CreateTaskInput,
   type CreateTasksInput,
   type ConfirmTaskInput,
@@ -64,8 +65,13 @@ import {
   type AcceptanceCriteriaEditEntry,
   type SetTaskIntegrationPolicyInput,
   type CheckTaskIntegrationInput,
+  type CheckTasksIntegrationCounts,
+  type CheckTasksIntegrationInput,
+  type CheckTasksIntegrationItemResult,
+  type CheckTasksIntegrationResult,
 } from "./query-contract.js";
 import {
+  DomainError,
   InvalidTaskStateError,
   InvalidTaskDependencyError,
   InvalidTaskError,
@@ -1621,6 +1627,94 @@ export class TaskService {
       parsed.actorLabel ?? "developer",
       true,
     );
+  }
+
+  /**
+   * Batch read-only integration check for accepted tasks. Each item runs
+   * independently against its expected review id outside SQLite write
+   * transactions so unmerged or failed entries do not roll back or block others.
+   */
+  checkTasksIntegration(input: CheckTasksIntegrationInput): CheckTasksIntegrationResult {
+    const parsed = checkTasksIntegrationInputSchema.parse(input);
+    const project = this.requireProject(parsed.projectId);
+    const actorLabel = parsed.actorLabel ?? "developer";
+    const counts: CheckTasksIntegrationCounts = {
+      total: parsed.items.length,
+      completed: 0,
+      notIntegrated: 0,
+      unavailable: 0,
+      error: 0,
+    };
+    const results: CheckTasksIntegrationItemResult[] = [];
+
+    for (const item of parsed.items) {
+      try {
+        const details = this.checkAndCompleteIntegration(
+          project.id,
+          item.taskId,
+          item.expectedReviewId,
+          actorLabel,
+          true,
+        );
+        const latestReview = details.reviews.at(-1);
+        if (details.task.status === "completed") {
+          counts.completed += 1;
+          results.push({
+            taskId: item.taskId,
+            expectedReviewId: item.expectedReviewId,
+            status: "completed",
+            taskStatus: details.task.status,
+            integrationStatus: latestReview?.integrationStatus ?? null,
+            integrationMessage: latestReview?.integrationMessage ?? null,
+            integrationTargetCommitSha: latestReview?.integrationTargetCommitSha ?? null,
+            error: null,
+          });
+          continue;
+        }
+
+        const itemStatus =
+          latestReview?.integrationStatus === "not_integrated"
+            ? "not_integrated"
+            : "unavailable";
+        if (itemStatus === "not_integrated") {
+          counts.notIntegrated += 1;
+        } else {
+          counts.unavailable += 1;
+        }
+        results.push({
+          taskId: item.taskId,
+          expectedReviewId: item.expectedReviewId,
+          status: itemStatus,
+          taskStatus: details.task.status,
+          integrationStatus: latestReview?.integrationStatus ?? itemStatus,
+          integrationMessage:
+            latestReview?.integrationMessage ?? details.task.requiredAction ?? null,
+          integrationTargetCommitSha: latestReview?.integrationTargetCommitSha ?? null,
+          error: null,
+        });
+      } catch (error) {
+        if (error instanceof DomainError) {
+          counts.error += 1;
+          results.push({
+            taskId: item.taskId,
+            expectedReviewId: item.expectedReviewId,
+            status: "error",
+            taskStatus: null,
+            integrationStatus: null,
+            integrationMessage: null,
+            integrationTargetCommitSha: null,
+            error: {
+              code: error.code,
+              message: error.message,
+            },
+          });
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    return { counts, results };
   }
 
   private checkAndCompleteIntegration(

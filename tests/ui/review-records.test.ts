@@ -1,11 +1,21 @@
 import { describe, expect, it } from "vitest";
 
-import type { TaskEvent, TaskReview } from "../../ui/src/types.js";
+import type {
+  BatchIntegrationCheckResult,
+  ReviewDigest,
+  TaskEvent,
+  TaskReview,
+  TaskSummary,
+} from "../../ui/src/types.js";
 import {
   buildCriterionResultDisplays,
   buildFindingClosureDisplays,
   buildFindingDisplays,
   findingsAwaitingClosure,
+  isTaskCheckableForIntegration,
+  selectIntegrationCheckTargets,
+  shouldShowBatchIntegrationButton,
+  summarizeBatchIntegrationResult,
 } from "../../ui/src/utils/reviewRecords.js";
 
 function taskEvent(overrides: Partial<TaskEvent> = {}): TaskEvent {
@@ -279,5 +289,224 @@ describe("task detail structured review records", () => {
     expect(
       findingsAwaitingClosure(returnedPrevious).map((finding) => finding.issue),
     ).toEqual(["上一轮发现一", "上一轮发现二"]);
+  });
+
+  it("derives batch integration button visibility and targets from checkable tasks", () => {
+    const digest = (overrides: Partial<ReviewDigest> = {}): ReviewDigest => ({
+      id: "review-1",
+      status: "passed",
+      reviewRound: 1,
+      commitSha: "1".repeat(40),
+      reviewerActorLabel: "reviewer",
+      branch: "main",
+      worktree: "/tmp/project",
+      summary: "Passed",
+      createdAt: "2026-10-17T00:00:00.000Z",
+      acceptanceCriteriaCount: 1,
+      verificationEvidenceCount: 1,
+      findingsCount: 0,
+      integrationRequired: true,
+      integrationTargetBranch: "main",
+      integrationNotRequiredReason: null,
+      approvedAt: "2026-10-17T00:01:00.000Z",
+      integrationStatus: "not_integrated",
+      integrationMessage: "未检测到审核提交进入本地 'main'。",
+      integrationTargetCommitSha: null,
+      integrationCheckedAt: null,
+      ...overrides,
+    });
+    const inReviewTask = (overrides: Partial<TaskSummary> = {}): TaskSummary => ({
+      id: "task-1",
+      projectId: "project-1",
+      title: "Review item",
+      status: "in_review",
+      queuePosition: null,
+      dependencyIds: [],
+      waitingFor: [],
+      runnable: false,
+      currentStep: null,
+      nextStep: null,
+      blocker: null,
+      requiredAction: null,
+      updatedAt: "2026-10-17T00:00:00.000Z",
+      completedAt: null,
+      riskLevel: "medium",
+      riskConfirmed: true,
+      integrationRequired: true,
+      integrationTargetBranch: "main",
+      integrationNotRequiredReason: null,
+      latestReview: digest(),
+      ...overrides,
+    });
+
+    const lowAutoCheckable = inReviewTask({
+      id: "low-auto",
+      riskLevel: "low",
+      riskConfirmed: true,
+      latestReview: digest({
+        id: "rev-low",
+        approvedAt: null,
+        integrationStatus: "not_integrated",
+      }),
+    });
+    const mediumApprovedCheckable = inReviewTask({
+      id: "medium-approved",
+      riskLevel: "medium",
+      latestReview: digest({
+        id: "rev-medium",
+        integrationStatus: "unavailable",
+      }),
+    });
+    const waivedCheckable = inReviewTask({
+      id: "waived-checkable",
+      riskLevel: "high",
+      latestReview: digest({
+        id: "rev-waived",
+        status: "waived",
+        approvedAt: "2026-10-17T00:02:00.000Z",
+        integrationStatus: null,
+      }),
+    });
+    const unapprovedMedium = inReviewTask({
+      id: "unapproved-medium",
+      riskLevel: "medium",
+      latestReview: digest({ id: "rev-unapproved", approvedAt: null }),
+    });
+    const pendingReview = inReviewTask({
+      id: "pending-review",
+      latestReview: digest({ id: "rev-pending", status: "pending", approvedAt: null }),
+    });
+    const noIntegrationNeeded = inReviewTask({
+      id: "no-integration",
+      integrationRequired: false,
+      latestReview: digest({
+        id: "rev-no-int",
+        integrationRequired: false,
+        integrationStatus: "not_required",
+      }),
+    });
+    const alreadyIntegrated = inReviewTask({
+      id: "already-integrated",
+      latestReview: digest({
+        id: "rev-integrated",
+        integrationStatus: "integrated",
+      }),
+    });
+    const notInReviewStatus = inReviewTask({
+      id: "completed-task",
+      status: "completed",
+      latestReview: digest({ id: "rev-completed" }),
+    });
+
+    expect(isTaskCheckableForIntegration(lowAutoCheckable)).toBe(true);
+    expect(isTaskCheckableForIntegration(mediumApprovedCheckable)).toBe(true);
+    expect(isTaskCheckableForIntegration(waivedCheckable)).toBe(true);
+    expect(isTaskCheckableForIntegration(unapprovedMedium)).toBe(false);
+    expect(isTaskCheckableForIntegration(pendingReview)).toBe(false);
+    expect(isTaskCheckableForIntegration(noIntegrationNeeded)).toBe(false);
+    expect(isTaskCheckableForIntegration(alreadyIntegrated)).toBe(false);
+    expect(isTaskCheckableForIntegration(notInReviewStatus)).toBe(false);
+
+    expect(shouldShowBatchIntegrationButton([])).toBe(false);
+    expect(
+      shouldShowBatchIntegrationButton([unapprovedMedium, pendingReview, noIntegrationNeeded]),
+    ).toBe(false);
+    expect(
+      shouldShowBatchIntegrationButton([lowAutoCheckable, unapprovedMedium, alreadyIntegrated]),
+    ).toBe(false);
+
+    const mixedQueue = [
+      lowAutoCheckable,
+      unapprovedMedium,
+      pendingReview,
+      mediumApprovedCheckable,
+      waivedCheckable,
+    ];
+    expect(shouldShowBatchIntegrationButton(mixedQueue)).toBe(true);
+    expect(selectIntegrationCheckTargets(mixedQueue)).toEqual([
+      { taskId: "low-auto", expectedReviewId: "rev-low" },
+      { taskId: "medium-approved", expectedReviewId: "rev-medium" },
+      { taskId: "waived-checkable", expectedReviewId: "rev-waived" },
+    ]);
+  });
+
+  it("summarizes batch integration results cleanly across full and partial outcomes", () => {
+    const allArchived: BatchIntegrationCheckResult = {
+      counts: { total: 2, completed: 2, notIntegrated: 0, unavailable: 0, error: 0 },
+      results: [
+        {
+          taskId: "t1",
+          expectedReviewId: "r1",
+          status: "completed",
+          taskStatus: "completed",
+          integrationStatus: "integrated",
+          integrationMessage: null,
+          integrationTargetCommitSha: "a".repeat(40),
+          error: null,
+        },
+        {
+          taskId: "t2",
+          expectedReviewId: "r2",
+          status: "completed",
+          taskStatus: "completed",
+          integrationStatus: "integrated",
+          integrationMessage: null,
+          integrationTargetCommitSha: "a".repeat(40),
+          error: null,
+        },
+      ],
+    };
+    expect(summarizeBatchIntegrationResult(allArchived)).toBeNull();
+
+    const partialArchived: BatchIntegrationCheckResult = {
+      counts: { total: 4, completed: 1, notIntegrated: 1, unavailable: 1, error: 1 },
+      results: [
+        {
+          taskId: "t1",
+          expectedReviewId: "r1",
+          status: "completed",
+          taskStatus: "completed",
+          integrationStatus: "integrated",
+          integrationMessage: null,
+          integrationTargetCommitSha: "a".repeat(40),
+          error: null,
+        },
+        {
+          taskId: "t2",
+          expectedReviewId: "r2",
+          status: "not_integrated",
+          taskStatus: "in_review",
+          integrationStatus: "not_integrated",
+          integrationMessage: "未检测到审核提交进入本地 'main'。",
+          integrationTargetCommitSha: "b".repeat(40),
+          error: null,
+        },
+        {
+          taskId: "t3",
+          expectedReviewId: "r3",
+          status: "unavailable",
+          taskStatus: "in_review",
+          integrationStatus: "unavailable",
+          integrationMessage: "仓库目录不可访问",
+          integrationTargetCommitSha: null,
+          error: null,
+        },
+        {
+          taskId: "t4",
+          expectedReviewId: "r4",
+          status: "error",
+          taskStatus: null,
+          integrationStatus: null,
+          integrationMessage: null,
+          integrationTargetCommitSha: null,
+          error: { code: "INTEGRATION_CHECK_STALE", message: "Review state changed." },
+        },
+      ],
+    };
+    const notice = summarizeBatchIntegrationResult(partialArchived);
+    expect(notice).toEqual({
+      title: "已归档 1 项，待本地集成 1 项，无法检查 1 项，失败 1 项",
+      detail: "未检测到审核提交进入本地 'main'。；仓库目录不可访问（另有 1 项详情见各任务卡片）",
+    });
   });
 });

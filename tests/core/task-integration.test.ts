@@ -6,6 +6,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { IntegrationCheckStaleError, InvalidTaskStateError, ReviewRunOwnershipError } from "../../src/core/errors.js";
+import { checkTasksIntegrationResultSchema } from "../../src/core/query-contract.js";
 import { TaskService } from "../../src/core/task-service.js";
 import { ensureDatabase } from "../../src/db/ensure-database.js";
 import { createSqliteRepository } from "../../src/db/sqlite-repository.js";
@@ -405,6 +406,235 @@ describe("TaskService local integration completion gate", () => {
         integrationCheckedAt: null,
       });
       expect(afterStaleCheck.events.some((event) => event.type === "completed")).toBe(false);
+    } finally {
+      database.close();
+    }
+  });
+
+  it("checks a batch of accepted tasks independently and completes merged ones while preserving unmerged state", async () => {
+    const { projectRoot, database, service } = await createGitProject();
+    try {
+      const mergedLow = service.createTask({
+        projectId: "project-1",
+        title: "Merged low-risk task",
+        riskLevel: "low",
+        createdBy: "developer",
+      });
+      const dependent = service.createTask({
+        projectId: "project-1",
+        title: "Blocked until batch archives prerequisite",
+        dependencyIds: [mergedLow.task.id],
+        createdBy: "developer",
+      });
+      const unmergedMedium = service.createTask({
+        projectId: "project-1",
+        title: "Unmerged medium-risk task",
+        riskLevel: "medium",
+        createdBy: "developer",
+      });
+      const mergedDirect = service.createTask({
+        projectId: "project-1",
+        title: "Merged directly accepted task",
+        riskLevel: "high",
+        createdBy: "developer",
+      });
+
+      git(projectRoot, "checkout", "-b", "feature/low-merged");
+      const lowCommit = commitFile(projectRoot, "low.txt", "low work\n", "low commit");
+      const lowPassed = await submitForReview(service, mergedLow.task.id, lowCommit, "feature/low-merged");
+      const lowReviewId = lowPassed.reviews!.at(-1)!.id;
+
+      git(projectRoot, "checkout", "main");
+      git(projectRoot, "checkout", "-b", "feature/medium-unmerged");
+      const unmergedCommit = commitFile(projectRoot, "unmerged.txt", "pending merge\n", "unmerged commit");
+      await submitForReview(service, unmergedMedium.task.id, unmergedCommit, "feature/medium-unmerged");
+      const unmergedApproved = service.approveTask({ projectId: "project-1", taskId: unmergedMedium.task.id });
+      const unmergedReviewId = unmergedApproved.reviews!.at(-1)!.id;
+      expect(unmergedApproved.task.status).toBe("in_review");
+
+      git(projectRoot, "checkout", "main");
+      git(projectRoot, "checkout", "-b", "feature/direct-merged");
+      const directCommit = commitFile(projectRoot, "direct.txt", "direct work\n", "direct commit");
+      const directStarted = service.startTask({ projectId: "project-1", taskId: mergedDirect.task.id });
+      service.submitForReview({
+        projectId: "project-1",
+        taskId: mergedDirect.task.id,
+        runId: directStarted.runId,
+        commitSha: directCommit,
+        branch: "feature/direct-merged",
+        summary: "Direct acceptance ready commit.",
+      });
+      const directWaived = service.waiveTaskApproval({
+        projectId: "project-1",
+        taskId: mergedDirect.task.id,
+        reason: "Verified directly before batch merge.",
+      });
+      const directReviewId = directWaived.reviews!.at(-1)!.id;
+
+      git(projectRoot, "checkout", "main");
+      git(projectRoot, "merge", "--no-ff", "feature/low-merged", "-m", "merge low");
+      git(projectRoot, "merge", "--no-ff", "feature/direct-merged", "-m", "merge direct");
+      const mainHeadBefore = git(projectRoot, "rev-parse", "main");
+
+      // Reopen a completed round-1 task so its round-1 reviewId becomes stale on round 2.
+      const staleTask = service.createTask({
+        projectId: "project-1",
+        title: "Reopened task for stale check",
+        riskLevel: "low",
+        createdBy: "developer",
+      });
+      git(projectRoot, "checkout", "-b", "feature/stale-round-1");
+      const staleRound1Commit = commitFile(projectRoot, "stale.txt", "r1\n", "stale r1");
+      git(projectRoot, "checkout", "main");
+      git(projectRoot, "merge", "--no-ff", "feature/stale-round-1", "-m", "merge stale r1");
+      const staleR1Passed = await submitForReview(service, staleTask.task.id, staleRound1Commit, "main");
+      const staleOldReviewId = staleR1Passed.reviews!.at(-1)!.id;
+      expect(staleR1Passed.task.status).toBe("completed");
+      service.reopenTask({ projectId: "project-1", taskId: staleTask.task.id, reason: "Round 2 rework" });
+      await submitForReview(service, staleTask.task.id, mainHeadBefore, "main");
+
+      // Unapproved high-risk task triggers INVALID_TASK_STATE in batch without aborting others.
+      const unapprovedHigh = service.createTask({
+        projectId: "project-1",
+        title: "Unapproved high-risk task",
+        riskLevel: "high",
+        createdBy: "developer",
+      });
+      const unapprovedHighPassed = await submitForReview(service, unapprovedHigh.task.id, mainHeadBefore, "main");
+      const unapprovedHighReviewId = unapprovedHighPassed.reviews!.at(-1)!.id;
+
+      const mainHeadAfterSetup = git(projectRoot, "rev-parse", "main");
+      const mixedResult = service.checkTasksIntegration({
+        projectId: "project-1",
+        items: [
+          { taskId: mergedLow.task.id, expectedReviewId: lowReviewId },
+          { taskId: unmergedMedium.task.id, expectedReviewId: unmergedReviewId },
+          { taskId: staleTask.task.id, expectedReviewId: staleOldReviewId },
+          { taskId: unapprovedHigh.task.id, expectedReviewId: unapprovedHighReviewId },
+          { taskId: "missing-task-id", expectedReviewId: "missing-review-id" },
+          { taskId: mergedDirect.task.id, expectedReviewId: directReviewId },
+        ],
+      });
+
+      expect(git(projectRoot, "rev-parse", "main")).toBe(mainHeadAfterSetup);
+      expect(checkTasksIntegrationResultSchema.parse(mixedResult)).toEqual(mixedResult);
+      expect(mixedResult.counts).toEqual({
+        total: 6,
+        completed: 2,
+        notIntegrated: 1,
+        unavailable: 0,
+        error: 3,
+      });
+      expect(mixedResult.results.map((item) => [item.taskId, item.status])).toEqual([
+        [mergedLow.task.id, "completed"],
+        [unmergedMedium.task.id, "not_integrated"],
+        [staleTask.task.id, "error"],
+        [unapprovedHigh.task.id, "error"],
+        ["missing-task-id", "error"],
+        [mergedDirect.task.id, "completed"],
+      ]);
+      expect(mixedResult.results[0]).toMatchObject({
+        taskStatus: "completed",
+        integrationStatus: "integrated",
+        integrationTargetCommitSha: mainHeadAfterSetup,
+        integrationMessage: null,
+        error: null,
+      });
+      expect(mixedResult.results[1]).toMatchObject({
+        taskStatus: "in_review",
+        integrationStatus: "not_integrated",
+        integrationMessage: expect.stringContaining("main"),
+        error: null,
+      });
+      expect(mixedResult.results[2]?.error?.code).toBe("INTEGRATION_CHECK_STALE");
+      expect(mixedResult.results[3]?.error?.code).toBe("INVALID_TASK_STATE");
+      expect(mixedResult.results[4]?.error?.code).toBe("TASK_NOT_FOUND");
+      expect(mixedResult.results[5]).toMatchObject({
+        taskStatus: "completed",
+        integrationStatus: "integrated",
+        error: null,
+      });
+
+      const persistedLow = service.getTask({ projectId: "project-1", taskId: mergedLow.task.id, view: "full" });
+      expect(persistedLow.task.status).toBe("completed");
+      expect(persistedLow.events.filter((event) => event.type === "completed")).toHaveLength(1);
+
+      const persistedUnmerged = service.getTask({ projectId: "project-1", taskId: unmergedMedium.task.id, view: "full" });
+      expect(persistedUnmerged.task.status).toBe("in_review");
+      expect(persistedUnmerged.reviews?.at(-1)).toMatchObject({
+        approvedBy: "developer",
+        integrationStatus: "not_integrated",
+        integrationMessage: expect.stringContaining("main"),
+      });
+
+      const unblockedDependent = service.getProjectStatus({ projectId: "project-1", view: "full" }).next
+        .find((candidate) => candidate.id === dependent.task.id);
+      expect(unblockedDependent).toMatchObject({ runnable: true, waitingFor: [] });
+
+      // All-success batch completion when the remaining unmerged task is merged too.
+      git(projectRoot, "checkout", "main");
+      git(projectRoot, "merge", "--no-ff", "feature/medium-unmerged", "-m", "merge medium");
+      const allSuccess = service.checkTasksIntegration({
+        projectId: "project-1",
+        items: [
+          { taskId: mergedLow.task.id, expectedReviewId: lowReviewId },
+          { taskId: unmergedMedium.task.id, expectedReviewId: unmergedReviewId },
+        ],
+      });
+      expect(allSuccess.counts).toEqual({
+        total: 2,
+        completed: 2,
+        notIntegrated: 0,
+        unavailable: 0,
+        error: 0,
+      });
+      expect(
+        service.getTask({ projectId: "project-1", taskId: unmergedMedium.task.id, view: "full" }).task.status,
+      ).toBe("completed");
+    } finally {
+      database.close();
+    }
+  });
+
+  it("rejects empty lists, missing fields, and duplicate taskIds before checking any task", async () => {
+    const { projectRoot, database, service } = await createGitProject();
+    try {
+      const task = service.createTask({
+        projectId: "project-1",
+        title: "Merged task",
+        riskLevel: "low",
+        createdBy: "developer",
+      });
+      git(projectRoot, "checkout", "-b", "feature/dup-guard");
+      const commitSha = commitFile(projectRoot, "dup.txt", "dup\n", "dup");
+      const passed = await submitForReview(service, task.task.id, commitSha, "feature/dup-guard");
+      const reviewId = passed.reviews!.at(-1)!.id;
+      git(projectRoot, "checkout", "main");
+      git(projectRoot, "merge", "--no-ff", "feature/dup-guard", "-m", "merge dup");
+
+      expect(() =>
+        service.checkTasksIntegration({ projectId: "project-1", items: [] }),
+      ).toThrow();
+      expect(() =>
+        service.checkTasksIntegration({
+          projectId: "project-1",
+          items: [{ taskId: task.task.id, expectedReviewId: "" }],
+        }),
+      ).toThrow();
+      expect(() =>
+        service.checkTasksIntegration({
+          projectId: "project-1",
+          items: [
+            { taskId: task.task.id, expectedReviewId: reviewId },
+            { taskId: task.task.id, expectedReviewId: "other-review-id" },
+          ],
+        }),
+      ).toThrow(/Duplicate taskId/);
+
+      // Duplicate rejection aborted before checking the first entry.
+      expect(
+        service.getTask({ projectId: "project-1", taskId: task.task.id, view: "full" }).task.status,
+      ).toBe("in_review");
     } finally {
       database.close();
     }

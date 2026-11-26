@@ -548,6 +548,90 @@ export const checkTaskIntegrationInputSchema = z
   })
   .strict();
 
+export const checkTaskIntegrationItemInputSchema = z
+  .object({
+    taskId: identifierSchema.describe("Accepted task id to check for local integration."),
+    expectedReviewId: identifierSchema.describe(
+      "Latest review record id read from get_task or project status.",
+    ),
+  })
+  .strict();
+
+export const checkTasksIntegrationInputSchema = z
+  .object({
+    projectId: identifierSchema,
+    items: z
+      .array(checkTaskIntegrationItemInputSchema)
+      .min(1)
+      .superRefine((items, context) => {
+        const seenTaskIds = new Set<string>();
+        items.forEach((item, index) => {
+          if (seenTaskIds.has(item.taskId)) {
+            context.addIssue({
+              code: "custom",
+              path: [index, "taskId"],
+              message: `Duplicate taskId '${item.taskId}' in batch integration check.`,
+            });
+            return;
+          }
+          seenTaskIds.add(item.taskId);
+        });
+      })
+      .describe(
+        "Non-empty list of unique { taskId, expectedReviewId } entries for accepted tasks awaiting local integration.",
+      ),
+    actorLabel: z.string().trim().min(1).optional(),
+  })
+  .strict();
+
+export const batchIntegrationCheckItemStatuses = [
+  "completed",
+  "not_integrated",
+  "unavailable",
+  "error",
+] as const;
+
+export const batchIntegrationCheckItemStatusSchema = z.enum(
+  batchIntegrationCheckItemStatuses,
+);
+
+export const checkTasksIntegrationCountsSchema = z
+  .object({
+    total: z.number().int().nonnegative(),
+    completed: z.number().int().nonnegative(),
+    notIntegrated: z.number().int().nonnegative(),
+    unavailable: z.number().int().nonnegative(),
+    error: z.number().int().nonnegative(),
+  })
+  .strict();
+
+export const checkTasksIntegrationErrorSchema = z
+  .object({
+    code: z.string().min(1),
+    message: z.string().min(1),
+  })
+  .strict();
+
+export const checkTasksIntegrationItemResultSchema = z
+  .object({
+    taskId: identifierSchema,
+    expectedReviewId: identifierSchema,
+    status: batchIntegrationCheckItemStatusSchema,
+    taskStatus: taskStatusSchema.nullable(),
+    integrationStatus: integrationStatusSchema.nullable(),
+    integrationMessage: nullableTextSchema,
+    integrationTargetCommitSha: nullableTextSchema,
+    error: checkTasksIntegrationErrorSchema.nullable(),
+  })
+  .strict();
+
+export const checkTasksIntegrationResultSchema = z
+  .object({
+    counts: checkTasksIntegrationCountsSchema,
+    results: z.array(checkTasksIntegrationItemResultSchema),
+  })
+  .strict();
+
 export const waiveTaskApprovalInputSchema = z
   .object({
     projectId: identifierSchema,
@@ -714,6 +798,22 @@ export type SetTaskIntegrationPolicyInput = z.input<
   typeof setTaskIntegrationPolicyInputSchema
 >;
 export type CheckTaskIntegrationInput = z.input<typeof checkTaskIntegrationInputSchema>;
+export type CheckTaskIntegrationItemInput = z.input<
+  typeof checkTaskIntegrationItemInputSchema
+>;
+export type CheckTasksIntegrationInput = z.input<typeof checkTasksIntegrationInputSchema>;
+export type BatchIntegrationCheckItemStatus = z.infer<
+  typeof batchIntegrationCheckItemStatusSchema
+>;
+export type CheckTasksIntegrationCounts = z.infer<
+  typeof checkTasksIntegrationCountsSchema
+>;
+export type CheckTasksIntegrationItemResult = z.infer<
+  typeof checkTasksIntegrationItemResultSchema
+>;
+export type CheckTasksIntegrationResult = z.infer<
+  typeof checkTasksIntegrationResultSchema
+>;
 export type WaiveTaskApprovalInput = z.input<typeof waiveTaskApprovalInputSchema>;
 export type RequestTaskChangesInput = z.input<
   typeof requestTaskChangesInputSchema

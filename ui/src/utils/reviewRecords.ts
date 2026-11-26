@@ -1,10 +1,13 @@
 import type {
+  BatchIntegrationCheckItemInput,
+  BatchIntegrationCheckResult,
   CriterionResultStatus,
   FindingClosureStatus,
   ReviewFinding,
   RiskLevel,
   TaskEvent,
   TaskReview,
+  TaskSummary,
   VerificationEvidence,
 } from "../types.js";
 
@@ -155,4 +158,90 @@ export function findingsAwaitingClosure(
   }
   const previous = reviews[reviews.length - 2];
   return previous?.status === "changes_requested" ? previous.findings : [];
+}
+
+/**
+ * Whether an in-review task is already accepted, requires local Git
+ * integration, and still needs a local integration check against its latest review.
+ */
+export function isTaskCheckableForIntegration(task: TaskSummary): boolean {
+  const digest = task.latestReview;
+  if (!digest || task.status !== "in_review") {
+    return false;
+  }
+  const isAutoAccepted = task.riskLevel === "low" && task.riskConfirmed === true;
+  const isAccepted =
+    digest.status === "waived" ||
+    (digest.status === "passed" && (isAutoAccepted || Boolean(digest.approvedAt)));
+  return (
+    isAccepted &&
+    digest.integrationRequired &&
+    digest.integrationStatus !== "integrated"
+  );
+}
+
+/** Collects the exact `{ taskId, expectedReviewId }` targets shown in the UI queue. */
+export function selectIntegrationCheckTargets(
+  tasks: readonly TaskSummary[],
+): BatchIntegrationCheckItemInput[] {
+  return tasks.flatMap((task) =>
+    isTaskCheckableForIntegration(task) && task.latestReview
+      ? [{ taskId: task.id, expectedReviewId: task.latestReview.id }]
+      : [],
+  );
+}
+
+/** Batch header action appears only when 2 or more checkable pending-integration tasks exist. */
+export function shouldShowBatchIntegrationButton(
+  tasks: readonly TaskSummary[],
+): boolean {
+  return selectIntegrationCheckTargets(tasks).length >= 2;
+}
+
+export interface BatchIntegrationSummaryNotice {
+  title: string;
+  detail: string;
+}
+
+/**
+ * Formats a concise non-blocking notice only when batch integration leaves
+ * unarchived or errored items; all-archived batches clear quietly on refresh.
+ */
+export function summarizeBatchIntegrationResult(
+  result: BatchIntegrationCheckResult,
+): BatchIntegrationSummaryNotice | null {
+  const { completed, notIntegrated, unavailable, error } = result.counts;
+  if (notIntegrated + unavailable + error === 0) {
+    return null;
+  }
+
+  const parts = [`已归档 ${completed} 项`];
+  if (notIntegrated > 0) {
+    parts.push(`待本地集成 ${notIntegrated} 项`);
+  }
+  if (unavailable > 0) {
+    parts.push(`无法检查 ${unavailable} 项`);
+  }
+  if (error > 0) {
+    parts.push(`失败 ${error} 项`);
+  }
+
+  const reasons = Array.from(
+    new Set(
+      result.results
+        .filter((item) => item.status !== "completed")
+        .map((item) => item.integrationMessage ?? item.error?.message ?? null)
+        .filter((message): message is string => Boolean(message && message.trim().length > 0)),
+    ),
+  );
+
+  const detail =
+    reasons.length > 0
+      ? `${reasons.slice(0, 2).join("；")}${reasons.length > 2 ? `（另有 ${reasons.length - 2} 项详情见各任务卡片）` : ""}`
+      : "其余未归档任务仍保留在待审核队列中，请在各任务卡片查看详情。";
+
+  return {
+    title: parts.join("，"),
+    detail,
+  };
 }

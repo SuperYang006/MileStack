@@ -72,6 +72,43 @@ export interface TaskSummary {
 
 export type RiskLevel = "low" | "medium" | "high";
 export type IntegrationStatus = "integrated" | "not_integrated" | "unavailable" | "not_required";
+export type BatchIntegrationCheckItemStatus =
+  | "completed"
+  | "not_integrated"
+  | "unavailable"
+  | "error";
+
+export interface BatchIntegrationCheckItemInput {
+  taskId: string;
+  expectedReviewId: string;
+}
+
+export interface BatchIntegrationCheckCounts {
+  total: number;
+  completed: number;
+  notIntegrated: number;
+  unavailable: number;
+  error: number;
+}
+
+export interface BatchIntegrationCheckItemResult {
+  taskId: string;
+  expectedReviewId: string;
+  status: BatchIntegrationCheckItemStatus;
+  taskStatus: TaskStatus | null;
+  integrationStatus: IntegrationStatus | null;
+  integrationMessage: string | null;
+  integrationTargetCommitSha: string | null;
+  error: {
+    code: string;
+    message: string;
+  } | null;
+}
+
+export interface BatchIntegrationCheckResult {
+  counts: BatchIntegrationCheckCounts;
+  results: BatchIntegrationCheckItemResult[];
+}
 export type CriterionResultStatus = "met" | "not_met" | "unverifiable";
 export type FindingClosureStatus =
   | "fixed"

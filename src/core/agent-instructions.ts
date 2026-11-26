@@ -35,8 +35,10 @@ const reReviewApproachRule =
   "When re-reviewing after changes were requested, start from the incremental diff: the get_task default view returns the previous round's review round and commit SHA next to previousFindings, so first compare that previous commit with the current submission's commit to locate what changed. Close every previous finding one by one, and still independently verify every acceptance criterion. The incremental diff only locates changes; it never replaces independent verification of every acceptance criterion and the project's defined task-branch verification scope.";
 const integrationRule =
   "Required local Git integration is checked against the fixed review commit and the developer-confirmed local target branch. A low-risk task may complete automatically only after that check; medium- and high-risk tasks require developer approval and the same integration gate.";
+const batchIntegrationRetryRule =
+  "When multiple accepted tasks have been batch-merged into the local target branch, call check_tasks_integration with each task's { taskId, expectedReviewId } to run read-only integration checks and archive integrated items together without merging, fetching, or pushing.";
 const integrationRetryRule =
-  "For a task that is already accepted and still waiting for local integration, call check_task_integration with its latest review id after the developer has completed any authorized local merge. This is a separate integration retry, not a continuation of the implementation agent's work after submission.";
+  `For a task that is already accepted and still waiting for local integration, call check_task_integration with its latest review id after the developer has completed any authorized local merge. This is a separate integration retry, not a continuation of the implementation agent's work after submission. ${batchIntegrationRetryRule}`;
 
 export const acceptanceCriteriaCreationCheck =
   "When creating a task, check that each acceptance criterion describes one independently verifiable delivery result, has a corresponding verification, and does not smuggle in an unconfirmed implementation restriction.";
@@ -165,7 +167,7 @@ export function formatProjectAgentInstructions(version: string): string {
     "- medium: an AI pass records review_passed but leaves the task in in_review until a developer approves the latest passed review round.",
     "- high: explicit developer risk confirmation is required. An AI pass still leaves the task in in_review until a developer approves the latest passed review round.",
     "- Agents must not confirm, lower, or bypass a task's risk level on behalf of a developer.",
-    "- If a review is accepted but local integration is pending or unavailable, retain its approval facts and use check_task_integration with the latest review id to retry after the developer has completed any authorized local merge. Do not claim completion until the task status is completed.",
+    `- If a review is accepted but local integration is pending or unavailable, retain its approval facts and use check_task_integration with the latest review id to retry after the developer has completed any authorized local merge. ${batchIntegrationRetryRule} Do not claim completion until the task status is completed.`,
     "",
     "## Git and delivery authority",
     "",

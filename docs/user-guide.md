@@ -251,7 +251,7 @@ Task creation, submission, independent review, and re-review all respect any tie
 
 ### Local integration and completion
 
-Every new task defaults to requiring its fixed reviewed commit on the local `main` branch. Before work starts, a developer can choose another local target branch or record that Git integration is not required, with a reason. The review round freezes that choice. After the risk-specific review and approval requirements are met, MileStack checks whether the exact reviewed commit is reachable from the selected local branch. If Git cannot prove that, the approval remains recorded, the task stays visible, and dependents remain blocked. Use **Check and archive** to retry after an authorized local merge or a Git repair. The check is read-only; it does not merge, fetch, or push, and it does not mean the work was published or deployed. A squash or rebase that changes the reviewed commit SHA cannot be proven by this check.
+Every new task defaults to requiring its fixed reviewed commit on the local `main` branch. Before work starts, a developer can choose another local target branch or record that Git integration is not required, with a reason. The review round freezes that choice. After the risk-specific review and approval requirements are met, MileStack checks whether the exact reviewed commit is reachable from the selected local branch. If Git cannot prove that, the approval remains recorded, the task stays visible, and dependents remain blocked. Use **Check and archive** to retry after an authorized local merge or a Git repair. When multiple accepted tasks have been batch-merged into the local target branch (2 or more checkable pending-integration tasks in the review queue), use the review queue header button or MCP `check_tasks_integration` with each task's `{ taskId, expectedReviewId }` to run read-only checks and archive all integrated tasks in one batch. Both single and batch checks are read-only; they do not merge, fetch, or push, and do not mean the work was published or deployed. A squash or rebase that changes the reviewed commit SHA cannot be proven by this check.
 
 ## CLI reference
 
@@ -282,7 +282,7 @@ milestack mcp --discover
 | Task creation | `create_task`, `create_tasks` |
 | Inbox editing | `edit_inbox_task` |
 | Execution | `start_task`, `update_task`, `submit_for_review` |
-| Review | `start_review`, `approve_review`, `request_changes`, `complete_review`, `check_task_integration` |
+| Review | `start_review`, `approve_review`, `request_changes`, `complete_review`, `check_task_integration`, `check_tasks_integration` |
 
 Tasks an agent creates after developer confirmation enter the inbox. A developer must confirm their risk and queue position before they become claimable. `edit_inbox_task` requires the latest `updatedAt` from `get_task`, rejects an edit when the task changed since it was read, cannot change risk, and only works on inbox tasks.
 
