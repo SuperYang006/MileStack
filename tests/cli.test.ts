@@ -399,8 +399,18 @@ describe("CLI entry point", () => {
       "Review work is assigned by the developer. Perform this section only after the developer sends the task ID to you as an independent review agent; do not select a pending review task from the queue yourself.",
     );
     expect(generatedInstructions).toContain(
-      "When re-reviewing after changes were requested, start from the incremental diff: the get_task default view returns the previous round's review round and commit SHA next to previousFindings, so first compare that previous commit with the current submission's commit to locate what changed. Close every previous finding one by one, and still independently verify every acceptance criterion. The incremental diff only locates changes; it never replaces the full verification.",
+      "When the root AGENTS.md assigns repository-wide full regression to the integration or merge stage, do not put generic full-suite tests into ordinary single-task acceptance criteria (include full regression only when the task itself directly affects global behavior and requires early regression).",
     );
+    expect(generatedInstructions).toContain(
+      "Follow any tiered verification strategy defined in the repository root AGENTS.md: when the root AGENTS.md schedules repository-wide full regression at the target-branch merge stage, task-branch verification only needs to verify all task acceptance criteria and the project's defined change-related scope, and does not require rerunning the full regression suite on the task branch unless the task itself explicitly requires it.",
+    );
+    expect(generatedInstructions).toContain(
+      "Do not accept the submitter's criteriaResults as review evidence: independently reproduce the key verification for each acceptance criterion and the project's defined change-related scope.",
+    );
+    expect(generatedInstructions).toContain(
+      "When re-reviewing after changes were requested, start from the incremental diff: the get_task default view returns the previous round's review round and commit SHA next to previousFindings, so first compare that previous commit with the current submission's commit to locate what changed. Close every previous finding one by one, and still independently verify every acceptance criterion. The incremental diff only locates changes; it never replaces independent verification of every acceptance criterion and the project's defined task-branch verification scope.",
+    );
+    expect(generatedInstructions).not.toContain("never replaces the full verification");
     expect(generatedInstructions).toContain(
       "Review evidence, findings, and the risk conclusion belong to the independent review agent that receives this task ID from the developer.",
     );
@@ -620,8 +630,19 @@ describe("CLI entry point", () => {
     expect(mcpInstructions).not.toContain("A reviewer must then call start_review");
     expect(mcpInstructions).toContain("Review dimensions:");
     expect(mcpInstructions).toContain(
-      "Do not accept the submitter's criteriaResults as review evidence",
+      "Do not accept the submitter's criteriaResults as review evidence: independently reproduce the key verification for each acceptance criterion and the project's defined change-related scope.",
     );
+    expect(mcpInstructions).toContain(
+      "Follow any tiered verification strategy defined in the repository root AGENTS.md: when the root AGENTS.md schedules repository-wide full regression at the target-branch merge stage, task-branch verification only needs to verify all task acceptance criteria and the project's defined change-related scope, and does not require rerunning the full regression suite on the task branch unless the task itself explicitly requires it.",
+    );
+    expect(mcpInstructions).toContain(
+      "When the root AGENTS.md assigns repository-wide full regression to the integration or merge stage, do not put generic full-suite tests into ordinary single-task acceptance criteria",
+    );
+    expect(mcpInstructions).toContain("Re-review:");
+    expect(mcpInstructions).toContain(
+      "it never replaces independent verification of every acceptance criterion and the project's defined task-branch verification scope.",
+    );
+    expect(mcpInstructions).not.toContain("never replaces the full verification");
     expect(mcpInstructions).toContain("Accepted task awaiting local integration:");
     expect(mcpInstructions).toContain("check_task_integration");
     expect(knownTaskInstructions).toContain(`Call get_task directly with taskId \`${taskId}\``);
